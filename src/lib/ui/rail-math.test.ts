@@ -135,4 +135,3 @@ describe('thumbFraction', () => {
 		expect(thumbFraction(1850, { start: 1900, end: 2039 })).toBe(0);
 	});
 });
-

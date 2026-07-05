@@ -107,8 +107,13 @@ export function mobileRailTicks(
 ): MobileTick[] {
 	const span = railSpan(earliest, now);
 	const activeDecade = decadeOf(activeYear);
-	const maxBucketCount = Math.max(1, ...bucketCounts(years, span, bucketYears).map((bucket) => bucket.count));
-	const counts = new Map(bucketCounts(years, span, bucketYears).map((bucket) => [bucket.startYear, bucket.count]));
+	const maxBucketCount = Math.max(
+		1,
+		...bucketCounts(years, span, bucketYears).map((bucket) => bucket.count)
+	);
+	const counts = new Map(
+		bucketCounts(years, span, bucketYears).map((bucket) => [bucket.startYear, bucket.count])
+	);
 	const out: MobileTick[] = [];
 
 	for (let startYear = span.start; startYear <= span.end; startYear += bucketYears) {
@@ -180,4 +185,3 @@ function decadeOf(year: number): number {
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
 }
-

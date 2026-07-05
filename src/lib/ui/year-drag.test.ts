@@ -16,4 +16,3 @@ describe('momentumYears', () => {
 		expect(momentumYears(-10)).toBe(-8);
 	});
 });
-

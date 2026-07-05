@@ -1,41 +1,33 @@
 <script lang="ts">
-	import Gradient from '$lib/ui/Gradient.svelte';
-	import { paletteFor } from '$lib/ui/tokens';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import CenturyRail from '$lib/ui/CenturyRail.svelte';
+	import DecadeRoom from '$lib/ui/DecadeRoom.svelte';
+	import MasonryGrid from '$lib/ui/MasonryGrid.svelte';
+	import MobileRail from '$lib/ui/MobileRail.svelte';
+	import YearBand from '$lib/ui/YearBand.svelte';
+	import { nearestYearWithContent } from '$lib/ui/rail-math';
+	import type { PageData } from './$types';
 
-	const year = new Date().getFullYear();
-	const palette = paletteFor(year);
+	let { data }: { data: PageData } = $props();
+
+	const years = $derived(data.timeline.years);
+	const activeYear = $derived(data.activeYear);
+	const targetYear = (year: number) => nearestYearWithContent(year, years) ?? year;
+
+	function jump(delta: number) {
+		const year = targetYear(activeYear + delta);
+		void goto(resolve(`/?y=${year}`));
+	}
 </script>
 
-<Gradient stops={palette.stops} pools={palette.pools} />
-<section class="shell">
-	<p class="eyebrow">Timeline</p>
-	<h1>{year}</h1>
-	<p class="note">The archive is empty. Upload and the timeline arrive in later phases.</p>
-</section>
+<svelte:head>
+	<title>{activeYear} · Shoebox</title>
+</svelte:head>
 
-<style>
-	.shell {
-		padding: 10vh 6vw;
-	}
-
-	.eyebrow {
-		font-family: var(--font-sans);
-		text-transform: uppercase;
-		letter-spacing: 0.16em;
-		font-size: 0.75rem;
-		opacity: 0.75;
-	}
-
-	h1 {
-		font-size: clamp(4rem, 12vw, 10.5rem);
-		font-weight: 600;
-		line-height: 1;
-	}
-
-	.note {
-		margin-top: 1.2rem;
-		font-size: 1.05rem;
-		opacity: 0.85;
-		max-width: 34rem;
-	}
-</style>
+<DecadeRoom year={activeYear}>
+	<YearBand {activeYear} {years} onStep={jump} />
+	<CenturyRail {years} earliest={data.timeline.earliest} {activeYear} now={data.now} />
+	<MasonryGrid items={data.items} {activeYear} />
+	<MobileRail {years} earliest={data.timeline.earliest} {activeYear} now={data.now} />
+</DecadeRoom>

@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { activeYearFromSentinels, buildGridEntries, columnCount, layoutMasonry, visibleEntryIds } from './masonry';
+import {
+	activeYearFromSentinels,
+	buildGridEntries,
+	columnCount,
+	layoutMasonry,
+	visibleEntryIds
+} from './masonry';
 import type { ItemDTO } from '$lib/types';
 
-function item(id: string, dateStart: string | null, precision: ItemDTO['date']['precision'] = 'day'): ItemDTO {
+function item(
+	id: string,
+	dateStart: string | null,
+	precision: ItemDTO['date']['precision'] = 'day'
+): ItemDTO {
 	return {
 		id,
 		type: 'photo',
@@ -41,13 +51,25 @@ describe('buildGridEntries', () => {
 			item('c', '1994-07-01'),
 			item('d', '1994-01-01', 'year')
 		]);
-		expect(entries.map((entry) => entry.id)).toEqual(['month-1994-06', 'a', 'b', 'month-1994-07', 'c', 'd']);
+		expect(entries.map((entry) => entry.id)).toEqual([
+			'month-1994-06',
+			'a',
+			'b',
+			'month-1994-07',
+			'c',
+			'd'
+		]);
 	});
 });
 
 describe('layoutMasonry', () => {
 	it('lays entries into shortest columns and spans month breaks', () => {
-		const layout = layoutMasonry(buildGridEntries([item('a', '1994-06-14'), item('b', '1994-06-21')]), 2, 100, 10);
+		const layout = layoutMasonry(
+			buildGridEntries([item('a', '1994-06-14'), item('b', '1994-06-21')]),
+			2,
+			100,
+			10
+		);
 		expect(layout.entries[0]).toMatchObject({ id: 'month-1994-06', x: 0, width: 210 });
 		expect(layout.height).toBeGreaterThan(0);
 	});
@@ -82,4 +104,3 @@ describe('activeYearFromSentinels', () => {
 		).toBe(1994);
 	});
 });
-

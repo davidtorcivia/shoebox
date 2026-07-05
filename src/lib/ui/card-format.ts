@@ -26,4 +26,3 @@ export function spriteStyle(item: ItemDTO, frame = 0): string {
 	if (!item.urls.sprite) return '';
 	return `background-image: url("${item.urls.sprite}"); background-position-x: -${Math.max(0, frame) * 100}%`;
 }
-

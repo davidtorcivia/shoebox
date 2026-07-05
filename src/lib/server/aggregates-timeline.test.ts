@@ -60,4 +60,3 @@ describe('timelineYears', () => {
 		await expect(timelineYears(db)).resolves.toEqual({ years: [], earliest: null, latest: null });
 	});
 });
-

@@ -24,4 +24,3 @@ export function chromeVars(palette: DecadePalette): Record<string, string> {
 		'--timeline-strong': alpha(chrome, 0.9)
 	};
 }
-

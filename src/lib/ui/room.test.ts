@@ -27,4 +27,3 @@ describe('chromeVars', () => {
 		expect(chromeVars({ ...palette, chromeOn: 'cream' })['--timeline-chrome']).toBe('#FFF5E8');
 	});
 });
-

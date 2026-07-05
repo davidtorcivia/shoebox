@@ -24,7 +24,9 @@ export function buildGridEntries(items: ItemDTO[], columnWidth = 220): GridEntry
 	let lastMonth: string | null = null;
 
 	for (const item of items) {
-		const year = item.date.dateStart ? Number(item.date.dateStart.slice(0, 4)) : new Date().getFullYear();
+		const year = item.date.dateStart
+			? Number(item.date.dateStart.slice(0, 4))
+			: new Date().getFullYear();
 		const monthKey = monthBreakKey(item);
 		if (monthKey && monthKey !== lastMonth) {
 			entries.push({
@@ -79,13 +81,23 @@ export function layoutMasonry(
 	return { entries: out, height: Math.max(0, ...heights) };
 }
 
-export function visibleEntryIds(entries: LayoutEntry[], scrollY: number, viewportHeight: number, overscan = 400): string[] {
+export function visibleEntryIds(
+	entries: LayoutEntry[],
+	scrollY: number,
+	viewportHeight: number,
+	overscan = 400
+): string[] {
 	const top = scrollY - overscan;
 	const bottom = scrollY + viewportHeight + overscan;
-	return entries.filter((entry) => entry.y + entry.height >= top && entry.y <= bottom).map((entry) => entry.id);
+	return entries
+		.filter((entry) => entry.y + entry.height >= top && entry.y <= bottom)
+		.map((entry) => entry.id);
 }
 
-export function activeYearFromSentinels(sentinels: { year: number; top: number }[], scrollY: number): number | null {
+export function activeYearFromSentinels(
+	sentinels: { year: number; top: number }[],
+	scrollY: number
+): number | null {
 	const passed = sentinels
 		.filter((sentinel) => sentinel.top <= scrollY + 120)
 		.sort((a, b) => b.top - a.top);
@@ -112,6 +124,9 @@ function monthBreakKey(item: ItemDTO): string | null {
 
 function monthLabel(dateStart: string): string {
 	const date = new Date(`${dateStart}T00:00:00Z`);
-	return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(date);
+	return new Intl.DateTimeFormat('en-US', {
+		month: 'long',
+		year: 'numeric',
+		timeZone: 'UTC'
+	}).format(date);
 }
-

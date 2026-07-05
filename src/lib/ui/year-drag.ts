@@ -7,4 +7,3 @@ export function momentumYears(velocityX: number, pxPerYear = 90, maxYears = 8): 
 	const years = Math.round(projectedPx / pxPerYear);
 	return Math.max(-maxYears, Math.min(maxYears, years));
 }
-

@@ -58,4 +58,3 @@ describe('spriteStyle', () => {
 		expect(spriteStyle({ ...item, urls: { ...item.urls, sprite: undefined } })).toBe('');
 	});
 });
-
