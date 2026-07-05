@@ -271,8 +271,8 @@
 	.omnibox {
 		position: relative;
 		z-index: 1;
-		max-width: 1120px;
-		margin: 0 auto;
+		width: 100%;
+		margin: 0;
 	}
 
 	.omnibox-input {
