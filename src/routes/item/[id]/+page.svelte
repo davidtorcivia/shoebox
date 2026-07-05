@@ -7,6 +7,7 @@
 	import { isTypingTag, mapPlayerKey } from '$lib/ui/player-keys';
 	import { GRAIN_URI, playerRoomFor } from '$lib/ui/tokens';
 	import AlbumToggle from '$lib/ui/AlbumToggle.svelte';
+	import Comments from '$lib/ui/Comments.svelte';
 	import Lightbox from '$lib/ui/Lightbox.svelte';
 	import MetaForm, { type MetaPatchPayload } from '$lib/ui/MetaForm.svelte';
 	import PeopleRow from '$lib/ui/PeopleRow.svelte';
@@ -165,7 +166,7 @@
 			{/if}
 
 			<div data-testid="comments-slot">
-				<!-- Phase 05 fills the comments slot. -->
+				<Comments itemId={item.id} currentUser={data.me} />
 			</div>
 
 			{#if data.canEdit}
