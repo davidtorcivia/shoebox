@@ -22,6 +22,13 @@
       "when": 1783227166727,
       "tag": "0002_funny_wallop",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1783264022455,
+      "tag": "0003_search-fts-v2",
+      "breakpoints": true
     }
   ]
 }
