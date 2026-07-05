@@ -1,6 +1,7 @@
 import { SESSION_COOKIE, validateSession } from '$lib/server/auth';
 import { users } from '$lib/server/db/schema';
 import { getDb, getPlatform } from '$lib/server/platform';
+import { SHARE_COOKIE_PREFIX, shareCookieValue } from '$lib/server/shares';
 import { redirect, type Handle } from '@sveltejs/kit';
 
 const PUBLIC_PREFIXES = ['/login', '/setup', '/invite', '/share', '/media'];
@@ -17,6 +18,14 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	const token = event.cookies.get(SESSION_COOKIE);
 	event.locals.user = token ? await validateSession(event.locals.db, token) : null;
+
+	const shareTokens: string[] = [];
+	for (const { name, value } of event.cookies.getAll()) {
+		if (!name.startsWith(SHARE_COOKIE_PREFIX)) continue;
+		const shareToken = name.slice(SHARE_COOKIE_PREFIX.length);
+		if (value === (await shareCookieValue(shareToken))) shareTokens.push(shareToken);
+	}
+	event.locals.shareTokens = shareTokens;
 
 	if (!setupComplete) {
 		const anyUser = await event.locals.db.select({ id: users.id }).from(users).limit(1);

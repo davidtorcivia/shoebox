@@ -1,12 +1,12 @@
 import { error, redirect } from '@sveltejs/kit';
 import { parseRange } from '$lib/server/http-range';
-import { canAccessMedia } from '$lib/server/shares';
+import { canAccessMedia } from '$lib/server/media-access';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals, params, request }) => {
-	if (!canAccessMedia(locals.user)) throw error(401, 'Not signed in');
-
 	const key = params.key;
+	if (!(await canAccessMedia(locals, key))) throw error(403, 'Media not allowed');
+
 	if (locals.platform.name === 'cloudflare') {
 		throw redirect(302, await locals.platform.storage.mediaUrl(key));
 	}

@@ -78,6 +78,7 @@ export function makeLocals(
 	const locals = {
 		db,
 		user,
+		shareTokens: [],
 		platform: {
 			name,
 			storage,

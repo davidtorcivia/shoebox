@@ -9,6 +9,7 @@ declare global {
 			user: SessionUser | null;
 			platform: ShoeboxPlatform;
 			db: Db;
+			shareTokens: string[];
 		}
 		interface Platform {
 			env?: {
