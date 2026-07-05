@@ -12,6 +12,27 @@
 	const duration = $derived(formatDuration(item.duration));
 	const right = $derived(defaultCaptionRight(item));
 	const sizes = '(max-width: 720px) 46vw, (max-width: 1100px) 30vw, 22vw';
+	let scrubPct = $state(0);
+	let scrubbing = $state(false);
+	const spriteFrame = $derived(Math.min(99, Math.max(0, Math.floor(scrubPct))));
+	const spriteStyle = $derived.by(() => {
+		if (!item.urls.sprite) return '';
+		const col = spriteFrame % 10;
+		const row = Math.floor(spriteFrame / 10);
+		return [
+			`background-image: url("${item.urls.sprite}")`,
+			'background-size: 1000% 1000%',
+			`background-position: ${(col / 9) * 100}% ${(row / 9) * 100}%`
+		].join('; ');
+	});
+
+	function updateScrub(event: PointerEvent): void {
+		if (!item.urls.sprite) return;
+		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const fraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+		scrubPct = fraction * 100;
+		scrubbing = true;
+	}
 </script>
 
 <article class="card">
@@ -22,6 +43,8 @@
 		onclick={() => {
 			window.location.href = `/item/${item.id}?y=${activeYear}`;
 		}}
+		onpointermove={updateScrub}
+		onpointerleave={() => (scrubbing = false)}
 	>
 		<img
 			src={item.urls.thumb800 || item.urls.poster}
@@ -30,6 +53,15 @@
 			alt={item.title ?? item.displayDate}
 			loading="lazy"
 		/>
+		{#if item.urls.sprite}
+			<span class="sprite" class:visible={scrubbing} style={spriteStyle} aria-hidden="true"></span>
+			<span
+				class="scrub-hairline"
+				data-testid="scrub-hairline"
+				style={`transform: scaleX(${scrubPct / 100})`}
+				aria-hidden="true"
+			></span>
+		{/if}
 		{#if duration}
 			<span class="duration">{duration}</span>
 		{/if}
@@ -60,6 +92,29 @@
 		height: auto;
 		display: block;
 		filter: sepia(0.32) contrast(0.93) saturate(0.88);
+	}
+
+	.sprite {
+		position: absolute;
+		inset: 0;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 120ms ease;
+	}
+
+	.sprite.visible {
+		opacity: 1;
+	}
+
+	.scrub-hairline {
+		position: absolute;
+		right: 0;
+		bottom: 0;
+		left: 0;
+		height: 2px;
+		background: var(--cream);
+		pointer-events: none;
+		transform-origin: left center;
 	}
 
 	.duration {

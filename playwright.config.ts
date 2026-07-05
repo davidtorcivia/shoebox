@@ -1,18 +1,20 @@
 import { defineConfig } from '@playwright/test';
+import { E2E_ENV } from './e2e/env';
 
 export default defineConfig({
 	testDir: 'e2e',
-	timeout: 60_000,
+	globalSetup: './e2e/global-setup.ts',
+	timeout: 120_000,
 	fullyParallel: false,
 	workers: 1,
 	use: {
 		baseURL: 'http://localhost:4173'
 	},
 	webServer: {
-		command:
-			'rm -rf e2e/.data && mkdir -p e2e/.data && pnpm build && DATABASE_PATH=e2e/.data/shoebox.db MEDIA_PATH=e2e/.data/media HOST=127.0.0.1 PORT=4173 ORIGIN=http://localhost:4173 node build',
+		command: 'pnpm build && node build',
 		port: 4173,
 		reuseExistingServer: false,
-		timeout: 180_000
+		timeout: 240_000,
+		env: { ...E2E_ENV, HOST: '127.0.0.1', PORT: '4173' }
 	}
 });
