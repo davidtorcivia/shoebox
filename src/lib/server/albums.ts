@@ -8,6 +8,7 @@ import type { Db } from '$lib/server/db';
 import { albumItems, albums, itemFiles, items, users } from '$lib/server/db/schema';
 import type { StorageAdapter } from '$lib/server/platform/types';
 import { ROLE_RANK } from '$lib/server/roles';
+import { reindexItem, reindexItemsForAlbum } from '$lib/server/search';
 
 type AlbumRow = typeof albums.$inferSelect;
 type AlbumPatch = Partial<Pick<typeof albums.$inferInsert, 'title' | 'description' | 'coverItemId'>>;
@@ -98,12 +99,14 @@ export async function updateAlbum(
 	}
 
 	if (Object.keys(set).length > 0) await db.update(albums).set(set).where(eq(albums.id, id));
+	if (set.title !== undefined) await reindexItemsForAlbum(db, id);
 }
 
 export async function softDeleteAlbum(db: Db, id: string): Promise<void> {
 	const row = await liveAlbum(db, id);
 	if (!row) error(404, 'album not found');
 	await db.update(albums).set({ deletedAt: new Date() }).where(eq(albums.id, id));
+	await reindexItemsForAlbum(db, id);
 }
 
 export async function addAlbumItems(db: Db, albumId: string, itemIds: string[]): Promise<void> {
@@ -131,6 +134,7 @@ export async function addAlbumItems(db: Db, albumId: string, itemIds: string[]):
 	if (!row.coverItemId) {
 		await db.update(albums).set({ coverItemId: toAdd[0] }).where(eq(albums.id, albumId));
 	}
+	for (const itemId of toAdd) await reindexItem(db, itemId);
 }
 
 export async function removeAlbumItems(db: Db, albumId: string, itemIds: string[]): Promise<void> {
@@ -150,6 +154,7 @@ export async function removeAlbumItems(db: Db, albumId: string, itemIds: string[
 			.set({ coverItemId: remaining[0] ?? null })
 			.where(eq(albums.id, albumId));
 	}
+	for (const itemId of uniqueInput) await reindexItem(db, itemId);
 }
 
 export async function reorderAlbum(

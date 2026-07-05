@@ -24,6 +24,7 @@ import {
 	users
 } from '$lib/server/db/schema';
 import type { StorageAdapter } from '$lib/server/platform/types';
+import { reindexItemsForPerson } from '$lib/server/search';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -331,6 +332,7 @@ export async function updatePerson(db: Db, id: string, patch: PersonPatch): Prom
 		set.avatarCrop = patch.avatarCrop === null ? null : JSON.stringify(patch.avatarCrop);
 	}
 	if (Object.keys(set).length > 0) await db.update(people).set(set).where(eq(people.id, id));
+	if (set.name !== undefined) await reindexItemsForPerson(db, id);
 }
 
 export async function deletePersonGuarded(

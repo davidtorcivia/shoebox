@@ -5,6 +5,7 @@ import type { SessionUser } from '$lib/server/auth';
 import type { Db } from '$lib/server/db';
 import { comments, items, users } from '$lib/server/db/schema';
 import { ROLE_RANK } from '$lib/server/roles';
+import { reindexItem } from '$lib/server/search';
 
 export interface CommentDTO {
 	id: string;
@@ -63,6 +64,7 @@ export async function addComment(
 		body: trimmed,
 		createdAt
 	});
+	await reindexItem(db, itemId);
 
 	return {
 		id,
@@ -80,7 +82,7 @@ export async function deleteComment(
 ): Promise<void> {
 	const row = (
 		await db
-			.select({ id: comments.id, userId: comments.userId })
+			.select({ id: comments.id, itemId: comments.itemId, userId: comments.userId })
 			.from(comments)
 			.where(and(eq(comments.id, commentId), isNull(comments.deletedAt)))
 			.limit(1)
@@ -88,6 +90,7 @@ export async function deleteComment(
 	if (!row) error(404, 'comment not found');
 	if (!canDeleteComment(viewer, row.userId)) error(403, 'not allowed to delete this comment');
 	await db.update(comments).set({ deletedAt: new Date() }).where(eq(comments.id, commentId));
+	await reindexItem(db, row.itemId);
 }
 
 function canDeleteComment(viewer: SessionUser, authorId: string): boolean {

@@ -21,12 +21,14 @@ import {
 } from '$lib/domain/dates';
 import { bumpYearCount } from '$lib/server/aggregates';
 import { ROLE_RANK } from '$lib/server/roles';
+import { reindexItem } from '$lib/server/search';
 import type { JobQueueAdapter, StorageAdapter } from '$lib/server/platform/types';
 import type { ItemDTO } from '$lib/types';
 
 type Db = App.Locals['db'];
 type SessionUser = NonNullable<App.Locals['user']>;
 type ItemRow = typeof items.$inferSelect;
+type LinkOptions = { reindex?: boolean };
 
 export type { ItemDTO } from '$lib/types';
 
@@ -68,7 +70,12 @@ export function canModifyItem(user: SessionUser, row: { uploadedBy: string }): b
 	return ROLE_RANK[user.role] >= ROLE_RANK.editor || row.uploadedBy === user.id;
 }
 
-export async function setItemPeople(db: Db, itemId: string, personIds: string[]): Promise<void> {
+export async function setItemPeople(
+	db: Db,
+	itemId: string,
+	personIds: string[],
+	opts: LinkOptions = {}
+): Promise<void> {
 	const ids = [...new Set(personIds)];
 	if (ids.length > 0) {
 		const found = await db.select({ id: people.id }).from(people).where(inArray(people.id, ids));
@@ -81,12 +88,21 @@ export async function setItemPeople(db: Db, itemId: string, personIds: string[])
 			.insert(itemPeople)
 			.values(ids.map((personId) => ({ itemId, personId, source: 'manual' as const })));
 	}
+	if (opts.reindex !== false) await reindexItem(db, itemId);
 }
 
-export async function setItemTags(db: Db, itemId: string, names: string[]): Promise<void> {
+export async function setItemTags(
+	db: Db,
+	itemId: string,
+	names: string[],
+	opts: LinkOptions = {}
+): Promise<void> {
 	const normalized = [...new Set(names.map(normalizeTagName).filter((name) => name.length > 0))];
 	await db.delete(itemTags).where(eq(itemTags.itemId, itemId));
-	if (normalized.length === 0) return;
+	if (normalized.length === 0) {
+		if (opts.reindex !== false) await reindexItem(db, itemId);
+		return;
+	}
 
 	await db
 		.insert(tags)
@@ -95,6 +111,7 @@ export async function setItemTags(db: Db, itemId: string, names: string[]): Prom
 
 	const rows = await db.select({ id: tags.id }).from(tags).where(inArray(tags.name, normalized));
 	await db.insert(itemTags).values(rows.map((row) => ({ itemId, tagId: row.id })));
+	if (opts.reindex !== false) await reindexItem(db, itemId);
 }
 
 export async function createItem(
@@ -154,9 +171,10 @@ export async function createItem(
 		);
 	}
 
-	await setItemPeople(db, id, personIds);
-	await setItemTags(db, id, input.tags);
+	await setItemPeople(db, id, personIds, { reindex: false });
+	await setItemTags(db, id, input.tags, { reindex: false });
 	await bumpYearCount(db, yearOf(input.date), input.type, 1);
+	await reindexItem(db, id);
 
 	await queue.enqueue('derivatives', { itemId: id });
 	if (input.type === 'video') {
@@ -445,8 +463,9 @@ export async function updateItem(
 		await bumpYearCount(db, beforeYear, row.type, -1);
 		await bumpYearCount(db, afterYear, row.type, 1);
 	}
-	if (patch.people) await setItemPeople(db, id, patch.people);
-	if (patch.tags) await setItemTags(db, id, patch.tags);
+	if (patch.people) await setItemPeople(db, id, patch.people, { reindex: false });
+	if (patch.tags) await setItemTags(db, id, patch.tags, { reindex: false });
+	await reindexItem(db, id);
 
 	const dto = await getItemDTO(db, storage, id, { includeDeleted: Boolean(row.deletedAt) });
 	if (!dto) throw error(500, 'item update failed');
@@ -463,6 +482,7 @@ export async function deleteItem(db: Db, id: string): Promise<void> {
 		row.type,
 		-1
 	);
+	await reindexItem(db, id);
 }
 
 export async function restoreItem(db: Db, storage: StorageAdapter, id: string): Promise<ItemDTO> {
@@ -475,6 +495,7 @@ export async function restoreItem(db: Db, storage: StorageAdapter, id: string): 
 		row.type,
 		1
 	);
+	await reindexItem(db, id);
 	const dto = await getItemDTO(db, storage, id);
 	if (!dto) throw error(500, 'item restore failed');
 	return dto;
