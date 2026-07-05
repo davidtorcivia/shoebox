@@ -5,6 +5,7 @@ import { openNodeDb } from '../lib/server/platform/db-node';
 import { createSqliteQueue } from '../lib/server/platform/queue-sqlite';
 import { createFsStorage } from '../lib/server/platform/storage-fs';
 import { derivativesHandler, spriteHandler } from './derivatives';
+import { withFaceScanAfterDerivatives } from './face-enqueue';
 import { startIngestWatcher } from './ingest-watcher';
 import {
 	claimJob,
@@ -38,7 +39,8 @@ export function createWorker(opts: {
 	const kinds = opts.kinds ?? HANDLED_KINDS;
 	const idleMin = opts.idleMinMs ?? 1000;
 	const idleMax = opts.idleMaxMs ?? 5000;
-	const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+	const sleep =
+		opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 	let stopping = false;
 	let loop: Promise<void> | null = null;
 
@@ -92,7 +94,7 @@ async function main(): Promise<void> {
 	const ctx: WorkerContext = { db, storage, mediaPath };
 	const queue = createSqliteQueue(db);
 	const handlers: JobHandlers = {
-		derivatives: derivativesHandler,
+		derivatives: withFaceScanAfterDerivatives(derivativesHandler, process.env),
 		sprite: spriteHandler
 	};
 	const worker = createWorker({ db, ctx, handlers });

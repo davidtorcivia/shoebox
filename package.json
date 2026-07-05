@@ -21,6 +21,7 @@
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
 		"db:reindex": "tsx scripts/db-reindex.ts",
+		"faces:backfill": "tsx scripts/faces-backfill.ts",
 		"fixtures": "tsx e2e/fixtures/generate.ts",
 		"worker": "tsx src/worker/index.ts"
 	},
