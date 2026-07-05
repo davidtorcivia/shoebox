@@ -36,7 +36,6 @@
 		gap: clamp(0.5rem, 3vw, 1.5rem);
 		padding: clamp(1rem, 5vw, 2rem) clamp(1rem, 4vw, 1.875rem) 0;
 		color: var(--cream);
-		text-shadow: 0 4px 60px rgba(157, 43, 34, 0.45);
 	}
 
 	button {

@@ -266,7 +266,7 @@
 	.page {
 		position: relative;
 		min-height: 100vh;
-		padding: 42px 30px 90px;
+		padding: 38px 30px 90px;
 		background: linear-gradient(180deg, rgb(23 20 18 / 0.1) 0%, rgb(23 20 18 / 0.68) 100%);
 		color: var(--cream);
 	}

@@ -11,6 +11,7 @@
 	let { user }: { user: NavUser } = $props();
 
 	const showArrivals = $derived(['editor', 'admin', 'owner'].includes(user.role));
+	const showUpload = $derived(['uploader', 'editor', 'admin', 'owner'].includes(user.role));
 	const accentOn = $derived(ACCENTS.find((accent) => accent.hex === user.accentColor)?.on ?? 'ink');
 </script>
 
@@ -21,6 +22,7 @@
 		<a href={resolve('/people')}>People</a>
 		<a href={resolve('/albums')}>Albums</a>
 		<a href={resolve('/search')}>Search</a>
+		{#if showUpload}<a href={resolve('/upload')}>Upload</a>{/if}
 		{#if showArrivals}<a href={resolve('/arrivals')}>Arrivals</a>{/if}
 	</nav>
 	<div class="account">

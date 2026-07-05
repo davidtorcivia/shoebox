@@ -199,10 +199,7 @@
 	<Gradient stops={room.stops} pools={room.pools} />
 	<section class="page" aria-label="Arrivals">
 		<header class="head">
-			<div>
-				<p class="kicker">Review queue</p>
-				<h1>Arrivals</h1>
-			</div>
+			<span class="label">Arrivals</span>
 			<p class="count">{queue.length} waiting</p>
 		</header>
 
@@ -341,7 +338,7 @@
 	.page {
 		position: relative;
 		min-height: 100vh;
-		padding: 34px 30px 78px;
+		padding: 38px 30px 78px;
 		background:
 			linear-gradient(
 				180deg,
@@ -354,13 +351,13 @@
 
 	.head {
 		display: flex;
-		align-items: end;
+		align-items: center;
 		justify-content: space-between;
 		gap: 20px;
-		max-width: 1180px;
-		margin: 0 auto 20px;
+		margin-bottom: 26px;
 	}
 
+	.label,
 	.kicker,
 	.count,
 	.row-date,
@@ -375,12 +372,12 @@
 	}
 
 	.kicker,
+	.label,
 	.count,
 	.ingest {
 		opacity: 0.66;
 	}
 
-	h1,
 	h2 {
 		margin: 0;
 		font-family: var(--font-serif);
@@ -388,16 +385,10 @@
 		line-height: 1.02;
 	}
 
-	h1 {
-		font-size: clamp(34px, 4vw, 52px);
-	}
-
 	.layout {
 		display: grid;
 		grid-template-columns: minmax(230px, 292px) minmax(320px, 1fr) minmax(280px, 340px);
 		gap: 16px;
-		max-width: 1180px;
-		margin: 0 auto;
 		align-items: start;
 	}
 
@@ -513,7 +504,6 @@
 		gap: 12px;
 		padding: 14px;
 		background: color-mix(in srgb, var(--ink) 22%, transparent);
-		backdrop-filter: blur(14px);
 	}
 
 	.meta-head h2 {
@@ -625,8 +615,6 @@
 	}
 
 	.empty {
-		max-width: 1180px;
-		margin: 0 auto;
 		padding: 18vh 0;
 	}
 

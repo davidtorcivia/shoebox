@@ -36,9 +36,8 @@
 
 <style>
 	.admin {
-		width: min(1100px, 100%);
-		margin: 0 auto;
-		padding: 32px 24px 64px;
+		width: 100%;
+		padding: 38px 30px 64px;
 	}
 
 	h1 {
