@@ -38,10 +38,16 @@ export async function uploadChunks(
 	for (let index = 0; index < init.totalChunks; index += 1) {
 		const size = chunkBytes(file.size, init.chunkSize, index);
 		if (received.has(index)) continue;
-		const body = file.slice(index * init.chunkSize, index * init.chunkSize + size);
+		const chunk = file.slice(index * init.chunkSize, index * init.chunkSize + size);
+		const body = await chunk.arrayBuffer();
+		if (body.byteLength !== size) {
+			throw new Error(
+				`chunk ${index}: expected ${size} bytes before upload, got ${body.byteLength}`
+			);
+		}
 		const res = await fetchFn(
 			`/api/upload/chunk?uploadId=${encodeURIComponent(init.uploadId)}&index=${index}`,
-			{ method: 'PUT', body }
+			{ method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body }
 		);
 		if (!res.ok) throw new Error(await message(res));
 		sent += size;

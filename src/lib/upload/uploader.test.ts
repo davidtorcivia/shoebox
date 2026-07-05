@@ -41,8 +41,11 @@ describe('uploadChunks', () => {
 			receivedChunks: [1],
 			duplicateItemId: null
 		};
-		const fetchFn = async (url: RequestInfo | URL) => {
+		const fetchFn = async (url: RequestInfo | URL, init?: RequestInit) => {
 			calls.push(String(url));
+			expect(init?.method).toBe('POST');
+			expect(init?.headers).toEqual({ 'content-type': 'application/octet-stream' });
+			expect(init?.body).toBeInstanceOf(ArrayBuffer);
 			return Response.json({ received: true });
 		};
 
@@ -53,6 +56,24 @@ describe('uploadChunks', () => {
 			'/api/upload/chunk?uploadId=u1&index=2'
 		]);
 		expect(progress).toEqual([4, 8, 10]);
+	});
+
+	it('fails before the request when a chunk slice is unexpectedly empty', async () => {
+		const file = {
+			size: 4,
+			slice: () => new Blob()
+		} as Blob;
+		const init: InitResponse = {
+			uploadId: 'u1',
+			chunkSize: 4,
+			totalChunks: 1,
+			receivedChunks: [],
+			duplicateItemId: null
+		};
+
+		await expect(uploadChunks(file, init)).rejects.toThrow(
+			'chunk 0: expected 4 bytes before upload, got 0'
+		);
 	});
 });
 
