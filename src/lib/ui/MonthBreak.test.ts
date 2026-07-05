@@ -9,4 +9,3 @@ describe('MonthBreak', () => {
 		expect(body).toContain('JUNE');
 	});
 });
-

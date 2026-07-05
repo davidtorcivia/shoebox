@@ -15,4 +15,3 @@ describe('YearBand', () => {
 		expect(body).toContain('214 moments · 12 people');
 	});
 });
-

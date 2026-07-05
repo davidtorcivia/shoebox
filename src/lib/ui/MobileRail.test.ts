@@ -17,4 +17,3 @@ describe('MobileRail', () => {
 		expect(body).toContain("'90");
 	});
 });
-

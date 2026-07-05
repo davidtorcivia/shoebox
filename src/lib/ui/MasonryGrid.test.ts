@@ -42,4 +42,3 @@ describe('MasonryGrid', () => {
 		expect(body).toContain('No moments yet for this year.');
 	});
 });
-

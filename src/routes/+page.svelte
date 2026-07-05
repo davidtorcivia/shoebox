@@ -25,6 +25,20 @@
 	<title>{activeYear} · Shoebox</title>
 </svelte:head>
 
+<svelte:window
+	onkeydown={(event) => {
+		if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+		if (event.key === 'ArrowLeft') {
+			event.preventDefault();
+			jump(-1);
+		}
+		if (event.key === 'ArrowRight') {
+			event.preventDefault();
+			jump(1);
+		}
+	}}
+/>
+
 <DecadeRoom year={activeYear}>
 	<YearBand {activeYear} {years} onStep={jump} />
 	<CenturyRail {years} earliest={data.timeline.earliest} {activeYear} now={data.now} />

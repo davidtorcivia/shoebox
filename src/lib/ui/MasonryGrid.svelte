@@ -1,7 +1,7 @@
 <script lang="ts">
 	import MediaCard from './MediaCard.svelte';
 	import MonthBreak from './MonthBreak.svelte';
-	import { buildGridEntries } from './masonry';
+	import { buildGridEntries, columnCount, layoutMasonry } from './masonry';
 	import type { ItemDTO } from '$lib/types';
 
 	interface Props {
@@ -10,24 +10,32 @@
 	}
 
 	let { items, activeYear }: Props = $props();
+	let width = $state(1120);
 	const entries = $derived(buildGridEntries(items));
+	const columns = $derived(columnCount(width));
+	const columnWidth = $derived((width - 12 * (columns - 1)) / columns);
+	const layout = $derived(layoutMasonry(entries, columns, columnWidth, 12));
 </script>
 
-<section class="masonry" aria-label="Timeline media">
+<section class="masonry" aria-label="Timeline media" bind:clientWidth={width}>
 	{#if entries.length === 0}
 		<p class="empty">No moments yet for this year.</p>
 	{:else}
-		{#each entries as entry (entry.id)}
-			{#if entry.kind === 'month'}
-				<div class="cell month">
-					<MonthBreak label={entry.label} />
+		<div class="canvas" style={`height: ${layout.height}px`}>
+			{#each layout.entries as positioned (positioned.id)}
+				<div
+					class="cell"
+					class:month={positioned.entry.kind === 'month'}
+					style={`transform: translate(${positioned.x}px, ${positioned.y}px); width: ${positioned.width}px; height: ${positioned.height}px`}
+				>
+					{#if positioned.entry.kind === 'month'}
+						<MonthBreak label={positioned.entry.label} />
+					{:else}
+						<MediaCard item={positioned.entry.item} {activeYear} />
+					{/if}
 				</div>
-			{:else}
-				<div class="cell">
-					<MediaCard item={entry.item} {activeYear} />
-				</div>
-			{/if}
-		{/each}
+			{/each}
+		</div>
 	{/if}
 </section>
 
@@ -35,18 +43,23 @@
 	.masonry {
 		position: relative;
 		z-index: 2;
-		column-count: 4;
-		column-gap: 12px;
 		padding: 1.375rem 1.875rem 7rem;
 	}
 
+	.canvas {
+		position: relative;
+		width: 100%;
+		min-height: 12rem;
+	}
+
 	.cell {
-		break-inside: avoid;
-		margin-bottom: 1rem;
+		position: absolute;
+		top: 0;
+		left: 0;
 	}
 
 	.month {
-		margin-top: 0.375rem;
+		color: var(--timeline-chrome, var(--ink));
 	}
 
 	.empty {
@@ -56,14 +69,13 @@
 
 	@media (max-width: 1100px) {
 		.masonry {
-			column-count: 3;
+			padding-right: 1rem;
+			padding-left: 1rem;
 		}
 	}
 
 	@media (max-width: 760px) {
 		.masonry {
-			column-count: 2;
-			column-gap: 8px;
 			padding: 1rem 0.75rem 7rem;
 		}
 	}

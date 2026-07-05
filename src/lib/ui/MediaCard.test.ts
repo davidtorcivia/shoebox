@@ -39,4 +39,3 @@ describe('MediaCard', () => {
 		expect(body).toContain('/thumb_800.webp');
 	});
 });
-

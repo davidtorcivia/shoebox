@@ -20,4 +20,3 @@ describe('CenturyRail', () => {
 		expect(body).toContain('2000');
 	});
 });
-
