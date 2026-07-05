@@ -8,5 +8,6 @@ export const E2E_ENV = {
 	DATABASE_PATH: join(E2E_DATA_DIR, 'shoebox.db'),
 	MEDIA_PATH: join(E2E_DATA_DIR, 'media'),
 	INGEST_PATH: E2E_INGEST_DIR,
-	ORIGIN: 'http://localhost:4173'
+	ORIGIN: 'http://localhost:4173',
+	FACES_ENABLED: '1'
 } as const;

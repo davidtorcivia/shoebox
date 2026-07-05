@@ -6,14 +6,17 @@
 	let selectedFaces = $state<Record<string, string[]>>({});
 	let personSelections = $state<Record<string, string>>({});
 	let boxDrafts = $state<Record<string, string>>({});
+	// svelte-ignore state_referenced_locally
+	let suggestions = $state(data.suggestions);
 	let busy = $state<string | null>(null);
 	let notice = $state('');
 
 	$effect(() => {
-		const nextPeople = { ...personSelections };
-		const nextBoxes = { ...boxDrafts };
+		suggestions = data.suggestions;
+		const nextPeople: Record<string, string> = {};
+		const nextBoxes: Record<string, string> = {};
 		for (const cluster of data.suggestions) {
-			nextPeople[cluster.clusterId] ??= '';
+			nextPeople[cluster.clusterId] = '';
 			for (const face of cluster.faces) nextBoxes[face.id] ??= JSON.stringify(face.box);
 		}
 		personSelections = nextPeople;
@@ -34,17 +37,18 @@
 		};
 	}
 
-	async function mutate(key: string, url: string, init: RequestInit): Promise<void> {
+	async function mutate(key: string, url: string, init: RequestInit): Promise<boolean> {
 		busy = key;
 		notice = '';
 		const res = await fetch(url, init);
 		busy = null;
 		if (!res.ok) {
 			notice = await res.text();
-			return;
+			return false;
 		}
 		notice = 'Updated.';
-		await invalidateAll();
+		void invalidateAll();
+		return true;
 	}
 
 	async function assign(clusterId: string): Promise<void> {
@@ -53,17 +57,25 @@
 			notice = 'Choose a person before assigning.';
 			return;
 		}
-		await mutate(`assign-${clusterId}`, `/api/admin/faces/clusters/${clusterId}/assign`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ personId })
-		});
+		if (
+			await mutate(`assign-${clusterId}`, `/api/admin/faces/clusters/${clusterId}/assign`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ personId })
+			})
+		) {
+			suggestions = suggestions.filter((cluster) => cluster.clusterId !== clusterId);
+		}
 	}
 
 	async function reject(clusterId: string): Promise<void> {
-		await mutate(`reject-${clusterId}`, `/api/admin/faces/clusters/${clusterId}/reject`, {
-			method: 'POST'
-		});
+		if (
+			await mutate(`reject-${clusterId}`, `/api/admin/faces/clusters/${clusterId}/reject`, {
+				method: 'POST'
+			})
+		) {
+			suggestions = suggestions.filter((cluster) => cluster.clusterId !== clusterId);
+		}
 	}
 
 	async function split(clusterId: string): Promise<void> {
@@ -101,7 +113,7 @@
 		<div>
 			<p>Face Review</p>
 			<h2>
-				{data.suggestions.length} suggested {data.suggestions.length === 1 ? 'cluster' : 'clusters'}
+				{suggestions.length} suggested {suggestions.length === 1 ? 'cluster' : 'clusters'}
 			</h2>
 		</div>
 		<span>{data.people.length} known people</span>
@@ -111,12 +123,12 @@
 		<p class="notice">{notice}</p>
 	{/if}
 
-	{#if data.suggestions.length === 0}
+	{#if suggestions.length === 0}
 		<p class="empty">No face suggestions are waiting for review.</p>
 	{:else}
 		<div class="clusters">
-			{#each data.suggestions as cluster (cluster.clusterId)}
-				<section class="cluster">
+			{#each suggestions as cluster (cluster.clusterId)}
+				<section class="cluster" data-testid="face-cluster">
 					<div class="cluster-head">
 						<div>
 							<p>Cluster</p>
@@ -124,6 +136,7 @@
 						</div>
 						<div class="cluster-actions">
 							<select
+								data-testid="face-person-select"
 								aria-label={`Person for cluster ${cluster.clusterId}`}
 								value={personSelections[cluster.clusterId] ?? ''}
 								onchange={(event) =>
@@ -138,6 +151,7 @@
 								{/each}
 							</select>
 							<button
+								data-testid="face-assign"
 								type="button"
 								disabled={busy === `assign-${cluster.clusterId}`}
 								onclick={() => assign(cluster.clusterId)}
@@ -146,6 +160,7 @@
 							</button>
 							<button
 								class="secondary"
+								data-testid="face-split"
 								type="button"
 								disabled={busy === `split-${cluster.clusterId}`}
 								onclick={() => split(cluster.clusterId)}
@@ -154,6 +169,7 @@
 							</button>
 							<button
 								class="danger"
+								data-testid="face-reject"
 								type="button"
 								disabled={busy === `reject-${cluster.clusterId}`}
 								onclick={() => reject(cluster.clusterId)}
