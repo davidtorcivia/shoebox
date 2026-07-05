@@ -288,6 +288,7 @@ export async function executeSearch(
 
 export interface PersonCard {
 	id: string;
+	slug: string;
 	name: string;
 	accentColor: string;
 	avatarItemId: string | null;
@@ -312,6 +313,7 @@ export async function searchPeopleCards(db: Db, text: string, limit = 8): Promis
 	const likes = tokens.map((token) => sql`p.name LIKE ${`%${likeEscape(token)}%`} ESCAPE ${'\\'}`);
 	return (await db.all(
 		sql`SELECT p.id AS id,
+		           p.slug AS slug,
 		           p.name AS name,
 		           p.accent_color AS accentColor,
 		           p.avatar_item_id AS avatarItemId

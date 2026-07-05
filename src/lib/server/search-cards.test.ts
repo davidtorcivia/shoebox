@@ -64,6 +64,7 @@ describe('searchPeopleCards', () => {
 		expect(cards.map((card) => card.name)).toEqual(['Eric', 'Erica']);
 		expect(cards[0]).toEqual({
 			id: 'p1',
+			slug: 'eric',
 			name: 'Eric',
 			accentColor: '#A8D8EA',
 			avatarItemId: null
