@@ -14,6 +14,7 @@
 	let avatarTooLarge = $state(false);
 	let avatarUploadState = $state<'idle' | 'selected' | 'uploading' | 'saved' | 'error'>('idle');
 	let avatarMessage = $state('PNG, JPG, WebP, GIF or AVIF up to 5 MB.');
+	let confirmDeleteAvatar = $state(false);
 	const room = $derived(personRoomFor(accentColor));
 	const profileOn = $derived(accentOn(accentColor));
 
@@ -174,11 +175,14 @@
 							</button>
 						</form>
 						{#if data.profile.avatarUrl}
-							<form method="POST" action="?/deleteAvatar">
-								<button class="secondary" type="submit" data-testid="delete-avatar">
-									Delete avatar
-								</button>
-							</form>
+							<button
+								class="secondary delete-avatar-trigger"
+								type="button"
+								data-testid="delete-avatar"
+								onclick={() => (confirmDeleteAvatar = true)}
+							>
+								Delete avatar
+							</button>
 						{/if}
 					</div>
 				</div>
@@ -231,6 +235,28 @@
 			</section>
 		</div>
 	</section>
+	{#if confirmDeleteAvatar}
+		<div class="modal-backdrop">
+			<div
+				class="confirm-modal"
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="delete-avatar-title"
+			>
+				<div class="label">Confirm</div>
+				<h2 id="delete-avatar-title">Delete avatar?</h2>
+				<p>The uploaded image will be removed from your account.</p>
+				<div class="modal-actions">
+					<button class="secondary" type="button" onclick={() => (confirmDeleteAvatar = false)}>
+						Cancel
+					</button>
+					<form method="POST" action="?/deleteAvatar">
+						<button class="danger" type="submit">Delete avatar</button>
+					</form>
+				</div>
+			</div>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -279,14 +305,14 @@
 
 	.avatar-row {
 		display: grid;
-		grid-template-columns: 128px minmax(0, 1fr);
-		gap: 24px;
-		align-items: stretch;
+		grid-template-columns: 128px minmax(280px, 420px);
+		gap: 22px;
+		align-items: start;
 	}
 
 	.avatar-preview {
 		width: 128px;
-		aspect-ratio: 1;
+		height: 128px;
 		object-fit: cover;
 		background: var(--profile-accent);
 		color: var(--profile-on);
@@ -306,10 +332,15 @@
 		margin-bottom: 12px;
 	}
 
+	.avatar-actions {
+		min-width: 0;
+	}
+
 	.avatar-form {
 		display: grid;
 		gap: 12px;
 		min-width: 0;
+		max-width: 420px;
 	}
 
 	.file-label {
@@ -326,6 +357,8 @@
 		grid-template-columns: minmax(132px, max-content) minmax(0, 1fr);
 		align-items: stretch;
 		min-height: 54px;
+		width: 100%;
+		max-width: 420px;
 		background:
 			linear-gradient(
 				90deg,
@@ -405,6 +438,7 @@
 	.upload-status {
 		display: grid;
 		gap: 7px;
+		max-width: 420px;
 		color: color-mix(in srgb, var(--cream) 72%, transparent);
 		font-family: var(--font-sans);
 		font-size: 11px;
@@ -502,6 +536,12 @@
 		text-transform: uppercase;
 	}
 
+	.avatar-form > button,
+	.delete-avatar-trigger {
+		justify-self: start;
+		width: auto;
+	}
+
 	button:disabled {
 		cursor: wait;
 		opacity: 0.72;
@@ -510,6 +550,57 @@
 	.secondary {
 		background: color-mix(in srgb, var(--cream) 15%, transparent);
 		color: var(--cream);
+	}
+
+	.modal-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 40;
+		display: grid;
+		place-items: center;
+		padding: 20px;
+		background: rgb(23 20 18 / 0.72);
+	}
+
+	.confirm-modal {
+		width: min(420px, 100%);
+		margin: 0;
+		padding: 24px;
+		background:
+			linear-gradient(
+				135deg,
+				color-mix(in srgb, var(--profile-accent) 18%, transparent),
+				transparent
+			),
+			color-mix(in srgb, var(--ink) 92%, var(--cream));
+		box-shadow: 0 22px 70px rgb(0 0 0 / 0.38);
+	}
+
+	.confirm-modal h2 {
+		margin: 0 0 10px;
+		font-family: var(--font-serif);
+		font-size: 30px;
+		font-weight: 500;
+		line-height: 1.05;
+	}
+
+	.confirm-modal p {
+		margin: 0;
+		color: color-mix(in srgb, var(--cream) 78%, transparent);
+		font-family: var(--font-serif);
+		font-size: 17px;
+		line-height: 1.45;
+	}
+
+	.modal-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px;
+		margin-top: 20px;
+	}
+
+	.modal-actions form {
+		margin: 0;
 	}
 
 	.danger-zone {
@@ -561,6 +652,7 @@
 
 		.avatar-preview {
 			width: 88px;
+			height: 88px;
 		}
 
 		.avatar-preview.fallback {
@@ -569,6 +661,7 @@
 
 		.file-picker {
 			grid-template-columns: 1fr;
+			max-width: none;
 		}
 
 		.file-button {
