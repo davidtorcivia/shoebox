@@ -3,9 +3,11 @@ import {
 	ACCENTS,
 	CREAM,
 	DAWN,
+	DAWN_PALE,
 	DECADES,
 	GRAIN_URI,
 	INK,
+	accentOn,
 	paletteFor,
 	personRoomFor,
 	playerRoomFor
@@ -16,6 +18,7 @@ describe('token constants', () => {
 		expect(INK).toBe('#171412');
 		expect(CREAM).toBe('#FFF5E8');
 		expect(DAWN).toBe('#FA7B62');
+		expect(DAWN_PALE).toBe('#FFD9A8');
 	});
 
 	it('has 12 unique AA-paired accents', () => {
@@ -33,6 +36,13 @@ describe('token constants', () => {
 	it('grain is an inline SVG data URI', () => {
 		expect(GRAIN_URI.startsWith('data:image/svg+xml,')).toBe(true);
 		expect(GRAIN_URI).toContain('feTurbulence');
+	});
+
+	it('maps accent colors to their paired foreground token', () => {
+		expect(accentOn('#FA7B62')).toBe(INK);
+		expect(accentOn('#C3272B')).toBe(CREAM);
+		expect(accentOn('#c3272b')).toBe(CREAM);
+		expect(accentOn('#FFFFFF')).toBe(INK);
 	});
 });
 

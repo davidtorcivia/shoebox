@@ -1,6 +1,7 @@
 export const INK = '#171412';
 export const CREAM = '#FFF5E8';
 export const DAWN = '#FA7B62';
+export const DAWN_PALE = '#FFD9A8';
 
 export const ACCENTS = [
 	{ hex: '#FA7B62', on: 'ink' },
@@ -16,6 +17,11 @@ export const ACCENTS = [
 	{ hex: '#5E6F4D', on: 'cream' },
 	{ hex: '#B8B0A8', on: 'ink' }
 ] as const;
+
+export function accentOn(hex: string): typeof INK | typeof CREAM {
+	const match = ACCENTS.find((accent) => accent.hex.toLowerCase() === hex.toLowerCase());
+	return match?.on === 'cream' ? CREAM : INK;
+}
 
 export type DecadePalette = {
 	decade: number;
