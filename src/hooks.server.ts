@@ -13,6 +13,8 @@ function isPublic(pathname: string): boolean {
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
+	if (event.url.pathname === '/healthz') return resolve(event);
+
 	event.locals.platform = await getPlatform(event);
 	event.locals.db = await getDb(event);
 
