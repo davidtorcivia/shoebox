@@ -285,3 +285,55 @@ export async function executeSearch(
 	const nextCursor = rows.length > limit && last ? `${last.sortDate}~${last.id}` : null;
 	return { itemIds: page.map((row) => row.id), nextCursor, warnings };
 }
+
+export interface PersonCard {
+	id: string;
+	name: string;
+	accentColor: string;
+	avatarItemId: string | null;
+}
+
+export interface AlbumCard {
+	id: string;
+	title: string;
+	coverItemId: string | null;
+	itemCount: number;
+}
+
+const likeEscape = (value: string) => value.replace(/[\\%_]/g, (char) => `\\${char}`);
+
+function textTokens(text: string): string[] {
+	return text.replace(/"/g, ' ').trim().split(/\s+/).filter(Boolean).slice(0, 5);
+}
+
+export async function searchPeopleCards(db: Db, text: string, limit = 8): Promise<PersonCard[]> {
+	const tokens = textTokens(text);
+	if (tokens.length === 0) return [];
+	const likes = tokens.map((token) => sql`p.name LIKE ${`%${likeEscape(token)}%`} ESCAPE ${'\\'}`);
+	return (await db.all(
+		sql`SELECT p.id AS id,
+		           p.name AS name,
+		           p.accent_color AS accentColor,
+		           p.avatar_item_id AS avatarItemId
+		    FROM people p
+		    WHERE ${sql.join(likes, sql` OR `)}
+		    ORDER BY p.name
+		    LIMIT ${limit}`
+	)) as PersonCard[];
+}
+
+export async function searchAlbumCards(db: Db, text: string, limit = 8): Promise<AlbumCard[]> {
+	const tokens = textTokens(text);
+	if (tokens.length === 0) return [];
+	const likes = tokens.map((token) => sql`a.title LIKE ${`%${likeEscape(token)}%`} ESCAPE ${'\\'}`);
+	return (await db.all(
+		sql`SELECT a.id AS id,
+		           a.title AS title,
+		           a.cover_item_id AS coverItemId,
+		           (SELECT count(*) FROM album_items ai WHERE ai.album_id = a.id) AS itemCount
+		    FROM albums a
+		    WHERE a.deleted_at IS NULL AND (${sql.join(likes, sql` OR `)})
+		    ORDER BY a.title
+		    LIMIT ${limit}`
+	)) as AlbumCard[];
+}

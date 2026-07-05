@@ -302,6 +302,10 @@ export async function getItemDTOsByIds(
 	);
 }
 
+export async function itemDTOsByIds(locals: App.Locals, ids: string[]): Promise<ItemDTO[]> {
+	return getItemDTOsByIds(locals.db, locals.platform.storage, ids);
+}
+
 export interface ListItemsQuery {
 	year?: number;
 	month?: number;
