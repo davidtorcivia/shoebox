@@ -1,4 +1,3 @@
-import { error } from '@sveltejs/kit';
 import { asc } from 'drizzle-orm';
 import { requireFacesAdmin } from '$lib/server/admin-faces';
 import { people } from '$lib/server/db/schema';
@@ -7,7 +6,6 @@ import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	requireFacesAdmin(locals);
-	if (!locals.platform.features.faces) error(404, 'faces disabled');
 	const allPeople = await locals.db
 		.select({
 			id: people.id,
