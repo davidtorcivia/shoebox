@@ -9,3 +9,27 @@ export function cropStyle(crop: CropRect): string {
 		`top:${pct(-crop.y / crop.h)}`
 	].join(';');
 }
+
+const PORTRAIT_ASPECT = 168 / 210;
+
+function clamp(value: number, min: number, max: number): number {
+	return Math.min(Math.max(value, min), max);
+}
+
+export function makePortraitCrop(
+	imgW: number,
+	imgH: number,
+	hFrac: number,
+	cx: number,
+	cy: number
+): CropRect {
+	const maxH = Math.min(1, imgW / (PORTRAIT_ASPECT * imgH));
+	const h = clamp(hFrac, 0.1, maxH);
+	const w = (PORTRAIT_ASPECT * h * imgH) / imgW;
+	return {
+		x: clamp(cx - w / 2, 0, 1 - w),
+		y: clamp(cy - h / 2, 0, 1 - h),
+		w,
+		h
+	};
+}
