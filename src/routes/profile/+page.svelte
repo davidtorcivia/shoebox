@@ -74,6 +74,22 @@
 					<p class="linked">Not linked to a person.</p>
 				{/if}
 			</section>
+
+			<section class="danger-zone">
+				<div class="label">Delete account</div>
+				{#if data.profile.role === 'owner'}
+					<p class="linked">The owner account cannot be deleted.</p>
+				{:else}
+					<form method="POST" action="?/deleteAccount">
+						<label class="field">
+							<span>Current password</span>
+							<input name="current" type="password" autocomplete="current-password" required />
+						</label>
+						<button class="danger" type="submit" data-testid="delete-account">Delete account</button
+						>
+					</form>
+				{/if}
+			</section>
 		</div>
 	</section>
 </div>
@@ -182,6 +198,15 @@
 		letter-spacing: 0.18em;
 		padding: 0 20px;
 		text-transform: uppercase;
+	}
+
+	.danger-zone {
+		padding-top: 22px;
+	}
+
+	.danger {
+		background: color-mix(in srgb, var(--dawn) 86%, var(--ink));
+		color: var(--cream);
 	}
 
 	.linked {

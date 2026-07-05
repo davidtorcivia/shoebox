@@ -1,7 +1,16 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { and, eq, ne } from 'drizzle-orm';
-import { hashPassword, verifyPassword } from '$lib/server/auth';
-import { people, users } from '$lib/server/db/schema';
+import { SESSION_COOKIE, hashPassword, verifyPassword } from '$lib/server/auth';
+import {
+	albums,
+	comments,
+	invites,
+	items,
+	people,
+	sessions,
+	shares,
+	users
+} from '$lib/server/db/schema';
 import { ACCENTS } from '$lib/ui/tokens';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -9,7 +18,9 @@ const THEMES = ['system', 'dark', 'light'] as const;
 
 export const load: PageServerLoad = async ({ locals }) => {
 	if (!locals.user) redirect(302, '/login');
-	const row = (await locals.db.select().from(users).where(eq(users.id, locals.user.id)).limit(1))[0];
+	const row = (
+		await locals.db.select().from(users).where(eq(users.id, locals.user.id)).limit(1)
+	)[0];
 	if (!row) redirect(302, '/login');
 
 	let linkedPerson: { id: string; slug: string; name: string } | null = null;
@@ -61,8 +72,11 @@ export const actions: Actions = {
 		const fd = await request.formData();
 		const current = String(fd.get('current') ?? '');
 		const next = String(fd.get('next') ?? '');
-		if (next.length < 8) return fail(400, { message: 'New password must be at least 8 characters' });
-		const row = (await locals.db.select().from(users).where(eq(users.id, locals.user.id)).limit(1))[0];
+		if (next.length < 8)
+			return fail(400, { message: 'New password must be at least 8 characters' });
+		const row = (
+			await locals.db.select().from(users).where(eq(users.id, locals.user.id)).limit(1)
+		)[0];
 		if (!row || !(await verifyPassword(current, row.passwordHash))) {
 			return fail(400, { message: 'Current password is incorrect' });
 		}
@@ -90,5 +104,42 @@ export const actions: Actions = {
 			.set({ accentColor, theme: theme as (typeof THEMES)[number], comfortMode })
 			.where(eq(users.id, locals.user.id));
 		return { saved: 'appearance' };
+	},
+
+	deleteAccount: async ({ cookies, locals, request }) => {
+		if (!locals.user) return fail(401, { message: 'Not signed in' });
+		if (locals.user.role === 'owner') {
+			return fail(400, { message: 'The owner account cannot be deleted.' });
+		}
+
+		const fd = await request.formData();
+		const current = String(fd.get('current') ?? '');
+		const row = (
+			await locals.db.select().from(users).where(eq(users.id, locals.user.id)).limit(1)
+		)[0];
+		if (!row || !(await verifyPassword(current, row.passwordHash))) {
+			return fail(400, { message: 'Current password is incorrect' });
+		}
+
+		const owner = (
+			await locals.db.select({ id: users.id }).from(users).where(eq(users.role, 'owner')).limit(1)
+		)[0];
+		if (!owner || owner.id === locals.user.id) {
+			return fail(400, { message: 'The owner account cannot be deleted.' });
+		}
+
+		await locals.db.update(items).set({ uploadedBy: owner.id }).where(eq(items.uploadedBy, row.id));
+		await locals.db.update(albums).set({ createdBy: owner.id }).where(eq(albums.createdBy, row.id));
+		await locals.db.update(comments).set({ userId: owner.id }).where(eq(comments.userId, row.id));
+		await locals.db
+			.update(invites)
+			.set({ createdBy: owner.id })
+			.where(eq(invites.createdBy, row.id));
+		await locals.db.update(shares).set({ createdBy: owner.id }).where(eq(shares.createdBy, row.id));
+		await locals.db.delete(sessions).where(eq(sessions.userId, row.id));
+		await locals.db.delete(users).where(eq(users.id, row.id));
+
+		cookies.delete(SESSION_COOKIE, { path: '/' });
+		redirect(303, '/login');
 	}
 };

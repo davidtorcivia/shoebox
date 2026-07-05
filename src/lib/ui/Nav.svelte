@@ -23,13 +23,19 @@
 		{#if showArrivals}<a href={resolve('/arrivals')}>Arrivals</a>{/if}
 	</nav>
 	<div class="account">
-		<span class="name" style:color={user.accentColor}>{user.username}</span>
-		<span
-			class="monogram"
-			style:background={user.accentColor}
-			style:color={accentOn === 'ink' ? 'var(--ink)' : 'var(--cream)'}
-			aria-hidden="true">{user.username.slice(0, 1)}</span
+		<a
+			class="profile-link"
+			href={resolve('/profile')}
+			aria-label={`Edit account for ${user.username}`}
 		>
+			<span class="name" style:color={user.accentColor}>{user.username}</span>
+			<span
+				class="monogram"
+				style:background={user.accentColor}
+				style:color={accentOn === 'ink' ? 'var(--ink)' : 'var(--cream)'}
+				aria-hidden="true">{user.username.slice(0, 1)}</span
+			>
+		</a>
 		<form method="POST" action="/logout">
 			<button type="submit">Sign out</button>
 		</form>
@@ -80,6 +86,13 @@
 		gap: 0.7rem;
 	}
 
+	.profile-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.7rem;
+		min-height: 44px;
+	}
+
 	.name {
 		font-weight: 600;
 	}
@@ -107,7 +120,9 @@
 	}
 
 	.account button:hover,
-	.account button:focus-visible {
+	.account button:focus-visible,
+	.profile-link:hover,
+	.profile-link:focus-visible {
 		opacity: 1;
 	}
 </style>
