@@ -50,9 +50,10 @@ export async function seedPlayerRoom(page: Page): Promise<SeededPlayer> {
 		{ id: string } | undefined;
 	if (!owner) throw new Error('owner user missing');
 
-	db.prepare('insert into people (id, name, accent_color, created_at) values (?, ?, ?, ?)').run(
+	db.prepare('insert into people (id, name, slug, accent_color, created_at) values (?, ?, ?, ?, ?)').run(
 		personId,
 		'Aunt June',
+		`aunt-june-${suffix}`,
 		'#FA7B62',
 		Date.now()
 	);
