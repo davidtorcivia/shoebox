@@ -1,8 +1,17 @@
 import { eq } from 'drizzle-orm';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as schema from '../lib/server/db/schema';
-import { claimJob } from './jobs';
+import { createFsStorage } from '../lib/server/platform/storage-fs';
+import { claimJob, logIngestFailure, runJob, type WorkerContext } from './jobs';
 import { createTestDb, insertJob } from './test-helpers';
+
+function testCtx(db: ReturnType<typeof createTestDb>): WorkerContext {
+	const mediaPath = mkdtempSync(join(tmpdir(), 'shoebox-media-'));
+	return { db, storage: createFsStorage(mediaPath), mediaPath };
+}
 
 describe('claimJob', () => {
 	it('returns null when no jobs are pending', () => {
@@ -49,5 +58,101 @@ describe('claimJob', () => {
 		insertJob(db, { kind: 'derivatives' });
 		expect(claimJob(db, ['derivatives'])).not.toBeNull();
 		expect(claimJob(db, ['derivatives'])).toBeNull();
+	});
+});
+
+describe('runJob', () => {
+	it('marks the job done when the handler succeeds', async () => {
+		const db = createTestDb();
+		const id = insertJob(db, { kind: 'derivatives', payload: { itemId: 'x' } });
+		const job = claimJob(db, ['derivatives'])!;
+		const seen: unknown[] = [];
+		const outcome = await runJob(
+			db,
+			job,
+			{
+				derivatives: async (payload) => {
+					seen.push(payload);
+				}
+			},
+			testCtx(db)
+		);
+
+		expect(outcome).toBe('done');
+		expect(seen).toEqual([{ itemId: 'x' }]);
+		const row = db.select().from(schema.jobs).where(eq(schema.jobs.id, id)).get()!;
+		expect(row.status).toBe('done');
+	});
+
+	it('re-pends a failed job with attempts++ and run_after = now + 2^attempts minutes', async () => {
+		const db = createTestDb();
+		const id = insertJob(db, { kind: 'derivatives' });
+		const job = claimJob(db, ['derivatives'])!;
+		const before = Date.now();
+		const outcome = await runJob(
+			db,
+			job,
+			{
+				derivatives: async () => {
+					throw new Error('boom');
+				}
+			},
+			testCtx(db)
+		);
+
+		expect(outcome).toBe('retry');
+		const row = db.select().from(schema.jobs).where(eq(schema.jobs.id, id)).get()!;
+		expect(row.status).toBe('pending');
+		expect(row.attempts).toBe(1);
+		const delayMs = row.runAfter.getTime() - before;
+		expect(delayMs).toBeGreaterThanOrEqual(2 * 60_000 - 2000);
+		expect(delayMs).toBeLessThanOrEqual(2 * 60_000 + 2000);
+		expect(JSON.parse(row.payload).lastError).toBe('boom');
+	});
+
+	it('fails permanently on the 5th attempt', async () => {
+		const db = createTestDb();
+		const id = insertJob(db, { kind: 'sprite', attempts: 4 });
+		const job = claimJob(db, ['sprite'])!;
+		const outcome = await runJob(
+			db,
+			job,
+			{
+				sprite: async () => {
+					throw new Error('still broken');
+				}
+			},
+			testCtx(db)
+		);
+
+		expect(outcome).toBe('failed');
+		const row = db.select().from(schema.jobs).where(eq(schema.jobs.id, id)).get()!;
+		expect(row.status).toBe('failed');
+		expect(row.attempts).toBe(5);
+	});
+
+	it('treats a missing handler as a failure and uses the retry path', async () => {
+		const db = createTestDb();
+		insertJob(db, { kind: 'derivatives' });
+		const job = claimJob(db, ['derivatives'])!;
+		const outcome = await runJob(db, job, {}, testCtx(db));
+		expect(outcome).toBe('retry');
+	});
+});
+
+describe('logIngestFailure', () => {
+	it('records a failed ingest_scan jobs row with path and reason payload', () => {
+		const db = createTestDb();
+		logIngestFailure(db, '1994/christmas/corrupt.mp4', 'unrecognized file contents');
+
+		const rows = db.select().from(schema.jobs).all();
+		expect(rows).toHaveLength(1);
+		expect(rows[0].kind).toBe('ingest_scan');
+		expect(rows[0].status).toBe('failed');
+		expect(rows[0].attempts).toBe(1);
+		expect(JSON.parse(rows[0].payload)).toEqual({
+			path: '1994/christmas/corrupt.mp4',
+			reason: 'unrecognized file contents'
+		});
 	});
 });
