@@ -1,15 +1,16 @@
 <script lang="ts">
-	import { captionRight, formatDuration, thumbSrcset } from './card-format';
+	import { captionRight as defaultCaptionRight, formatDuration, thumbSrcset } from './card-format';
 	import type { ItemDTO } from '$lib/types';
 
 	interface Props {
 		item: ItemDTO;
 		activeYear: number;
+		captionRight?: string | null;
 	}
 
-	let { item, activeYear }: Props = $props();
+	let { item, activeYear, captionRight = null }: Props = $props();
 	const duration = $derived(formatDuration(item.duration));
-	const right = $derived(captionRight(item));
+	const right = $derived(defaultCaptionRight(item));
 	const sizes = '(max-width: 720px) 46vw, (max-width: 1100px) 30vw, 22vw';
 </script>
 
@@ -35,7 +36,7 @@
 	</button>
 	<div class="caption">
 		<span>{item.shortDate}</span>
-		<span class="right">{right}</span>
+		<span class="right">{captionRight ?? right}</span>
 	</div>
 </article>
 

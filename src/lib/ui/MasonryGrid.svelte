@@ -7,9 +7,10 @@
 	interface Props {
 		items: ItemDTO[];
 		activeYear: number;
+		captionRightFor?: ((item: ItemDTO) => string | null) | null;
 	}
 
-	let { items, activeYear }: Props = $props();
+	let { items, activeYear, captionRightFor = null }: Props = $props();
 	let width = $state(1120);
 	const entries = $derived(buildGridEntries(items));
 	const columns = $derived(columnCount(width));
@@ -31,7 +32,11 @@
 					{#if positioned.entry.kind === 'month'}
 						<MonthBreak label={positioned.entry.label} />
 					{:else}
-						<MediaCard item={positioned.entry.item} {activeYear} />
+						<MediaCard
+							item={positioned.entry.item}
+							{activeYear}
+							captionRight={captionRightFor ? captionRightFor(positioned.entry.item) : null}
+						/>
 					{/if}
 				</div>
 			{/each}

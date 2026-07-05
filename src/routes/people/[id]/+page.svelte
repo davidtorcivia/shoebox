@@ -3,6 +3,7 @@
 	import Avatar from '$lib/ui/Avatar.svelte';
 	import CroppedPortrait from '$lib/ui/CroppedPortrait.svelte';
 	import Gradient from '$lib/ui/Gradient.svelte';
+	import PersonYearSection from '$lib/ui/PersonYearSection.svelte';
 	import { renderMarkdown } from '$lib/ui/markdown';
 	import { personRoomFor } from '$lib/ui/tokens';
 	import type { PersonRef } from '$lib/domain/people-dto';
@@ -156,6 +157,16 @@
 				{/if}
 			</section>
 		</div>
+
+		{#each person.years as personYear (personYear.year)}
+			<PersonYearSection
+				personId={person.id}
+				year={personYear.year}
+				count={personYear.count}
+				age={personYear.age}
+				allYears={person.years.map((entry) => entry.year)}
+			/>
+		{/each}
 	</section>
 </div>
 
