@@ -1,0 +1,108 @@
+@font-face {
+	font-family: 'Fraunces Variable';
+	font-style: normal;
+	font-display: swap;
+	font-weight: 100 900;
+	src: url('/fonts/fraunces-latin-wght-normal.woff2') format('woff2-variations');
+}
+
+@font-face {
+	font-family: 'Archivo Variable';
+	font-style: normal;
+	font-display: swap;
+	font-weight: 100 900;
+	src: url('/fonts/archivo-latin-wght-normal.woff2') format('woff2-variations');
+}
+
+:root {
+	--ink: #171412;
+	--cream: #fff5e8;
+	--dawn: #fa7b62;
+	--font-serif: 'Fraunces Variable', Georgia, serif;
+	--font-sans: 'Archivo Variable', 'Helvetica Neue', sans-serif;
+	--motion-fast: 200ms;
+	--motion-slow: 300ms;
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+	border-radius: 0 !important;
+}
+
+em,
+i,
+cite,
+dfn,
+var,
+address,
+q {
+	font-style: normal;
+}
+
+html {
+	font-size: 100%;
+}
+
+html.comfort {
+	font-size: 125%;
+}
+
+body {
+	font-family: var(--font-serif);
+	font-style: normal;
+	background: var(--ink);
+	color: var(--cream);
+	min-height: 100vh;
+	-webkit-font-smoothing: antialiased;
+}
+
+html.light body {
+	background: var(--cream);
+	color: var(--ink);
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+	border-radius: 0;
+}
+
+img,
+video {
+	display: block;
+	max-width: 100%;
+	border: 0;
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+:focus-visible {
+	outline: 2px solid var(--dawn);
+	outline-offset: 2px;
+}
+
+.sans {
+	font-family: var(--font-sans);
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
