@@ -52,7 +52,7 @@ Every item carries:
 
 ## 5. People, relationships, person pages
 
-`people`: `name`, `birthdate?`, `death_date?`, `birth_place?`, `bio` (markdown), `avatar` (crop rect referencing an item), `accent_color`, `linked_user_id?`.
+`people`: `name`, `nickname?` (e.g. "Grandma", shown as the hero quote line), `birthdate?`, `death_date?`, `birth_place?`, `bio` (markdown), `avatar` (crop rect referencing an item), `accent_color`, `linked_user_id?`.
 
 `relationships`: `(person_a, person_b, type ∈ {parent-of, spouse-of, sibling-of})`, stored once with canonical direction; inverses and derived kin (grandparents, cousins, in-laws) computed for display, never stored.
 

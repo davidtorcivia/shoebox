@@ -1,0 +1,1474 @@
+# Shoebox Phase 07 — Worker, Ingestion & Arrivals Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Deliver the Docker sidecar worker (SQLite-polled job runner producing canonical ffmpeg/sharp derivatives and hover-scrub sprite sheets), the chokidar ingestion watcher with path-convention hints, and the keyboard-first Arrivals triage page that promotes `needs_review` items to `ready`.
+
+**Architecture:** `src/worker/` is a standalone Node process (`pnpm worker` → `tsx src/worker/index.ts`) that imports the app's Drizzle schema and fs storage adapter directly and talks to the same SQLite file via `DATABASE_PATH`/`MEDIA_PATH`/`INGEST_PATH` env. It polls the `jobs` table (single-writer-safe claim via one atomic `UPDATE … RETURNING`), runs `derivatives`/`sprite` handlers (ffmpeg via fluent-ffmpeg + ffmpeg-static, sharp), and watches `INGEST_PATH` with chokidar. The Arrivals UI + `/api/arrivals` live in the SvelteKit app and are platform-portable (the queue works on Cloudflare too; only the ingest-folder hint copy is feature-gated).
+
+**Tech Stack:** TypeScript strict ESM, better-sqlite3 + Drizzle, fluent-ffmpeg + ffmpeg-static + ffprobe-static, sharp, chokidar, exifr, file-type, nanoid, tsx, Vitest, Playwright, Svelte 5 runes.
+
+**Master plan:** `docs/superpowers/plans/2026-07-04-shoebox-00-master.md` — its contracts (jobs table Contract 1, `StorageAdapter`/`JobQueueAdapter` Contract 2, `/api/arrivals` Contract 6, storage keys & sprite spec Contract 7, env Contract 8) are LAW. Where this plan and the master conflict, the master wins.
+
+**Spec:** `docs/superpowers/specs/2026-07-04-shoebox-design.md` §7 (media pipeline, ingestion folder, Arrivals), §11 (Arrivals screen), §12 (ingestion error handling).
+
+## Global Constraints
+
+(Copied verbatim from the master plan — every task below implicitly includes these.)
+
+- **Node ≥ 22**, pnpm ≥ 9, TypeScript `strict: true`. ESM only.
+- **Never use the Inter font.** Serif = Fraunces (roman only — `font-style: italic` is forbidden app-wide). Sans = Archivo. Monospace appears ONLY as grid-thumbnail duration badges.
+- **Zero `border-radius`** anywhere. No `backdrop-filter`/glassmorphism. No borders on media. No play-button overlays on thumbnails.
+- All UI colors come from `src/lib/ui/tokens.ts` — never hard-code hex in components.
+- WCAG AA contrast both themes; `prefers-reduced-motion` honored (all decorative animation gated by the `reducedMotion` store); touch targets ≥ 44px; base font ≥ 16px.
+- Every user-facing destructive action = soft delete (`deleted_at`), 30-day trash.
+- All API routes validate the session and role server-side (see §Auth). CSRF: SvelteKit form actions' origin check + `SameSite=Lax` cookie.
+- Runtime-portable server code: nothing in `src/lib/server/` (outside `platform/node*` files and `worker/`) may import `node:*` modules, `sharp`, `ffmpeg`, or `better-sqlite3`.
+- Tests: Vitest for units (`*.test.ts` beside source), Playwright e2e in `e2e/`. Every phase plan ends with its e2e green.
+- Commits: conventional (`feat:`, `fix:`, `test:`, `chore:`), small, after each green test cycle.
+- Copy rules: triage page is called **Arrivals**; comment placeholder is **"Add a memory…"**; circa dates render as **"c. 1994"**.
+
+### Phase-07-specific constraints
+
+- `src/worker/**` is DOCKER/NODE-ONLY: it MAY import `node:*`, `sharp`, `fluent-ffmpeg`, `better-sqlite3`. It uses **relative** imports into `src/lib/` (no `$lib` alias — it runs under `tsx`, not Vite).
+- `src/lib/server/arrivals.ts`, `src/routes/api/arrivals/**`, `src/routes/arrivals/**` are platform-portable: `await`-style Drizzle only (no `.run()/.get()/.all()` sync calls), no node imports.
+- **FORBIDDEN in this phase:** anything faces/ML (`face_scan` handlers, faces container — phase 09); anything Cloudflare-deploy (wrangler, R2 provisioning, production Dockerfiles/compose — phase 10). `docker-compose.dev.yml` here is a dev convenience only.
+- Storage keys are exactly Contract 7: `media/<itemId>/original.<ext>`, `poster.webp`, `thumb_400.webp`, `thumb_800.webp`, `thumb_1600.webp`, `sprite.webp` (sprite = 10×10 grid of 160×90 frames = 1600×900, one frame per duration/100 s). Regeneration overwrites the **same keys** in place.
+- Retry policy is exactly: on failure `attempts += 1`; if `attempts >= 5` → `status='failed'` permanently; else `status='pending'`, `run_after = now + 2^attempts minutes`.
+- File mtime is **never** used as a date source. Photo dates come from EXIF (exifr); video dates from container `creation_time` (ffprobe); else the path year hint; else precision `unknown`.
+
+### Documented decisions (contract ambiguities resolved in this plan)
+
+1. **Convention hints are stored as real data, not a side channel.** The spec says Arrivals shows "hint chips prefilled from conventions". Rather than adding a hints column (schema is frozen by Contract 1), ingest **pre-attaches directory hints as `topic` tags**, sets `items.title` from the filename (extension stripped, `-`/`_` → spaces), and sets the year hint as a year-precision date. The Arrivals form therefore prefills naturally from the item itself; hint chips ARE the item's tags.
+2. **Ingest failures need no new table.** Unreadable/unsupported files are moved to `INGEST_PATH/_failed/` and recorded as a `jobs` row: `kind='ingest_scan'`, `status='failed'`, `attempts=1`, `payload={"path":"<rel path>","reason":"<why>"}`. The admin jobs list (phase 08) surfaces failed jobs, so these appear there with zero extra plumbing.
+
+### Exports consumed from phases 01–06 (pinned)
+
+This plan consumes these exact names. If a prior phase shipped a different name for the same behavior, add an **aliased re-export** in the prior phase's file — do not rename anything in this plan.
+
+| Export | From | Signature |
+|---|---|---|
+| `schema` (all tables) | `src/lib/server/db/schema.ts` | Contract 1 verbatim |
+| `Db` type | `src/lib/server/db/index.ts` | `ReturnType<typeof drizzle>` per Contract 2 |
+| `createFsStorage` | `src/lib/server/platform/storage-fs.ts` | `(root: string) => StorageAdapter` |
+| `createSqliteQueue` | `src/lib/server/platform/queue-sqlite.ts` | `(db: Db) => JobQueueAdapter` |
+| `StorageAdapter`, `JobQueueAdapter` | `src/lib/server/platform/types.ts` | Contract 2 verbatim |
+| `requireRole` | `src/lib/server/roles.ts` | `(locals, min: Role) => SessionUser` |
+| `sortDate`, `ItemDate`, `DatePrecision` | `src/lib/domain/dates.ts` | Contract 5 verbatim |
+| `applyHolidayTags` | `src/lib/server/items.ts` | `(db: Db, itemId: string) => Promise<void>` (phase 06 holiday auto-tagging) |
+| `listItems` | `src/lib/server/items.ts` | `(db: Db, storage: StorageAdapter, opts: { status?: string; year?: number; limit?: number; cursor?: string }) => Promise<{ items: ItemDTO[]; nextCursor: string \| null }>` (phase 02 DTO lister behind `GET /api/items`) |
+| `reindexItem` | `src/lib/server/search.ts` | `(db: Db, itemId: string) => Promise<void>` (phase 06) |
+| `recomputeYearCounts` | `src/lib/server/aggregates.ts` | `(db: Db) => Promise<void>` (phase 02) |
+| `reducedMotion` store | `src/lib/ui/theme.ts` | `Readable<boolean>` |
+| `DatePicker` | `src/lib/ui/DatePicker.svelte` | props `value: ItemDate`, `onchange: (d: ItemDate) => void` |
+
+---
+
+## File Structure
+
+```
+Create:
+  src/worker/jobs.ts                     # claim / run / retry-backoff / handler registry / failure logging
+  src/worker/jobs.test.ts
+  src/worker/test-helpers.ts             # in-memory migrated test db + seed helpers (test-only)
+  src/worker/index.ts                    # process entry: env, polling loop, SIGTERM drain, watcher wiring
+  src/worker/index.test.ts
+  src/worker/derivatives.ts              # probeVideo, 'derivatives' + 'sprite' handlers
+  src/worker/derivatives.test.ts
+  src/worker/sprite.test.ts
+  src/worker/conventions.ts              # pure path→hints parser + date resolution + title from filename
+  src/worker/conventions.test.ts
+  src/worker/ingest-watcher.ts           # sha256, processIngestFile, chokidar watcher
+  src/worker/ingest-watcher.test.ts
+  src/worker/fixtures.test.ts            # guards the fixture generator
+  src/lib/server/arrivals.ts             # portable batch-apply/approve logic (used by /api/arrivals)
+  src/lib/server/arrivals.test.ts
+  src/routes/api/arrivals/+server.ts     # Contract 6 GET/POST
+  src/routes/arrivals/+page.server.ts
+  src/routes/arrivals/+page.svelte
+  src/routes/arrivals/selection.ts       # pure keyboard/selection logic
+  src/routes/arrivals/selection.test.ts
+  e2e/fixtures/generate.ts               # committed generator; binaries gitignored
+  e2e/env.ts                             # shared e2e paths/env (app + worker use identical values)
+  e2e/global-setup.ts
+  e2e/worker-ingestion.spec.ts
+  docker-compose.dev.yml
+Modify:
+  package.json                           # deps + "worker" / "fixtures" scripts
+  .gitignore                             # fixture binaries, e2e/.data, ./ingest
+  playwright.config.ts                   # env + globalSetup
+  src/lib/ui/MediaCard.svelte            # add data-testid="scrub-hairline" to the existing hairline element (one attribute; no behavior change)
+```
+
+---
+
+### Task 1: Worker dependencies, scripts & test fixtures
+
+**Files:**
+- Modify: `package.json`
+- Modify: `.gitignore`
+- Create: `e2e/fixtures/generate.ts`
+- Test: `src/worker/fixtures.test.ts`
+
+**Interfaces:**
+- Consumes: nothing from earlier phases (pure tooling).
+- Produces: `generateFixtures(): Promise<void>`, `FIXTURE_MP4: string` (2 s, 320×180, H.264+AAC, no container creation_time), `FIXTURE_JPG: string` (640×480 JPEG with EXIF `DateTimeOriginal = 1994:12:25 10:30:00`) from `e2e/fixtures/generate.ts`; `pnpm worker` and `pnpm fixtures` scripts. Every later task's media tests import these fixtures.
+
+- [ ] **Step 1: Install dependencies**
+
+Run:
+
+```bash
+pnpm add fluent-ffmpeg ffmpeg-static ffprobe-static sharp chokidar exifr file-type
+pnpm add -D @types/fluent-ffmpeg tsx
+```
+
+Expected: pnpm resolves and writes to `package.json`/`pnpm-lock.yaml` with exit code 0. (`nanoid`, `better-sqlite3`, `drizzle-orm`, `vitest`, `@playwright/test` exist from phases 01–06.)
+
+- [ ] **Step 2: Add scripts to `package.json`**
+
+In the `"scripts"` block add (keep all existing scripts untouched):
+
+```json
+"worker": "tsx src/worker/index.ts",
+"fixtures": "tsx e2e/fixtures/generate.ts"
+```
+
+- [ ] **Step 3: Write the failing fixture test**
+
+Create `src/worker/fixtures.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { statSync } from 'node:fs';
+import { FIXTURE_JPG, FIXTURE_MP4, generateFixtures } from '../../e2e/fixtures/generate.js';
+
+describe('e2e fixtures', () => {
+  it('generates a tiny mp4 and an EXIF-dated jpg', async () => {
+    await generateFixtures();
+    expect(statSync(FIXTURE_MP4).size).toBeGreaterThan(1000);
+    expect(statSync(FIXTURE_JPG).size).toBeGreaterThan(500);
+  });
+});
+```
+
+- [ ] **Step 4: Run test to verify it fails**
+
+Run: `pnpm vitest run src/worker/fixtures.test.ts`
+Expected: FAIL — `Failed to resolve import "../../e2e/fixtures/generate.js"`.
+
+- [ ] **Step 5: Write the fixture generator**
+
+Create `e2e/fixtures/generate.ts`:
+
+```ts
+/**
+ * Generates the tiny media fixtures used by worker unit tests and Playwright e2e.
+ * Committed as a generator (binaries are gitignored); run via `pnpm fixtures`,
+ * vitest, or e2e/global-setup.ts. Idempotent: skips files that already exist.
+ */
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import ffmpegPath from 'ffmpeg-static';
+import sharp from 'sharp';
+
+const here = dirname(fileURLToPath(import.meta.url));
+
+/** 2 s, 320×180, 12 fps H.264 + AAC. testsrc writes NO container creation_time,
+ *  so ingest date resolution falls through to the path year hint. */
+export const FIXTURE_MP4 = join(here, 'clip.mp4');
+
+/** 640×480 JPEG carrying EXIF DateTimeOriginal 1994-12-25 (Christmas → holiday tag). */
+export const FIXTURE_JPG = join(here, 'photo.jpg');
+
+export async function generateFixtures(): Promise<void> {
+  mkdirSync(here, { recursive: true });
+  if (!existsSync(FIXTURE_MP4)) {
+    execFileSync(ffmpegPath as unknown as string, [
+      '-y',
+      '-f', 'lavfi', '-i', 'testsrc=duration=2:size=320x180:rate=12',
+      '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono',
+      '-shortest',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac',
+      '-movflags', '+faststart',
+      FIXTURE_MP4,
+    ]);
+  }
+  if (!existsSync(FIXTURE_JPG)) {
+    await sharp({
+      create: { width: 640, height: 480, channels: 3, background: { r: 250, g: 123, b: 98 } },
+    })
+      .jpeg({ quality: 80 })
+      .withExif({ IFD0: { Make: 'Shoebox' }, IFD2: { DateTimeOriginal: '1994:12:25 10:30:00' } })
+      .toFile(FIXTURE_JPG);
+  }
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  await generateFixtures();
+  console.log('fixtures ready:', FIXTURE_MP4, FIXTURE_JPG);
+}
+```
+
+- [ ] **Step 6: Gitignore the generated binaries and e2e scratch dirs**
+
+Append to `.gitignore`:
+
+```
+e2e/fixtures/clip.mp4
+e2e/fixtures/photo.jpg
+e2e/.data/
+/ingest/
+```
+
+- [ ] **Step 7: Run test to verify it passes**
+
+Run: `pnpm vitest run src/worker/fixtures.test.ts`
+Expected: PASS (1 test). First run takes a few seconds while ffmpeg encodes.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add package.json pnpm-lock.yaml .gitignore e2e/fixtures/generate.ts src/worker/fixtures.test.ts
+git commit -m "chore: worker deps, pnpm worker script, committed e2e fixture generator"
+```
+
+---
+
+### Task 2: Job claiming (`src/worker/jobs.ts` part 1) + test DB helpers
+
+**Files:**
+- Create: `src/worker/jobs.ts`
+- Create: `src/worker/test-helpers.ts`
+- Test: `src/worker/jobs.test.ts`
+
+**Interfaces:**
+- Consumes: `schema` (Contract 1 `jobs` table: `id, kind, payload, status, attempts, run_after, created_at`, index `jobs_claim`), `StorageAdapter` type.
+- Produces (used by Tasks 3–10, 14):
+
+```ts
+export type WorkerDb = BetterSQLite3Database<typeof schema>;
+export type JobKind = 'derivatives' | 'sprite' | 'ingest_scan' | 'face_scan';
+export interface ClaimedJob { id: string; kind: JobKind; payload: Record<string, unknown>; attempts: number; }
+export interface WorkerContext { db: WorkerDb; storage: StorageAdapter; mediaPath: string; }
+export type JobHandler = (payload: Record<string, unknown>, ctx: WorkerContext) => Promise<void>;
+export type JobHandlers = Partial<Record<JobKind, JobHandler>>;
+export function claimJob(db: WorkerDb, kinds: JobKind[], now?: Date): ClaimedJob | null;
+```
+
+- Also produces test helpers (test-only): `createTestDb(): WorkerDb`, `seedOwner(db): string`, `seedItem(db, ownerId, overrides?): string`, `insertJob(db, partial): string`.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/worker/jobs.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
+import * as schema from '../lib/server/db/schema.js';
+import { claimJob } from './jobs.js';
+import { createTestDb, insertJob } from './test-helpers.js';
+
+describe('claimJob', () => {
+  it('returns null when no jobs are pending', () => {
+    const db = createTestDb();
+    expect(claimJob(db, ['derivatives', 'sprite'])).toBeNull();
+  });
+
+  it('claims the oldest eligible pending job of a handled kind and marks it running', () => {
+    const db = createTestDb();
+    const older = insertJob(db, { kind: 'sprite', payload: { itemId: 'a' }, createdAt: new Date('2026-01-01T00:00:00Z') });
+    insertJob(db, { kind: 'derivatives', payload: { itemId: 'b' }, createdAt: new Date('2026-01-02T00:00:00Z') });
+    const job = claimJob(db, ['derivatives', 'sprite']);
+    expect(job).not.toBeNull();
+    expect(job!.id).toBe(older);
+    expect(job!.kind).toBe('sprite');
+    expect(job!.payload).toEqual({ itemId: 'a' });
+    const row = db.select().from(schema.jobs).where(eq(schema.jobs.id, older)).get();
+    expect(row!.status).toBe('running');
+  });
+
+  it('skips jobs with run_after in the future', () => {
+    const db = createTestDb();
+    insertJob(db, { kind: 'derivatives', runAfter: new Date(Date.now() + 60_000) });
+    expect(claimJob(db, ['derivatives'])).toBeNull();
+  });
+
+  it('skips kinds it does not handle (face_scan is left for the faces container)', () => {
+    const db = createTestDb();
+    insertJob(db, { kind: 'face_scan' });
+    insertJob(db, { kind: 'ingest_scan', status: 'failed' });
+    expect(claimJob(db, ['derivatives', 'sprite'])).toBeNull();
+  });
+
+  it('never claims the same job twice', () => {
+    const db = createTestDb();
+    insertJob(db, { kind: 'derivatives' });
+    expect(claimJob(db, ['derivatives'])).not.toBeNull();
+    expect(claimJob(db, ['derivatives'])).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm vitest run src/worker/jobs.test.ts`
+Expected: FAIL — `Failed to resolve import "./jobs.js"`.
+
+- [ ] **Step 3: Write the test helpers**
+
+Create `src/worker/test-helpers.ts`:
+
+```ts
+/**
+ * Test-only helpers for worker unit tests: an in-memory SQLite db with the
+ * real migrations applied, plus row seeders. Never imported by runtime code.
+ */
+import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { nanoid } from 'nanoid';
+import * as schema from '../lib/server/db/schema.js';
+import type { JobKind, WorkerDb } from './jobs.js';
+
+export function createTestDb(): WorkerDb {
+  const sqlite = new Database(':memory:');
+  const db = drizzle(sqlite, { schema });
+  migrate(db, { migrationsFolder: 'src/lib/server/db/migrations' });
+  return db;
+}
+
+export function seedOwner(db: WorkerDb): string {
+  const id = nanoid(12);
+  db.insert(schema.users)
+    .values({
+      id,
+      username: `owner-${id}`,
+      passwordHash: 'pbkdf2$310000$test$test',
+      role: 'owner',
+      accentColor: '#FA7B62',
+      createdAt: new Date(),
+    })
+    .run();
+  return id;
+}
+
+export function seedItem(
+  db: WorkerDb,
+  ownerId: string,
+  overrides: Partial<typeof schema.items.$inferInsert> = {},
+): string {
+  const id = nanoid(12);
+  db.insert(schema.items)
+    .values({
+      id,
+      type: 'video',
+      datePrecision: 'unknown',
+      width: 320,
+      height: 180,
+      sizeBytes: 1,
+      sha256: `sha-${id}`,
+      source: 'upload',
+      status: 'processing',
+      uploadedBy: ownerId,
+      createdAt: new Date(),
+      ...overrides,
+    })
+    .run();
+  return id;
+}
+
+export function insertJob(
+  db: WorkerDb,
+  partial: {
+    kind: JobKind;
+    payload?: Record<string, unknown>;
+    status?: 'pending' | 'running' | 'done' | 'failed';
+    attempts?: number;
+    runAfter?: Date;
+    createdAt?: Date;
+  },
+): string {
+  const id = nanoid(12);
+  db.insert(schema.jobs)
+    .values({
+      id,
+      kind: partial.kind,
+      payload: JSON.stringify(partial.payload ?? {}),
+      status: partial.status ?? 'pending',
+      attempts: partial.attempts ?? 0,
+      runAfter: partial.runAfter ?? new Date(0),
+      createdAt: partial.createdAt ?? new Date(),
+    })
+    .run();
+  return id;
+}
+```
+
+- [ ] **Step 4: Write the claim implementation**
+
+Create `src/worker/jobs.ts`:
+
+```ts
+/**
+ * Job queue consumer for the Docker worker. The app side only ever enqueues
+ * (JobQueueAdapter.enqueue, phase 01 queue-sqlite); this module claims and runs.
+ *
+ * Claiming is a single atomic `UPDATE … WHERE id = (SELECT … LIMIT 1) RETURNING`.
+ * better-sqlite3 executes it synchronously in one statement, so even with the
+ * app process writing to the same file there is no double-claim window.
+ */
+import { eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { nanoid } from 'nanoid';
+import * as schema from '../lib/server/db/schema.js';
+import type { StorageAdapter } from '../lib/server/platform/types.js';
+
+export type WorkerDb = BetterSQLite3Database<typeof schema>;
+export type JobKind = 'derivatives' | 'sprite' | 'ingest_scan' | 'face_scan';
+
+export interface ClaimedJob {
+  id: string;
+  kind: JobKind;
+  payload: Record<string, unknown>;
+  attempts: number;
+}
+
+export interface WorkerContext {
+  db: WorkerDb;
+  storage: StorageAdapter;
+  mediaPath: string;
+}
+
+export type JobHandler = (payload: Record<string, unknown>, ctx: WorkerContext) => Promise<void>;
+export type JobHandlers = Partial<Record<JobKind, JobHandler>>;
+
+export const MAX_ATTEMPTS = 5;
+
+const ALL_KINDS: readonly JobKind[] = ['derivatives', 'sprite', 'ingest_scan', 'face_scan'];
+
+/**
+ * Claim the oldest pending job (of the given kinds) whose run_after has passed.
+ * Marks it 'running' and returns it, or returns null when nothing is eligible.
+ */
+export function claimJob(db: WorkerDb, kinds: JobKind[], now: Date = new Date()): ClaimedJob | null {
+  const safeKinds = kinds.filter((k) => ALL_KINDS.includes(k));
+  if (safeKinds.length === 0) return null;
+  const nowSec = Math.floor(now.getTime() / 1000);
+  // sql.raw is safe here: interpolated values are enum literals validated above
+  // and an integer — no user input reaches this string.
+  const kindList = safeKinds.map((k) => `'${k}'`).join(', ');
+  const row = db.get<{ id: string; kind: JobKind; payload: string; attempts: number } | undefined>(
+    sql.raw(`
+      UPDATE jobs SET status = 'running'
+      WHERE id = (
+        SELECT id FROM jobs
+        WHERE status = 'pending' AND run_after <= ${nowSec} AND kind IN (${kindList})
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+      )
+      RETURNING id, kind, payload, attempts
+    `),
+  );
+  if (!row) return null;
+  return {
+    id: row.id,
+    kind: row.kind,
+    payload: JSON.parse(row.payload) as Record<string, unknown>,
+    attempts: row.attempts,
+  };
+}
+```
+
+(`runJob` and `logIngestFailure` are added to this same file in Task 3; `eq` and `nanoid` imports are used there.)
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `pnpm vitest run src/worker/jobs.test.ts`
+Expected: PASS (5 tests). TypeScript may flag the unused `eq`/`nanoid` imports depending on lint config — if `pnpm check` complains, leave them out until Task 3 adds them back with their usages.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/worker/jobs.ts src/worker/jobs.test.ts src/worker/test-helpers.ts
+git commit -m "feat: worker job claiming with atomic UPDATE...RETURNING"
+```
+
+---
+
+### Task 3: Job execution, retry/backoff & ingest-failure logging (`src/worker/jobs.ts` part 2)
+
+**Files:**
+- Modify: `src/worker/jobs.ts` (append to Task 2's file)
+- Test: `src/worker/jobs.test.ts` (append)
+
+**Interfaces:**
+- Consumes: Task 2's `ClaimedJob`, `JobHandlers`, `WorkerContext`, `MAX_ATTEMPTS`.
+- Produces (used by Tasks 4, 10):
+
+```ts
+export function runJob(db: WorkerDb, job: ClaimedJob, handlers: JobHandlers, ctx: WorkerContext): Promise<'done' | 'retry' | 'failed'>;
+export function logIngestFailure(db: WorkerDb, path: string, reason: string): void;  // documented decision 2
+```
+
+- [ ] **Step 1: Append the failing tests**
+
+Append to `src/worker/jobs.test.ts`:
+
+```ts
+import { logIngestFailure, runJob, type WorkerContext } from './jobs.js';
+import { createFsStorage } from '../lib/server/platform/storage-fs.js';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+function testCtx(db: ReturnType<typeof createTestDb>): WorkerContext {
+  const mediaPath = mkdtempSync(join(tmpdir(), 'shoebox-media-'));
+  return { db, storage: createFsStorage(mediaPath), mediaPath };
+}
+
+describe('runJob', () => {
+  it('marks the job done when the handler succeeds', async () => {
+    const db = createTestDb();
+    const id = insertJob(db, { kind: 'derivatives', payload: { itemId: 'x' } });
+    const job = claimJob(db, ['derivatives'])!;
+    const seen: unknown[] = [];
+    const outcome = await runJob(db, job, { derivatives: async (p) => { seen.push(p); } }, testCtx(db));
+    expect(outcome).toBe('done');
+    expect(seen).toEqual([{ itemId: 'x' }]);
+    const row = db.select().from(schema.jobs).where(eq(schema.jobs.id, id)).get()!;
+    expect(row.status).toBe('done');
+  });
+
+  it('re-pends a failed job with attempts++ and run_after = now + 2^attempts minutes', async () => {
+    const db = createTestDb();
+    const id = insertJob(db, { kind: 'derivatives' });
+    const job = claimJob(db, ['derivatives'])!;
+    const before = Date.now();
+    const outcome = await runJob(db, job, { derivatives: async () => { throw new Error('boom'); } }, testCtx(db));
+    expect(outcome).toBe('retry');
+    const row = db.select().from(schema.jobs).where(eq(schema.jobs.id, id)).get()!;
+    expect(row.status).toBe('pending');
+    expect(row.attempts).toBe(1);
+    const delayMs = row.runAfter.getTime() - before;
+    expect(delayMs).toBeGreaterThanOrEqual(2 * 60_000 - 2000);   // 2^1 minutes
+    expect(delayMs).toBeLessThanOrEqual(2 * 60_000 + 2000);
+    expect(JSON.parse(row.payload).lastError).toBe('boom');
+  });
+
+  it('fails permanently on the 5th attempt', async () => {
+    const db = createTestDb();
+    const id = insertJob(db, { kind: 'sprite', attempts: 4 });
+    const job = claimJob(db, ['sprite'])!;
+    const outcome = await runJob(db, job, { sprite: async () => { throw new Error('still broken'); } }, testCtx(db));
+    expect(outcome).toBe('failed');
+    const row = db.select().from(schema.jobs).where(eq(schema.jobs.id, id)).get()!;
+    expect(row.status).toBe('failed');
+    expect(row.attempts).toBe(5);
+  });
+
+  it('treats a missing handler as a failure (retry path)', async () => {
+    const db = createTestDb();
+    insertJob(db, { kind: 'derivatives' });
+    const job = claimJob(db, ['derivatives'])!;
+    const outcome = await runJob(db, job, {}, testCtx(db));
+    expect(outcome).toBe('retry');
+  });
+});
+
+describe('logIngestFailure', () => {
+  it('records a failed ingest_scan jobs row with { path, reason } payload', () => {
+    const db = createTestDb();
+    logIngestFailure(db, '1994/christmas/corrupt.mp4', 'unrecognized file contents');
+    const rows = db.select().from(schema.jobs).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].kind).toBe('ingest_scan');
+    expect(rows[0].status).toBe('failed');
+    expect(rows[0].attempts).toBe(1);
+    expect(JSON.parse(rows[0].payload)).toEqual({ path: '1994/christmas/corrupt.mp4', reason: 'unrecognized file contents' });
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm vitest run src/worker/jobs.test.ts`
+Expected: FAIL — `runJob` / `logIngestFailure` have no exported member.
+
+- [ ] **Step 3: Append the implementation**
+
+Append to `src/worker/jobs.ts`:
+
+```ts
+/**
+ * Run one claimed job. On success → status 'done'. On any throw →
+ * attempts += 1; if attempts >= MAX_ATTEMPTS → 'failed' permanently, else
+ * back to 'pending' with run_after = now + 2^attempts minutes. The error
+ * message is merged into payload.lastError so Admin → Jobs (phase 08) can
+ * show why a job is retrying/failed.
+ */
+export async function runJob(
+  db: WorkerDb,
+  job: ClaimedJob,
+  handlers: JobHandlers,
+  ctx: WorkerContext,
+): Promise<'done' | 'retry' | 'failed'> {
+  try {
+    const handler = handlers[job.kind];
+    if (!handler) throw new Error(`no handler registered for kind '${job.kind}'`);
+    await handler(job.payload, ctx);
+    db.update(schema.jobs).set({ status: 'done' }).where(eq(schema.jobs.id, job.id)).run();
+    return 'done';
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    const attempts = job.attempts + 1;
+    const payload = JSON.stringify({ ...job.payload, lastError: reason });
+    if (attempts >= MAX_ATTEMPTS) {
+      db.update(schema.jobs)
+        .set({ status: 'failed', attempts, payload })
+        .where(eq(schema.jobs.id, job.id))
+        .run();
+      return 'failed';
+    }
+    const runAfter = new Date(Date.now() + 2 ** attempts * 60_000);
+    db.update(schema.jobs)
+      .set({ status: 'pending', attempts, payload, runAfter })
+      .where(eq(schema.jobs.id, job.id))
+      .run();
+    return 'retry';
+  }
+}
+
+/**
+ * Documented decision 2: ingestion failures are recorded as pre-failed
+ * 'ingest_scan' jobs rows (payload { path, reason }) instead of a new table.
+ * They are never claimed (status='failed' from birth) and surface in the
+ * admin jobs list alongside other failed jobs.
+ */
+export function logIngestFailure(db: WorkerDb, path: string, reason: string): void {
+  db.insert(schema.jobs)
+    .values({
+      id: nanoid(12),
+      kind: 'ingest_scan',
+      payload: JSON.stringify({ path, reason }),
+      status: 'failed',
+      attempts: 1,
+      runAfter: new Date(),
+      createdAt: new Date(),
+    })
+    .run();
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pnpm vitest run src/worker/jobs.test.ts`
+Expected: PASS (10 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/worker/jobs.ts src/worker/jobs.test.ts
+git commit -m "feat: job execution with exponential backoff retries and ingest failure logging"
+```
+
+---
+
+### Task 4: Worker process entry — polling loop & graceful SIGTERM drain
+
+**Files:**
+- Create: `src/worker/index.ts`
+- Test: `src/worker/index.test.ts`
+
+**Interfaces:**
+- Consumes: `claimJob`, `runJob`, `JobHandlers`, `WorkerContext`, `WorkerDb` (Tasks 2–3); `createFsStorage` (phase 01); `createSqliteQueue` (phase 01); `derivativesHandler`, `spriteHandler` (Task 6/7 — until those land, `main()` wires an empty handlers object; the final wiring shown here is completed in this task and compiles once Tasks 5–7 exist, so **execute Task 4's `main()` wiring exactly as written but expect `pnpm check` to fail on the two missing imports until Task 7 — comment those two imports in with Task 7 if you run tasks strictly in order**. Recommended order for subagent execution: implement Tasks 5–7 before uncommenting. To keep every commit green, this task ships `index.ts` with the handler imports **commented** and Task 7 uncomments them.)
+- Produces (used by Task 14's spawned process and Task 7's wiring step):
+
+```ts
+export interface WorkerHandle { start(): Promise<void>; stop(): Promise<void>; }
+export function createWorker(opts: {
+  db: WorkerDb; ctx: WorkerContext; handlers: JobHandlers;
+  kinds?: JobKind[]; idleMinMs?: number; idleMaxMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+}): WorkerHandle;
+```
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/worker/index.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createFsStorage } from '../lib/server/platform/storage-fs.js';
+import { createWorker } from './index.js';
+import type { WorkerContext } from './jobs.js';
+import { createTestDb, insertJob } from './test-helpers.js';
+
+function testCtx(db: ReturnType<typeof createTestDb>): WorkerContext {
+  const mediaPath = mkdtempSync(join(tmpdir(), 'shoebox-media-'));
+  return { db, storage: createFsStorage(mediaPath), mediaPath };
+}
+
+describe('createWorker polling loop', () => {
+  it('backs off 1s → 5s while idle, resets to 1s after work, and drains on stop', async () => {
+    const db = createTestDb();
+    const delays: number[] = [];
+    const ran: string[] = [];
+    let worker: ReturnType<typeof createWorker>;
+    const sleep = async (ms: number): Promise<void> => {
+      delays.push(ms);
+      if (delays.length === 6) insertJob(db, { kind: 'derivatives', payload: { itemId: 'x' } });
+      if (delays.length === 8) void worker.stop();
+    };
+    worker = createWorker({
+      db,
+      ctx: testCtx(db),
+      handlers: { derivatives: async (p) => { ran.push(String(p.itemId)); } },
+      sleep,
+    });
+    await worker.start();
+    // 5 idle polls ramp 1s,2s,3s,4s,5s then cap at 5s; poll 7 claims the job
+    expect(delays.slice(0, 6)).toEqual([1000, 2000, 3000, 4000, 5000, 5000]);
+    expect(ran).toEqual(['x']);
+    // after processing, idle delay resets to the 1s floor
+    expect(delays[6]).toBe(1000);
+  });
+
+  it('stop() waits for the in-flight job to finish (graceful drain)', async () => {
+    const db = createTestDb();
+    insertJob(db, { kind: 'derivatives', payload: { itemId: 'slow' } });
+    let finished = false;
+    let worker: ReturnType<typeof createWorker>;
+    const handlers = {
+      derivatives: async (): Promise<void> => {
+        void worker.stop(); // SIGTERM arrives mid-job
+        await new Promise((r) => setTimeout(r, 50));
+        finished = true;
+      },
+    };
+    worker = createWorker({ db, ctx: testCtx(db), handlers, sleep: async () => {} });
+    await worker.start();
+    expect(finished).toBe(true);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm vitest run src/worker/index.test.ts`
+Expected: FAIL — `Failed to resolve import "./index.js"`.
+
+- [ ] **Step 3: Write the implementation**
+
+Create `src/worker/index.ts`:
+
+```ts
+/**
+ * Shoebox Docker worker — standalone Node process (never bundled into the app).
+ * Run: `pnpm worker` (tsx src/worker/index.ts) with env:
+ *   DATABASE_PATH  (default /data/shoebox.db)
+ *   MEDIA_PATH     (default /data/media)
+ *   INGEST_PATH    (optional — watcher starts only when set)
+ *
+ * Polls the shared SQLite jobs table: 1s between polls when busy/first idle,
+ * backing off +1s per idle poll to a 5s ceiling. SIGTERM/SIGINT drain the
+ * in-flight job, close the watcher, then exit 0.
+ */
+import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { eq } from 'drizzle-orm';
+import { fileURLToPath } from 'node:url';
+import * as schema from '../lib/server/db/schema.js';
+import { createFsStorage } from '../lib/server/platform/storage-fs.js';
+import { createSqliteQueue } from '../lib/server/platform/queue-sqlite.js';
+import {
+  claimJob,
+  runJob,
+  type JobHandlers,
+  type JobKind,
+  type WorkerContext,
+  type WorkerDb,
+} from './jobs.js';
+// Uncommented in Task 7 once the handlers exist:
+// import { derivativesHandler, spriteHandler } from './derivatives.js';
+// import { startIngestWatcher } from './ingest-watcher.js';
+
+const HANDLED_KINDS: JobKind[] = ['derivatives', 'sprite'];
+
+export interface WorkerHandle {
+  start(): Promise<void>;
+  stop(): Promise<void>;
+}
+
+export function createWorker(opts: {
+  db: WorkerDb;
+  ctx: WorkerContext;
+  handlers: JobHandlers;
+  kinds?: JobKind[];
+  idleMinMs?: number;
+  idleMaxMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+}): WorkerHandle {
+  const kinds = opts.kinds ?? HANDLED_KINDS;
+  const idleMin = opts.idleMinMs ?? 1000;
+  const idleMax = opts.idleMaxMs ?? 5000;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  let stopping = false;
+  let loop: Promise<void> | null = null;
+
+  async function run(): Promise<void> {
+    let idle = idleMin;
+    while (!stopping) {
+      const job = claimJob(opts.db, kinds);
+      if (!job) {
+        await sleep(idle);
+        idle = Math.min(idle + idleMin, idleMax);
+        continue;
+      }
+      idle = idleMin;
+      const outcome = await runJob(opts.db, job, opts.handlers, opts.ctx);
+      console.log(`[worker] job ${job.id} (${job.kind}) -> ${outcome}`);
+    }
+  }
+
+  return {
+    start(): Promise<void> {
+      loop = run();
+      return loop;
+    },
+    async stop(): Promise<void> {
+      stopping = true;
+      if (loop) await loop; // drains the in-flight job (or the current idle sleep)
+    },
+  };
+}
+
+/** Ingestion needs an owner to attribute items to; first-run setup creates one. */
+async function waitForOwner(db: WorkerDb): Promise<string> {
+  for (;;) {
+    const owner = db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.role, 'owner')).get();
+    if (owner) return owner.id;
+    console.log('[worker] no owner yet — waiting for first-run setup…');
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+}
+
+async function main(): Promise<void> {
+  const databasePath = process.env.DATABASE_PATH ?? '/data/shoebox.db';
+  const mediaPath = process.env.MEDIA_PATH ?? '/data/media';
+  const ingestPath = process.env.INGEST_PATH;
+
+  const sqlite = new Database(databasePath);
+  sqlite.pragma('journal_mode = WAL');
+  sqlite.pragma('busy_timeout = 5000');
+  const db = drizzle(sqlite, { schema }) as WorkerDb;
+  const storage = createFsStorage(mediaPath);
+  const ctx: WorkerContext = { db, storage, mediaPath };
+  const queue = createSqliteQueue(db);
+
+  const handlers: JobHandlers = {
+    // Task 7 wires: derivatives: derivativesHandler, sprite: spriteHandler,
+  };
+  const worker = createWorker({ db, ctx, handlers });
+
+  let watcher: { close(): Promise<void> } | null = null;
+  if (ingestPath) {
+    const ownerId = await waitForOwner(db);
+    console.log(`[worker] ingestion watcher on ${ingestPath}`);
+    // Task 10 wires:
+    // watcher = startIngestWatcher({
+    //   db, storage, ingestPath, mediaPath, ownerId,
+    //   enqueue: (kind, payload) => queue.enqueue(kind, payload),
+    // });
+    void queue; void ownerId; // placeholder references removed in Task 10
+  }
+
+  const shutdown = async (signal: string): Promise<void> => {
+    console.log(`[worker] ${signal} received — draining…`);
+    if (watcher) await watcher.close();
+    await worker.stop();
+    sqlite.close();
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+
+  console.log(`[worker] started (db=${databasePath}, media=${mediaPath}, ingest=${ingestPath ?? 'disabled'})`);
+  await worker.start();
+}
+
+// Only run main() when executed as a script (tsx), never when imported by tests.
+if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error('[worker] fatal', err);
+    process.exit(1);
+  });
+}
+```
+
+Note: the two `// Task 7 wires` / `// Task 10 wires` comment blocks are the ONLY permitted deferred wiring in this plan; Tasks 7 and 10 each contain an explicit step that removes them. `void queue; void ownerId;` keeps `pnpm check` green meanwhile.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pnpm vitest run src/worker/index.test.ts`
+Expected: PASS (2 tests).
+
+- [ ] **Step 5: Typecheck**
+
+Run: `pnpm check`
+Expected: 0 errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/worker/index.ts src/worker/index.test.ts
+git commit -m "feat: worker process with 1s-5s idle backoff polling and graceful drain"
+```
+
+---
+
+### Task 5: `derivatives` handler — probing + photo thumbnails
+
+**Files:**
+- Create: `src/worker/derivatives.ts`
+- Test: `src/worker/derivatives.test.ts`
+
+**Interfaces:**
+- Consumes: `JobHandler`, `WorkerContext`, `WorkerDb` (Task 2); fixtures (Task 1); `createFsStorage` (phase 01); Contract 7 keys.
+- Produces (used by Tasks 6, 7, 9, and `index.ts` wiring):
+
+```ts
+export interface VideoProbe { duration: number; width: number; height: number; creationTime: string | null; }
+export function probeVideo(filePath: string): Promise<VideoProbe>;
+export function normalizeCreationTime(raw: string | null): string | null; // → 'YYYY-MM-DD' | null
+export const derivativesHandler: JobHandler;   // photos this task; video branch Task 6
+export const spriteHandler: JobHandler;        // Task 7
+```
+
+Behavior (photos): sharp reads `media/<id>/original.<ext>` (auto-orient via `.rotate()`; decodes jpg/jpeg/png/webp/avif/**heic** — heic is decoded by sharp here so its web-visible derivatives are the webp thumbs; the original stays untouched as the archival copy. NOTE: production images must ship a libvips with libheif — recorded for phase 10's Dockerfile.worker), corrects `items.width/height` if the client metadata was missing/wrong, regenerates `thumb_400/800/1600` webp q82 (`withoutEnlargement`), `storage.put`s them under the same Contract 7 keys (overwrite in place), and atomically replaces the corresponding `item_files` rows in one transaction.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/worker/derivatives.test.ts`:
+
+```ts
+import { beforeAll, describe, expect, it } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { copyFile, mkdir, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { and, eq } from 'drizzle-orm';
+import sharp from 'sharp';
+import { FIXTURE_JPG, generateFixtures } from '../../e2e/fixtures/generate.js';
+import * as schema from '../lib/server/db/schema.js';
+import { createFsStorage } from '../lib/server/platform/storage-fs.js';
+import { derivativesHandler } from './derivatives.js';
+import type { WorkerContext } from './jobs.js';
+import { createTestDb, seedItem, seedOwner } from './test-helpers.js';
+
+beforeAll(async () => {
+  await generateFixtures();
+});
+
+async function setupPhoto(): Promise<{ ctx: WorkerContext; itemId: string }> {
+  const db = createTestDb();
+  const owner = seedOwner(db);
+  // width/height deliberately wrong: worker must correct from the real pixels
+  const itemId = seedItem(db, owner, { type: 'photo', width: 1, height: 1 });
+  const mediaPath = mkdtempSync(join(tmpdir(), 'shoebox-media-'));
+  const key = `media/${itemId}/original.jpg`;
+  await mkdir(join(mediaPath, 'media', itemId), { recursive: true });
+  await copyFile(FIXTURE_JPG, join(mediaPath, key));
+  db.insert(schema.itemFiles)
+    .values({ id: 'orig1', itemId, kind: 'original', storageKey: key, mime: 'image/jpeg', width: 640, height: 480 })
+    .run();
+  return { ctx: { db, storage: createFsStorage(mediaPath), mediaPath }, itemId };
+}
+
+describe('derivativesHandler (photo)', () => {
+  it('writes thumb_400/800/1600 webp under Contract 7 keys and records item_files rows', async () => {
+    const { ctx, itemId } = await setupPhoto();
+    await derivativesHandler({ itemId }, ctx);
+    for (const w of [400, 800, 1600]) {
+      const abs = join(ctx.mediaPath, `media/${itemId}/thumb_${w}.webp`);
+      expect((await stat(abs)).size).toBeGreaterThan(0);
+      const meta = await sharp(abs).metadata();
+      expect(meta.format).toBe('webp');
+    }
+    const rows = ctx.db.select().from(schema.itemFiles).where(eq(schema.itemFiles.itemId, itemId)).all();
+    const kinds = rows.map((r) => r.kind).sort();
+    expect(kinds).toEqual(['original', 'thumb_1600', 'thumb_400', 'thumb_800']);
+    // fixture is 640w: thumb_400 downsizes, larger sizes never enlarge
+    const w = (kind: string): number | null => rows.find((r) => r.kind === kind)!.width;
+    expect(w('thumb_400')).toBe(400);
+    expect(w('thumb_800')).toBe(640);
+    expect(w('thumb_1600')).toBe(640);
+  });
+
+  it('corrects items.width/height from the real pixels', async () => {
+    const { ctx, itemId } = await setupPhoto();
+    await derivativesHandler({ itemId }, ctx);
+    const item = ctx.db.select().from(schema.items).where(eq(schema.items.id, itemId)).get()!;
+    expect(item.width).toBe(640);
+    expect(item.height).toBe(480);
+  });
+
+  it('is idempotent: rerunning replaces rows instead of duplicating them', async () => {
+    const { ctx, itemId } = await setupPhoto();
+    await derivativesHandler({ itemId }, ctx);
+    await derivativesHandler({ itemId }, ctx);
+    const thumbs = ctx.db.select().from(schema.itemFiles)
+      .where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'thumb_400'))).all();
+    expect(thumbs).toHaveLength(1);
+  });
+
+  it('throws (so the job retries) when the item does not exist', async () => {
+    const { ctx } = await setupPhoto();
+    await expect(derivativesHandler({ itemId: 'nope' }, ctx)).rejects.toThrow(/item nope not found/);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm vitest run src/worker/derivatives.test.ts`
+Expected: FAIL — `Failed to resolve import "./derivatives.js"`.
+
+- [ ] **Step 3: Write the implementation**
+
+Create `src/worker/derivatives.ts`:
+
+```ts
+/**
+ * Canonical server-side derivatives (Docker only). Regenerates higher-quality
+ * versions of the client-generated derivatives from phase 02, overwriting the
+ * SAME Contract 7 storage keys in place:
+ *   media/<id>/poster.webp        (videos: frame at 10% duration, ≤1600w, q82)
+ *   media/<id>/thumb_{400,800,1600}.webp
+ *   media/<id>/sprite.webp        (videos: 10×10 grid of 160×90 frames = 1600×900)
+ * item_files rows for the regenerated kinds are replaced atomically.
+ */
+import ffmpeg from 'fluent-ffmpeg';
+import ffmpegPath from 'ffmpeg-static';
+import ffprobeStatic from 'ffprobe-static';
+import sharp from 'sharp';
+import { and, eq, inArray } from 'drizzle-orm';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { nanoid } from 'nanoid';
+import * as schema from '../lib/server/db/schema.js';
+import type { JobHandler, WorkerDb } from './jobs.js';
+
+ffmpeg.setFfmpegPath(ffmpegPath as unknown as string);
+ffmpeg.setFfprobePath(ffprobeStatic.path);
+
+const THUMB_WIDTHS = [400, 800, 1600] as const;
+const WEBP_QUALITY = 82;
+
+export interface VideoProbe {
+  duration: number;
+  width: number;
+  height: number;
+  creationTime: string | null; // 'YYYY-MM-DD' or null
+}
+
+/** Container creation_time → ISO day, rejecting epoch sentinels and garbage. */
+export function normalizeCreationTime(raw: string | null): string | null {
+  if (!raw) return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  const year = d.getUTCFullYear();
+  if (year <= 1970 || year > 2100) return null; // 1970 = unset-clock sentinel
+  return d.toISOString().slice(0, 10);
+}
+
+export function probeVideo(filePath: string): Promise<VideoProbe> {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(filePath, (err, data) => {
+      if (err) return reject(err instanceof Error ? err : new Error(String(err)));
+      const stream = data.streams.find((s) => s.codec_type === 'video');
+      if (!stream) return reject(new Error(`no video stream in ${filePath}`));
+      resolve({
+        duration: Number(data.format.duration ?? 0),
+        width: stream.width ?? 0,
+        height: stream.height ?? 0,
+        creationTime: normalizeCreationTime((data.format.tags?.creation_time as string | undefined) ?? null),
+      });
+    });
+  });
+}
+
+function runFfmpeg(configure: (cmd: ffmpeg.FfmpegCommand) => ffmpeg.FfmpegCommand, input: string, output: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    configure(ffmpeg(input))
+      .output(output)
+      .on('end', () => resolve())
+      .on('error', (err) => reject(err instanceof Error ? err : new Error(String(err))))
+      .run();
+  });
+}
+
+type DerivedKind = 'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600' | 'sprite';
+interface DerivedRow { kind: DerivedKind; storageKey: string; mime: string; width: number; height: number; }
+
+/** Atomically swap the item_files rows for exactly the regenerated kinds. */
+function replaceItemFiles(db: WorkerDb, itemId: string, rows: DerivedRow[]): void {
+  db.transaction((tx) => {
+    tx.delete(schema.itemFiles)
+      .where(and(eq(schema.itemFiles.itemId, itemId), inArray(schema.itemFiles.kind, rows.map((r) => r.kind))))
+      .run();
+    for (const r of rows) {
+      tx.insert(schema.itemFiles).values({ id: nanoid(12), itemId, ...r }).run();
+    }
+  });
+}
+
+function loadItem(db: WorkerDb, itemId: string): { item: typeof schema.items.$inferSelect; originalKey: string } {
+  const item = db.select().from(schema.items).where(eq(schema.items.id, itemId)).get();
+  if (!item) throw new Error(`item ${itemId} not found`);
+  const original = db.select().from(schema.itemFiles)
+    .where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'original')))
+    .get();
+  if (!original) throw new Error(`item ${itemId} has no original file row`);
+  return { item, originalKey: original.storageKey };
+}
+
+async function putWebp(
+  ctx: Parameters<JobHandler>[1],
+  itemId: string,
+  kind: DerivedKind,
+  source: Buffer,
+  resizeWidth: number | null,
+): Promise<DerivedRow> {
+  let pipeline = sharp(source).rotate();
+  if (resizeWidth !== null) pipeline = pipeline.resize({ width: resizeWidth, withoutEnlargement: true });
+  const out = await pipeline.webp({ quality: WEBP_QUALITY }).toBuffer({ resolveWithObject: true });
+  const storageKey = `media/${itemId}/${kind}.webp`;
+  await ctx.storage.put(storageKey, new Uint8Array(out.data), { contentType: 'image/webp' });
+  return { kind, storageKey, mime: 'image/webp', width: out.info.width, height: out.info.height };
+}
+
+export const derivativesHandler: JobHandler = async (payload, ctx) => {
+  const itemId = String(payload.itemId ?? '');
+  const { item, originalKey } = loadItem(ctx.db, itemId);
+  const originalAbs = join(ctx.mediaPath, originalKey);
+  const tmp = await mkdtemp(join(tmpdir(), 'shoebox-deriv-'));
+  try {
+    const rows: DerivedRow[] = [];
+    let thumbSource: Buffer;
+
+    if (item.type === 'video') {
+      const probe = await probeVideo(originalAbs);
+      // Correct client-supplied metadata when missing/wrong (ffprobe is truth).
+      const updates: Partial<typeof schema.items.$inferInsert> = {};
+      if (probe.duration > 0 && (item.duration == null || Math.abs(item.duration - probe.duration) > 0.5)) {
+        updates.duration = probe.duration;
+      }
+      if (probe.width > 0 && probe.height > 0 && (item.width !== probe.width || item.height !== probe.height)) {
+        updates.width = probe.width;
+        updates.height = probe.height;
+      }
+      if (Object.keys(updates).length > 0) {
+        ctx.db.update(schema.items).set(updates).where(eq(schema.items.id, itemId)).run();
+      }
+      // Canonical poster: frame at 10% of duration, ≤1600w, even height.
+      const framePng = join(tmp, 'poster.png');
+      await runFfmpeg(
+        (cmd) => cmd.seekInput(Math.max(0, probe.duration * 0.1)).outputOptions(['-frames:v 1', "-vf scale='min(1600,iw)':-2"]),
+        originalAbs,
+        framePng,
+      );
+      thumbSource = await readFile(framePng);
+      rows.push(await putWebp(ctx, itemId, 'poster', thumbSource, null));
+    } else {
+      // Photo: thumbs come straight from the original (sharp decodes
+      // jpg/png/webp/avif/heic; heic thereby becomes web-visible via webp thumbs).
+      thumbSource = await readFile(originalAbs);
+      const meta = await sharp(thumbSource).metadata();
+      let w = meta.width ?? 0;
+      let h = meta.height ?? 0;
+      if ((meta.orientation ?? 1) >= 5) [w, h] = [h, w]; // EXIF rotated 90°/270°
+      if (w > 0 && h > 0 && (item.width !== w || item.height !== h)) {
+        ctx.db.update(schema.items).set({ width: w, height: h }).where(eq(schema.items.id, itemId)).run();
+      }
+    }
+
+    for (const w of THUMB_WIDTHS) {
+      rows.push(await putWebp(ctx, itemId, `thumb_${w}` as DerivedKind, thumbSource, w));
+    }
+    replaceItemFiles(ctx.db, itemId, rows);
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+};
+
+export const spriteHandler: JobHandler = async (payload, ctx) => {
+  // Implemented in Task 7.
+  void payload;
+  void ctx;
+  throw new Error('spriteHandler not implemented yet (Task 7)');
+};
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pnpm vitest run src/worker/derivatives.test.ts`
+Expected: PASS (4 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/worker/derivatives.ts src/worker/derivatives.test.ts
+git commit -m "feat: derivatives handler regenerates photo thumbs and corrects dimensions"
+```
+
+---
+
+### Task 6: `derivatives` handler — video poster, thumbs & metadata correction
+
+**Files:**
+- Modify: `src/worker/derivatives.ts` (video branch already written in Task 5 — this task proves it against the real fixture and fixes anything the tests flush out)
+- Test: `src/worker/derivatives.test.ts` (append)
+
+**Interfaces:**
+- Consumes: Task 5's `derivativesHandler`, `probeVideo`; Task 1's `FIXTURE_MP4`.
+- Produces: verified video behavior relied on by Tasks 7, 9, 14: `poster.webp` at ≤1600w from the 10%-duration frame; thumbs derived from the poster; `items.duration/width/height` corrected from ffprobe.
+
+- [ ] **Step 1: Append the failing tests**
+
+Append to `src/worker/derivatives.test.ts`:
+
+```ts
+import { FIXTURE_MP4 } from '../../e2e/fixtures/generate.js';
+import { probeVideo } from './derivatives.js';
+
+async function setupVideo(): Promise<{ ctx: WorkerContext; itemId: string }> {
+  const db = createTestDb();
+  const owner = seedOwner(db);
+  // duration missing, dimensions wrong: worker must fill from ffprobe
+  const itemId = seedItem(db, owner, { type: 'video', width: 99, height: 99, duration: null });
+  const mediaPath = mkdtempSync(join(tmpdir(), 'shoebox-media-'));
+  const key = `media/${itemId}/original.mp4`;
+  await mkdir(join(mediaPath, 'media', itemId), { recursive: true });
+  await copyFile(FIXTURE_MP4, join(mediaPath, key));
+  db.insert(schema.itemFiles)
+    .values({ id: 'orig1', itemId, kind: 'original', storageKey: key, mime: 'video/mp4', width: 320, height: 180 })
+    .run();
+  return { ctx: { db, storage: createFsStorage(mediaPath), mediaPath }, itemId };
+}
+
+describe('probeVideo', () => {
+  it('reads duration and dimensions from the fixture', async () => {
+    await generateFixtures();
+    const probe = await probeVideo(FIXTURE_MP4);
+    expect(Math.abs(probe.duration - 2)).toBeLessThan(0.5);
+    expect(probe.width).toBe(320);
+    expect(probe.height).toBe(180);
+    expect(probe.creationTime).toBeNull(); // testsrc writes no creation_time
+  });
+});
+
+describe('derivativesHandler (video)', () => {
+  it('writes poster.webp from the 10%-duration frame plus thumbs, and fixes metadata', async () => {
+    const { ctx, itemId } = await setupVideo();
+    await derivativesHandler({ itemId }, ctx);
+
+    const posterAbs = join(ctx.mediaPath, `media/${itemId}/poster.webp`);
+    const posterMeta = await sharp(posterAbs).metadata();
+    expect(posterMeta.format).toBe('webp');
+    expect(posterMeta.width).toBe(320); // min(1600, iw) never enlarges
+
+    const rows = ctx.db.select().from(schema.itemFiles).where(eq(schema.itemFiles.itemId, itemId)).all();
+    expect(rows.map((r) => r.kind).sort()).toEqual(['original', 'poster', 'thumb_1600', 'thumb_400', 'thumb_800']);
+
+    const item = ctx.db.select().from(schema.items).where(eq(schema.items.id, itemId)).get()!;
+    expect(Math.abs((item.duration ?? 0) - 2)).toBeLessThan(0.5);
+    expect(item.width).toBe(320);
+    expect(item.height).toBe(180);
+  });
+});
+```
+
+- [ ] **Step 2: Run tests**
+
+Run: `pnpm vitest run src/worker/derivatives.test.ts`
+Expected: PASS (6 tests) if Task 5's video branch is correct; if any assertion fails, fix `src/worker/derivatives.ts` (not the test) until green. These tests exercise real ffmpeg — allow ~10 s.
+
+- [ ] **Step 3: Typecheck**
+
+Run: `pnpm check`
+Expected: 0 errors.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/worker/derivatives.ts src/worker/derivatives.test.ts
+git commit -m "test: prove video poster/thumb regeneration and ffprobe metadata correction"
+```
+
+---
+
+### Task 7: `sprite` handler + worker handler wiring
+
+**Files:**
+- Modify: `src/worker/derivatives.ts` (replace the Task 5 `spriteHandler` stub)
+- Modify: `src/worker/index.ts` (uncomment handler imports + wiring)
+- Test: `src/worker/sprite.test.ts`
+
+**Interfaces:**
+- Consumes: Tasks 2–6.
+- Produces: working `spriteHandler` (Contract 7 sprite: `media/<id>/sprite.webp`, 10×10 grid of 160×90 frames → 1600×900, one frame per duration/100 s, `item_files` row `kind='sprite'`). `index.ts` now claims and runs both handlers — the process is fully operational for jobs.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/worker/sprite.test.ts`:
+
+```ts
+import { beforeAll, describe, expect, it } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { copyFile, mkdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { and, eq } from 'drizzle-orm';
+import sharp from 'sharp';
+import { FIXTURE_JPG, FIXTURE_MP4, generateFixtures } from '../../e2e/fixtures/generate.js';
+import * as schema from '../lib/server/db/schema.js';
+import { createFsStorage } from '../lib/server/platform/storage-fs.js';
+import { spriteHandler } from './derivatives.js';
+import type { WorkerContext } from './jobs.js';
+import { createTestDb, seedItem, seedOwner } from './test-helpers.js';
+
+beforeAll(async () => {
+  await generateFixtures();
+});
+
+async function setup(type: 'video' | 'photo'): Promise<{ ctx: WorkerContext; itemId: string }> {
+  const db = createTestDb();
+  const owner = seedOwner(db);
+  const itemId = seedItem(db, owner, { type });
+  const mediaPath = mkdtempSync(join(tmpdir(), 'shoebox-media-'));
+  const ext = type === 'video' ? 'mp4' : 'jpg';
+  const key = `media/${itemId}/original.${ext}`;
+  await mkdir(join(mediaPath, 'media', itemId), { recursive: true });
+  await copyFile(type === 'video' ? FIXTURE_MP4 : FIXTURE_JPG, join(mediaPath, key));
+  db.insert(schema.itemFiles)
+    .values({ id: 'orig1', itemId, kind: 'original', storageKey: key, mime: type === 'video' ? 'video/mp4' : 'image/jpeg' })
+    .run();
+  return { ctx: { db, storage: createFsStorage(mediaPath), mediaPath }, itemId };
+}
+
+describe('spriteHandler', () => {
+  it('renders a 1600×900 webp (10×10 grid of 160×90 frames) and records the item_files row', async () => {
+    const { ctx, itemId } = await setup('video');
+    await spriteHandler({ itemId }, ctx);
+    const abs = join(ctx.mediaPath, `media/${itemId}/sprite.webp`);
+    const meta = await sharp(abs).metadata();
+    expect(meta.format).toBe('webp');
+    expect(meta.width).toBe(1600);
+    expect(meta.height).toBe(900);
+    const row = ctx.db.select().from(schema.itemFiles)
+      .where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'sprite'))).get();
+    expect(row).toBeDefined();
+    expect(row!.storageKey).toBe(`media/${itemId}/sprite.webp`);
+    expect(row!.width).toBe(1600);
+    expect(row!.height).toBe(900);
+  });
+
+  it('is a no-op for photos', async () => {
+    const { ctx, itemId } = await setup('photo');
+    await spriteHandler({ itemId }, ctx); // must not throw
+    const row = ctx.db.select().from(schema.itemFiles)
+      .where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'sprite'))).get();
+    expect(row).toBeUndefined();
+  });
+
+  it('replaces the sprite row on rerun instead of duplicating', async () => {
+    const { ctx, itemId } = await setup('video');
+    await spriteHandler({ itemId }, ctx);
+    await spriteHandler({ itemId }, ctx);
+    const rows = ctx.db.select().from(schema.itemFiles)
+      .where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'sprite'))).all();
+    expect(rows).toHaveLength(1);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm vitest run src/worker/sprite.test.ts`
+Expected: FAIL — `spriteHandler not implemented yet (Task 7)`.
+
+- [ ] **Step 3: Replace the stub in `src/worker/derivatives.ts`**
+
+Replace the entire `export const spriteHandler…` stub with:
+
+```ts
+/**
+ * Contract 7 scrub sprite: 10×10 grid of 160×90 frames (1600×900 total),
+ * sampled uniformly — one frame per duration/100 seconds via the fps filter
+ * (which duplicates frames on short clips, so the grid is always full).
+ */
+export const spriteHandler: JobHandler = async (payload, ctx) => {
+  const itemId = String(payload.itemId ?? '');
+  const { item, originalKey } = loadItem(ctx.db, itemId);
+  if (item.type !== 'video') return; // photos never get sprites
+  const originalAbs = join(ctx.mediaPath, originalKey);
+  const probe = await probeVideo(originalAbs);
+  if (probe.duration <= 0) throw new Error(`item ${itemId} has zero duration; cannot build sprite`);
+  const tmp = await mkdtemp(join(tmpdir(), 'shoebox-sprite-'));
+  try {
+    const tilePng = join(tmp, 'sprite.png');
+    const fps = 100 / probe.duration;
+    await runFfmpeg(
+      (cmd) => cmd.outputOptions(['-frames:v 1', `-vf fps=${fps},scale=160:90,tile=10x10`]),
+      originalAbs,
+      tilePng,
+    );
+    const out = await sharp(tilePng).webp({ quality: 70 }).toBuffer({ resolveWithObject: true });
+    const storageKey = `media/${itemId}/sprite.webp`;
+    await ctx.storage.put(storageKey, new Uint8Array(out.data), { contentType: 'image/webp' });
+    replaceItemFiles(ctx.db, itemId, [
+      { kind: 'sprite', storageKey, mime: 'image/webp', width: out.info.width, height: out.info.height },
+    ]);
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+};
+```
+
+- [ ] **Step 4: Wire the handlers into `src/worker/index.ts`**
+
+In `src/worker/index.ts`:
+1. Uncomment `import { derivativesHandler, spriteHandler } from './derivatives.js';` (leave the `ingest-watcher` import commented — Task 10).
+2. Replace the empty handlers object:
+
+```ts
+  const handlers: JobHandlers = {
+    derivatives: derivativesHandler,
+    sprite: spriteHandler,
+  };
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `pnpm vitest run src/worker/sprite.test.ts src/worker/index.test.ts && pnpm check`
+Expected: PASS (5 tests), 0 type errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/worker/derivatives.ts src/worker/sprite.test.ts src/worker/index.ts
+git commit -m "feat: 10x10 scrub sprite sheet handler wired into the worker"
+```
+
+<!-- CONTINUE -->
+
+

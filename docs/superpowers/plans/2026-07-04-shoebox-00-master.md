@@ -151,6 +151,7 @@ export const itemFiles = sqliteTable('item_files', {
 export const people = sqliteTable('people', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  nickname: text('nickname'),                     // e.g. "Grandma" — rendered as the hero's quote line
   birthdate: text('birthdate'),                   // ISO date
   deathDate: text('death_date'),
   birthPlace: text('birth_place'),
