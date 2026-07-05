@@ -266,7 +266,7 @@
 	.page {
 		position: relative;
 		min-height: 100vh;
-		padding: 38px 30px 90px;
+		padding: 58px 30px 90px;
 		background: linear-gradient(180deg, rgb(23 20 18 / 0.1) 0%, rgb(23 20 18 / 0.68) 100%);
 		color: var(--cream);
 	}
@@ -438,7 +438,7 @@
 
 	@media (max-width: 720px) {
 		.page {
-			padding: 24px 16px 76px;
+			padding: 38px 16px 76px;
 		}
 
 		.omnibox-input {
