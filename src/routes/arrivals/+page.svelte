@@ -2,7 +2,7 @@
 	import DatePicker from '$lib/ui/DatePicker.svelte';
 	import Gradient from '$lib/ui/Gradient.svelte';
 	import { reducedMotion } from '$lib/ui/theme';
-	import { ACCENTS, CREAM, DAWN, DAWN_PALE, INK, MOTION } from '$lib/ui/tokens';
+	import { MOTION } from '$lib/ui/tokens';
 	import type { ItemDate } from '$lib/domain/dates';
 	import { moveFocus, parseTagsInput, rangeSelect } from './selection';
 	import type { PageData } from './$types';
@@ -11,12 +11,23 @@
 
 	type QueueItem = PageData['items'][number];
 
+	const arrivalGradient = {
+		dusk: '#23191E',
+		verdigris: '#48929B',
+		earthenware: '#C4967C',
+		silk: '#E0D0A8'
+	};
+
 	const room = {
-		stops: [INK, DAWN, DAWN_PALE] as [string, string, string],
+		stops: [arrivalGradient.dusk, arrivalGradient.verdigris, arrivalGradient.earthenware] as [
+			string,
+			string,
+			string
+		],
 		pools: [
-			{ color: `${DAWN}66`, pos: '16% 4%', size: '82% 58%' },
-			{ color: `${CREAM}66`, pos: '96% 18%', size: '74% 54%' },
-			{ color: `${ACCENTS[2].hex}55`, pos: '52% 112%', size: '92% 56%' }
+			{ color: `${arrivalGradient.verdigris}55`, pos: '104% 2%', size: '86% 58%' },
+			{ color: `${arrivalGradient.earthenware}4d`, pos: '-6% 104%', size: '82% 54%' },
+			{ color: `${arrivalGradient.silk}26`, pos: '48% 112%', size: '90% 44%' }
 		]
 	};
 
@@ -214,8 +225,17 @@
 							data-testid="arrivals-row"
 							data-item-id={item.id}
 						>
-							<button type="button" class="row-button" onclick={(event) => onCardClick(event, index)}>
-								<img src={previewUrl(item)} alt={item.title ?? item.displayDate} width="104" height="70" />
+							<button
+								type="button"
+								class="row-button"
+								onclick={(event) => onCardClick(event, index)}
+							>
+								<img
+									src={previewUrl(item)}
+									alt={item.title ?? item.displayDate}
+									width="104"
+									height="70"
+								/>
 								<span class="row-copy">
 									<span class="row-title">{item.title ?? 'Untitled'}</span>
 									<span class="row-date" data-testid="arrivals-date">{item.displayDate}</span>
@@ -321,7 +341,7 @@
 	.page {
 		position: relative;
 		min-height: 100vh;
-		padding: 40px 30px 90px;
+		padding: 34px 30px 78px;
 		background:
 			linear-gradient(
 				180deg,
@@ -336,9 +356,9 @@
 		display: flex;
 		align-items: end;
 		justify-content: space-between;
-		gap: 24px;
-		max-width: 1320px;
-		margin: 0 auto 28px;
+		gap: 20px;
+		max-width: 1180px;
+		margin: 0 auto 20px;
 	}
 
 	.kicker,
@@ -369,14 +389,14 @@
 	}
 
 	h1 {
-		font-size: clamp(44px, 6vw, 82px);
+		font-size: clamp(34px, 4vw, 52px);
 	}
 
 	.layout {
 		display: grid;
-		grid-template-columns: minmax(230px, 310px) minmax(360px, 1fr) minmax(300px, 380px);
-		gap: 22px;
-		max-width: 1320px;
+		grid-template-columns: minmax(230px, 292px) minmax(320px, 1fr) minmax(280px, 340px);
+		gap: 16px;
+		max-width: 1180px;
 		margin: 0 auto;
 		align-items: start;
 	}
@@ -384,8 +404,8 @@
 	.queue {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
-		max-height: calc(100vh - 180px);
+		gap: 6px;
+		max-height: calc(100vh - 144px);
 		margin: 0;
 		padding: 0;
 		overflow-y: auto;
@@ -411,10 +431,10 @@
 
 	.row-button {
 		display: grid;
-		grid-template-columns: 104px minmax(0, 1fr);
-		gap: 12px;
+		grid-template-columns: 88px minmax(0, 1fr);
+		gap: 10px;
 		width: 100%;
-		min-height: 86px;
+		min-height: 72px;
 		padding: 8px;
 		border: 0;
 		background: transparent;
@@ -429,8 +449,8 @@
 	}
 
 	.row-button img {
-		width: 104px;
-		height: 70px;
+		width: 88px;
+		height: 58px;
 		object-fit: cover;
 		filter: sepia(0.24) contrast(0.94) saturate(0.9);
 	}
@@ -446,8 +466,8 @@
 	.row-title {
 		overflow: hidden;
 		font-family: var(--font-serif);
-		font-size: 18px;
-		line-height: 1.08;
+		font-size: 16px;
+		line-height: 1.12;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
@@ -475,14 +495,14 @@
 	}
 
 	.preview {
-		min-height: 68vh;
+		min-height: 0;
 		background: color-mix(in srgb, var(--cream) 8%, transparent);
 	}
 
 	.preview img {
 		display: block;
 		width: 100%;
-		height: 68vh;
+		height: min(58vh, 560px);
 		object-fit: contain;
 		filter: sepia(0.24) contrast(0.94) saturate(0.9);
 	}
@@ -490,16 +510,17 @@
 	.meta {
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
-		padding: 18px;
-		background: color-mix(in srgb, var(--ink) 28%, transparent);
-		backdrop-filter: blur(18px);
+		gap: 12px;
+		padding: 14px;
+		background: color-mix(in srgb, var(--ink) 22%, transparent);
+		backdrop-filter: blur(14px);
 	}
 
 	.meta-head h2 {
 		margin-top: 4px;
 		overflow-wrap: anywhere;
-		font-size: 30px;
+		font-size: 22px;
+		line-height: 1.08;
 	}
 
 	.meta label > span,
@@ -512,14 +533,14 @@
 	.meta input[type='text'],
 	.meta select {
 		width: 100%;
-		min-height: 44px;
+		min-height: 40px;
 		border: 0;
 		background: color-mix(in srgb, var(--cream) 13%, transparent);
 		color: var(--cream);
 		color-scheme: dark;
 		font-family: var(--font-serif);
-		font-size: 18px;
-		padding: 8px 10px;
+		font-size: 16px;
+		padding: 7px 9px;
 	}
 
 	.meta fieldset {
@@ -528,19 +549,46 @@
 		border: 0;
 	}
 
+	.meta :global(fieldset) {
+		margin: 0;
+		padding: 0;
+		border: 0;
+	}
+
+	.meta :global(legend),
+	.meta :global(label > span) {
+		margin-bottom: 7px;
+		font-size: 11px;
+		letter-spacing: 0.18em;
+		opacity: 0.76;
+	}
+
+	.meta :global(.row) {
+		gap: 8px;
+		grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+	}
+
+	.meta :global(input:not([type='checkbox'])),
+	.meta :global(select) {
+		min-height: 40px;
+		color: inherit;
+		font-size: 16px;
+		padding: 7px 9px;
+	}
+
 	.people {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
-		gap: 6px 12px;
+		grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+		gap: 4px 10px;
 	}
 
 	.person {
 		display: inline-flex;
 		align-items: center;
 		gap: 8px;
-		min-height: 44px;
+		min-height: 36px;
 		font-family: var(--font-serif);
-		font-size: 17px;
+		font-size: 15px;
 	}
 
 	.person input {
@@ -556,7 +604,7 @@
 	}
 
 	.actions button {
-		min-height: 48px;
+		min-height: 44px;
 		border: 0;
 		cursor: pointer;
 		font-family: var(--font-sans);
@@ -577,7 +625,7 @@
 	}
 
 	.empty {
-		max-width: 1320px;
+		max-width: 1180px;
 		margin: 0 auto;
 		padding: 18vh 0;
 	}
@@ -662,7 +710,7 @@
 
 		.row-button img {
 			width: 88px;
-			height: 62px;
+			height: 58px;
 		}
 
 		.actions {

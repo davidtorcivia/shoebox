@@ -90,7 +90,8 @@
 				})
 			});
 		}
-		if (base.type) out.push({ label: `type: ${base.type}`, q: without((copy) => delete copy.type) });
+		if (base.type)
+			out.push({ label: `type: ${base.type}`, q: without((copy) => delete copy.type) });
 		if (base.album) {
 			out.push({ label: `album: ${base.album}`, q: without((copy) => delete copy.album) });
 		}
@@ -102,7 +103,8 @@
 		}
 		if (base.yearFrom != null) {
 			out.push({
-				label: base.yearFrom === base.yearTo ? `${base.yearFrom}` : `${base.yearFrom}-${base.yearTo}`,
+				label:
+					base.yearFrom === base.yearTo ? `${base.yearFrom}` : `${base.yearFrom}-${base.yearTo}`,
 				q: without((copy) => {
 					delete copy.yearFrom;
 					delete copy.yearTo;
@@ -230,7 +232,8 @@
 								</div>
 								<span class="album-title">{album.title}</span>
 								<span class="album-count">
-									{album.itemCount} {album.itemCount === 1 ? 'moment' : 'moments'}
+									{album.itemCount}
+									{album.itemCount === 1 ? 'moment' : 'moments'}
 								</span>
 							</a>
 						{/each}
@@ -276,6 +279,9 @@
 	}
 
 	.omnibox-input {
+		display: block;
+		box-sizing: border-box;
+		width: 100%;
 		min-width: 0;
 		min-height: 68px;
 		padding: 13px 20px;
