@@ -1,0 +1,109 @@
+<h2>Player — FINAL (approved)</h2>
+<p class="subtitle">Comment avatars now match the people row: small, text-height, inline with the color-keyed name. Tags without underlines; the comment field is now an obvious filled text box. Locked and approved.</p>
+
+<style>
+  .p5 { position: relative; overflow: hidden; min-height: 720px; color: #FFF5E8;
+        font-family: Georgia, 'Times New Roman', serif;
+        background:
+          radial-gradient(80% 60% at 100% 0%, rgba(243,83,54,.34) 0%, rgba(243,83,54,0) 60%),
+          linear-gradient(160deg, #171412 0%, #3A1512 55%, #5E2824 100%); }
+  .p5 * { border-radius: 0 !important; font-style: normal !important; }
+  .p5 .grain { position: absolute; inset: 0; z-index: 10; pointer-events: none; opacity: .5; mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .p5 .top { display: flex; align-items: center; justify-content: space-between; padding: 22px 34px; position: relative; z-index: 3; }
+  .p5 .top .back, .p5 .top .close { font-family: 'Helvetica Neue', sans-serif; font-size: 14px; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,245,232,.9); }
+  .p5 .top .ttl { font-size: 26px; }
+  .p5 .top .close b { font-size: 20px; font-weight: 400; margin-right: 8px; }
+  .p5 .stage { display: flex; gap: 38px; padding: 0 84px; position: relative; z-index: 2; }
+  .p5 .screen { flex: 2.2; }
+  .p5 .screen img { width: 100%; display: block; filter: sepia(.3) contrast(.94) saturate(.9); }
+  .p5 .edge { position: absolute; top: 44%; transform: translateY(-50%); z-index: 4; text-align: center; font-family: 'Helvetica Neue', sans-serif; }
+  .p5 .edge .gl { display: block; font-size: 44px; line-height: 1; font-weight: 300; }
+  .p5 .edge .lb { display: block; font-size: 10px; letter-spacing: .22em; margin-top: 8px; text-transform: uppercase; color: rgba(255,245,232,.55); }
+  .p5 .edge.l { left: 20px; } .p5 .edge.r { right: 20px; }
+  .p5 .controls { display: flex; align-items: center; gap: 22px; padding-top: 16px; }
+  .p5 .controls .play { font-size: 26px; }
+  .p5 .tc { font-family: 'Helvetica Neue', sans-serif; font-size: 16px; font-variant-numeric: tabular-nums; }
+  .p5 .tc span { color: rgba(255,245,232,.55); }
+  .p5 .track { flex: 1; height: 30px; display: flex; align-items: center; position: relative; }
+  .p5 .track .rail { position: absolute; left: 0; right: 0; height: 8px; background: rgba(255,245,232,.18); }
+  .p5 .track .buf { position: absolute; left: 0; width: 62%; height: 8px; background: rgba(255,245,232,.28); }
+  .p5 .track .cur { position: absolute; left: 0; width: 29%; height: 8px; background: #FA7B62; }
+  .p5 .track .head { position: absolute; left: calc(29% - 2px); top: 1px; width: 4px; height: 28px; background: #FFF5E8; }
+  .p5 .cbtn { font-family: 'Helvetica Neue', sans-serif; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,245,232,.85); }
+  .p5 .under { padding: 20px 4px 30px; }
+  .p5 .row { display: flex; align-items: baseline; gap: 18px; margin-bottom: 14px; flex-wrap: wrap; }
+  .p5 .row .label { flex: none; width: 64px; font-family: 'Helvetica Neue', sans-serif; font-size: 10.5px; letter-spacing: .26em; text-transform: uppercase; color: rgba(255,245,232,.5); }
+  .p5 .ppl { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 17px; }
+  .p5 .ppl .p { display: inline-flex; align-items: center; gap: 8px; }
+  .p5 .av { width: 19px; height: 19px; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; background: #FA7B62; color: #171412; }
+  .p5 .ppl em { font-family: 'Helvetica Neue', sans-serif; font-size: 12px; color: rgba(255,245,232,.55); }
+  .p5 .tags { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 17px; }
+  .p5 .tags span { color: #FFD9A8; }
+  .p5 .rail-r { flex: 1; min-width: 0; padding-bottom: 30px; }
+  .p5 .eyebrow { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; letter-spacing: .26em; text-transform: uppercase; color: #FA7B62; margin-bottom: 10px; }
+  .p5 .date { font-size: 46px; line-height: 1.05; }
+  .p5 .desc { font-size: 17px; line-height: 1.65; color: rgba(255,245,232,.9); margin: 18px 0 6px; max-width: 46ch; }
+  .p5 .clabel { font-family: 'Helvetica Neue', sans-serif; font-size: 10.5px; letter-spacing: .26em; text-transform: uppercase; color: rgba(255,245,232,.5); margin: 26px 0 14px; }
+  .p5 .cmt { margin-bottom: 20px; }
+  .p5 .cmt .by { display: inline-flex; align-items: center; gap: 8px; font-family: 'Helvetica Neue', sans-serif; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; }
+  .p5 .cmt .by time { color: rgba(255,245,232,.45); font-weight: 400; letter-spacing: .08em; font-size: 11px; }
+  .p5 .cmt p { font-size: 16px; line-height: 1.6; color: rgba(255,245,232,.92); margin: 6px 0 0; }
+  .p5 .cmtin { display: flex; align-items: center; gap: 10px; background: rgba(255,245,232,.1); color: rgba(255,245,232,.55); font-size: 16px; padding: 14px 16px; width: 100%; box-sizing: border-box; }
+</style>
+
+<div class="mockup">
+  <div class="mockup-header">The player — locked</div>
+  <div class="mockup-body" style="padding:0">
+    <div class="p5">
+      <div class="grain"></div>
+      <div class="top">
+        <span class="back">← Back to 1994</span>
+        <span class="ttl">Eric's sixth birthday</span>
+        <span class="close"><b>✕</b>Close</span>
+      </div>
+      <span class="edge l"><span class="gl">←</span><span class="lb">Prev</span></span>
+      <span class="edge r"><span class="gl">→</span><span class="lb">Next</span></span>
+      <div class="stage">
+        <div class="screen">
+          <img src="https://picsum.photos/id/177/1100/620">
+          <div class="controls">
+            <span class="play">❚❚</span>
+            <span class="tc">00:12 <span>/ 00:42</span></span>
+            <div class="track"><span class="rail"></span><span class="buf"></span><span class="cur"></span><span class="head"></span></div>
+            <span class="cbtn">Vol</span><span class="cbtn">1×</span><span class="cbtn">Full</span>
+          </div>
+          <div class="under">
+            <div class="row">
+              <span class="label">People</span>
+              <span class="ppl">
+                <span class="p"><span class="av">E</span>Eric <em>· age 6</em></span>
+                <span class="p"><span class="av" style="background:#FFD9A8">D</span>Dad</span>
+                <span class="p"><span class="av" style="background:#AB5C57;color:#FFF5E8">G</span>Grandma</span>
+              </span>
+            </div>
+            <div class="row">
+              <span class="label">Tags</span>
+              <span class="tags"><span>birthday</span><span>maple st</span><span>summer</span><span>Birthdays through the years</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="rail-r">
+          <div class="eyebrow">Tuesday · Hi-8 · Tape 04</div>
+          <div class="date">June 14, 1994</div>
+          <p class="desc">Eric turns six at the Maple St. house. Cake on the porch, and the neighbors' dog steals a hot dog around the one-minute mark.</p>
+          <div class="clabel">Comments · 2</div>
+          <div class="cmt">
+            <span class="by" style="color:#A8D8EA"><span class="av" style="background:#A8D8EA;color:#171412">M</span>Mom <time>2 days ago</time></span>
+            <p>I remember that cake! Betty Crocker box mix — your father insisted.</p>
+          </div>
+          <div class="cmt">
+            <span class="by" style="color:#FFD700"><span class="av" style="background:#FFD700;color:#171412">E</span>Eric <time>yesterday</time></span>
+            <p>THE DOG!!</p>
+          </div>
+          <div class="cmtin"><span class="av" style="background:#171412;color:#FFF5E8;border:1px solid rgba(255,245,232,.3)">D</span>Add a memory…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

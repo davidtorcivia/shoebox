@@ -1,0 +1,183 @@
+<h2>Timeline locked (bars removed) + the player</h2>
+<p class="subtitle">Top: the locked timeline home — no more horizontal black rules anywhere; month breaks and the decade rail hold their structure with type and tick weight alone. Below: the video player, designed as its own room.</p>
+
+<style>
+  .v5 { position: relative; overflow: hidden; height: 620px; color: #FFF5E8; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        background:
+          radial-gradient(90% 70% at 8% -10%, #9D2B22 0%, rgba(157,43,34,0) 55%),
+          radial-gradient(70% 55% at 108% 38%, #FFD9A8 0%, rgba(255,217,168,0) 60%),
+          linear-gradient(168deg, #F35336 0%, #FA7B62 44%, #FFD9A8 88%, #FFF5E8 125%); }
+  .v5 *, .pl * { border-radius: 0 !important; }
+  .grain { position: absolute; inset: 0; z-index: 10; pointer-events: none; opacity: .5; mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .v5 .nav { display: flex; align-items: center; gap: 26px; padding: 20px 30px 0; font-size: 12px; letter-spacing: .18em; text-transform: uppercase; position: relative; z-index: 4; }
+  .v5 .nav .wm { font-weight: 700; font-size: 15px; margin-right: auto; letter-spacing: .26em; }
+  .v5 .nav a { color: rgba(255,245,232,.82); text-decoration: none; }
+  .v5 .nav a.on { color: #171412; }
+  .v5 .acct { display: flex; align-items: center; gap: 10px; }
+  .v5 .acct .av { width: 30px; height: 30px; background: #171412; color: #FFF5E8; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+  .v5 .years { display: flex; align-items: baseline; justify-content: center; gap: 42px; white-space: nowrap; padding-top: 22px; position: relative; z-index: 3; }
+  .v5 .yr { font-weight: 800; letter-spacing: -.04em; color: rgba(255,245,232,.34); font-size: 36px; }
+  .v5 .yr.n2 { font-size: 50px; color: rgba(255,245,232,.55); }
+  .v5 .yr.big { font-size: 150px; line-height: .8; color: #FFF5E8; text-shadow: 0 4px 60px rgba(157,43,34,.45); }
+  .v5 .yr.big small { display: block; font-size: 10px; font-weight: 500; letter-spacing: .3em; text-align: center; color: rgba(23,20,18,.75); margin-top: 10px; text-transform: uppercase; }
+  .v5 .band { margin-top: 14px; padding: 0 30px; position: relative; z-index: 3; }
+  .v5 .century { display: flex; align-items: flex-end; height: 44px; }
+  .v5 .dec { flex: 1; display: flex; align-items: flex-end; gap: 2px; padding: 0 5px; }
+  .v5 .dec i { flex: 1; background: rgba(23,20,18,.22); min-width: 1px; }
+  .v5 .dec i.dot { height: 2px !important; background: rgba(23,20,18,.16); }
+  .v5 .dec i.hi { background: rgba(23,20,18,.45); }
+  .v5 .dec i.cur { background: #171412; }
+  .v5 .declabels { display: flex; padding-top: 6px; }
+  .v5 .declabels span { flex: 1; font-family: 'SF Mono', Menlo, monospace; font-size: 9.5px; letter-spacing: .12em; color: rgba(23,20,18,.5); }
+  .v5 .declabels span.century-mark { color: rgba(23,20,18,.85); font-weight: 700; }
+  .v5 .declabels span.on { color: #171412; font-weight: 700; }
+  .v5 .grid { column-count: 4; column-gap: 12px; padding: 22px 30px 0; position: relative; z-index: 2; }
+  .v5 .cell { break-inside: avoid; margin-bottom: 16px; }
+  .v5 .cell img { width: 100%; display: block; filter: sepia(.32) contrast(.93) saturate(.88); }
+  .v5 .media { position: relative; }
+  .v5 .cap { display: flex; justify-content: space-between; gap: 8px; padding-top: 6px; font-family: 'SF Mono', Menlo, monospace; font-size: 9.5px; letter-spacing: .08em; color: rgba(23,20,18,.78); text-transform: uppercase; }
+  .v5 .cap .who { color: rgba(23,20,18,.55); }
+  .v5 .month { break-inside: avoid; margin: 6px 0 14px; padding-top: 10px; }
+  .v5 .month h4 { font-size: 30px; font-weight: 800; color: #171412; margin: 0; letter-spacing: .02em; }
+  .v5 .month span { font-family: 'SF Mono', Menlo, monospace; font-size: 9.5px; letter-spacing: .2em; color: rgba(23,20,18,.6); text-transform: uppercase; }
+  .v5 .dur { position: absolute; right: 8px; bottom: 8px; font-family: 'SF Mono', Menlo, monospace; font-size: 10px; color: #FFF5E8; text-shadow: 0 1px 6px rgba(23,20,18,.8); }
+
+  /* ---------- PLAYER ---------- */
+  .pl { position: relative; overflow: hidden; height: 600px; color: #FFF5E8; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        background:
+          radial-gradient(80% 60% at 100% 0%, rgba(243,83,54,.34) 0%, rgba(243,83,54,0) 60%),
+          linear-gradient(160deg, #171412 0%, #3A1512 55%, #5E2824 100%); }
+  .pl .top { display: flex; align-items: center; justify-content: space-between; padding: 18px 30px; font-family: 'SF Mono', Menlo, monospace; font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase; color: rgba(255,245,232,.75); position: relative; z-index: 3; }
+  .pl .top b { color: #FFF5E8; font-weight: 500; letter-spacing: .18em; }
+  .pl .stage { display: flex; gap: 26px; padding: 0 30px; position: relative; z-index: 2; }
+  .pl .screen { flex: 1.9; }
+  .pl .screen .vid { position: relative; }
+  .pl .screen img { width: 100%; display: block; filter: sepia(.3) contrast(.94) saturate(.9); }
+  .pl .controls { display: flex; align-items: center; gap: 16px; padding-top: 10px; font-family: 'SF Mono', Menlo, monospace; font-size: 10.5px; color: rgba(255,245,232,.85); }
+  .pl .controls .btn { cursor: default; letter-spacing: .1em; }
+  .pl .track { flex: 1; height: 14px; display: flex; align-items: center; position: relative; }
+  .pl .track .rail { position: absolute; left: 0; right: 0; height: 2px; background: rgba(255,245,232,.22); }
+  .pl .track .buf { position: absolute; left: 0; width: 62%; height: 2px; background: rgba(255,245,232,.35); }
+  .pl .track .cur { position: absolute; left: 0; width: 29%; height: 2px; background: #FA7B62; }
+  .pl .track .head { position: absolute; left: 29%; top: 2px; width: 2px; height: 10px; background: #FFF5E8; }
+  .pl .rail-r { flex: 1; min-width: 0; }
+  .pl .date { font-size: 34px; font-weight: 800; letter-spacing: -.01em; line-height: 1.05; }
+  .pl .date small { display: block; font-family: 'SF Mono', Menlo, monospace; font-size: 10px; font-weight: 400; letter-spacing: .22em; color: #FA7B62; margin-bottom: 8px; text-transform: uppercase; }
+  .pl .desc { font-size: 13px; line-height: 1.55; color: rgba(255,245,232,.85); margin: 14px 0 18px; max-width: 42ch; }
+  .pl .label { font-family: 'SF Mono', Menlo, monospace; font-size: 9px; letter-spacing: .24em; text-transform: uppercase; color: rgba(255,245,232,.5); margin: 16px 0 8px; }
+  .pl .ppl { display: flex; gap: 10px; }
+  .pl .ppl .p { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+  .pl .ppl .p .a { width: 26px; height: 26px; background: #FA7B62; color: #171412; font-weight: 700; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+  .pl .tags { display: flex; flex-wrap: wrap; gap: 12px; font-family: 'SF Mono', Menlo, monospace; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+  .pl .tags span { color: #FFD9A8; text-decoration: underline; text-underline-offset: 3px; }
+  .pl .cmt { font-size: 12px; line-height: 1.5; color: rgba(255,245,232,.85); margin-bottom: 10px; }
+  .pl .cmt b { color: #FFF5E8; } .pl .cmt time { font-family: 'SF Mono', Menlo, monospace; font-size: 9px; color: rgba(255,245,232,.45); margin-left: 6px; }
+  .pl .cmtin { border-bottom: 1px solid rgba(255,245,232,.3); color: rgba(255,245,232,.4); font-size: 12px; padding: 6px 0; }
+  .pl .edge { position: absolute; top: 46%; font-family: 'SF Mono', Menlo, monospace; font-size: 10px; letter-spacing: .2em; color: rgba(255,245,232,.55); z-index: 3; }
+</style>
+
+<div class="mockup">
+  <div class="mockup-header">Timeline home — LOCKED (no horizontal bars)</div>
+  <div class="mockup-body" style="padding:0">
+    <div class="v5">
+      <div class="grain"></div>
+      <div class="nav">
+        <span class="wm">SHOEBOX</span>
+        <a class="on">Timeline</a><a>People</a><a>Albums</a><a>Search</a><a>Arrivals</a>
+        <span class="acct"><span style="font-size:11px; letter-spacing:.14em; color:rgba(23,20,18,.7)">David</span><span class="av">D</span></span>
+      </div>
+      <div class="years">
+        <span class="yr">1992</span><span class="yr n2">1993</span><span class="yr big">1994<small>214 moments · 12 people</small></span><span class="yr n2">1995</span><span class="yr">1996</span>
+      </div>
+      <div class="band">
+        <div class="century">
+          <div class="dec"><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+          <div class="dec"><i class="dot"></i><i class="dot"></i><i style="height:5px"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i style="height:4px"></i><i class="dot"></i></div>
+          <div class="dec"><i style="height:4px"></i><i class="dot"></i><i style="height:6px"></i><i class="dot"></i><i style="height:5px"></i><i class="dot"></i><i class="dot"></i><i style="height:7px"></i><i class="dot"></i><i class="dot"></i></div>
+          <div class="dec"><i class="dot"></i><i style="height:7px"></i><i style="height:5px"></i><i class="dot"></i><i style="height:9px"></i><i class="dot"></i><i style="height:6px"></i><i class="dot"></i><i style="height:8px"></i><i class="dot"></i></div>
+          <div class="dec"><i style="height:8px"></i><i style="height:12px"></i><i style="height:7px"></i><i style="height:15px"></i><i style="height:10px"></i><i style="height:9px"></i><i style="height:13px"></i><i style="height:8px"></i><i style="height:11px"></i><i style="height:14px"></i></div>
+          <div class="dec"><i style="height:12px"></i><i style="height:18px"></i><i style="height:14px"></i><i style="height:22px"></i><i style="height:16px"></i><i style="height:19px"></i><i style="height:13px"></i><i style="height:24px"></i><i style="height:17px"></i><i style="height:15px"></i></div>
+          <div class="dec"><i style="height:16px"></i><i style="height:21px"></i><i style="height:25px"></i><i style="height:18px"></i><i style="height:28px"></i><i style="height:22px"></i><i style="height:19px"></i><i style="height:26px"></i><i style="height:23px"></i><i style="height:20px"></i></div>
+          <div class="dec"><i style="height:22px"></i><i style="height:27px"></i><i style="height:24px"></i><i style="height:31px"></i><i style="height:26px"></i><i style="height:29px"></i><i style="height:25px"></i><i style="height:33px"></i><i style="height:28px"></i><i style="height:30px"></i></div>
+          <div class="dec"><i style="height:26px"></i><i style="height:32px"></i><i style="height:28px"></i><i style="height:35px"></i><i style="height:30px"></i><i style="height:27px"></i><i style="height:34px"></i><i style="height:29px"></i><i style="height:31px"></i><i style="height:36px"></i></div>
+          <div class="dec"><i style="height:30px"></i><i style="height:38px"></i><i style="height:33px"></i><i style="height:42px"></i><i class="cur" style="height:44px"></i><i class="hi" style="height:40px"></i><i style="height:35px"></i><i class="hi" style="height:41px"></i><i style="height:37px"></i><i style="height:34px"></i></div>
+          <div class="dec"><i style="height:28px"></i><i style="height:24px"></i><i style="height:31px"></i><i style="height:26px"></i><i style="height:22px"></i><i style="height:27px"></i><i style="height:23px"></i><i style="height:19px"></i><i style="height:25px"></i><i style="height:21px"></i></div>
+          <div class="dec"><i style="height:18px"></i><i style="height:14px"></i><i style="height:20px"></i><i style="height:16px"></i><i style="height:12px"></i><i style="height:17px"></i><i style="height:13px"></i><i style="height:15px"></i><i style="height:11px"></i><i style="height:14px"></i></div>
+          <div class="dec"><i style="height:10px"></i><i style="height:13px"></i><i style="height:8px"></i><i style="height:11px"></i><i style="height:9px"></i><i style="height:12px"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+          <div class="dec"><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+        </div>
+        <div class="declabels">
+          <span class="century-mark">1900</span><span>'10</span><span>'20</span><span>'30</span><span>'40</span><span>'50</span><span>'60</span><span>'70</span><span>'80</span><span class="on">'90</span><span class="century-mark">2000</span><span>'10</span><span>'20</span><span>'30</span>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="cell month"><span>June 1994</span><h4>JUNE</h4></div>
+        <div class="cell"><div class="media"><img src="https://picsum.photos/id/177/300/220"><span class="dur">0:42</span></div><div class="cap"><span>Jun 14</span><span class="who">Dad · Eric</span></div></div>
+        <div class="cell"><div class="media"><img src="https://picsum.photos/id/1041/300/380"></div><div class="cap"><span>Jun 14</span><span class="who">Eric's birthday</span></div></div>
+        <div class="cell"><div class="media"><img src="https://picsum.photos/id/305/300/200"><span class="dur">1:15</span></div><div class="cap"><span>Jun 21</span><span class="who">Mom · Grandma</span></div></div>
+        <div class="cell"><div class="media"><img src="https://picsum.photos/id/453/300/300"></div><div class="cap"><span>c. 1994</span><span class="who">Lake house</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mockup" style="margin-top:22px">
+  <div class="mockup-header">The player — a clip opened from 1994</div>
+  <div class="mockup-body" style="padding:0">
+    <div class="pl">
+      <div class="grain"></div>
+      <div class="top">
+        <span>← 1994</span>
+        <b>Eric's sixth birthday</b>
+        <span>✕ Close</span>
+      </div>
+      <span class="edge" style="left:8px">◀ PREV</span>
+      <span class="edge" style="right:8px">NEXT ▶</span>
+      <div class="stage">
+        <div class="screen">
+          <div class="vid">
+            <img src="https://picsum.photos/id/177/900/500">
+          </div>
+          <div class="controls">
+            <span class="btn">❚❚</span>
+            <span>00:12 / 00:42</span>
+            <div class="track"><span class="rail"></span><span class="buf"></span><span class="cur"></span><span class="head"></span></div>
+            <span class="btn">VOL</span>
+            <span class="btn">1×</span>
+            <span class="btn">FULL</span>
+          </div>
+        </div>
+        <div class="rail-r">
+          <div class="date"><small>Tuesday · Hi-8 · Tape 04</small>June 14, 1994</div>
+          <p class="desc">Eric turns six at the Maple St. house. Cake on the porch, the neighbors' dog steals a hot dog around the one-minute mark.</p>
+          <div class="label">People</div>
+          <div class="ppl">
+            <span class="p"><span class="a">E</span>Eric <i style="opacity:.5;font-style:normal">· age 6</i></span>
+            <span class="p"><span class="a" style="background:#FFD9A8">D</span>Dad</span>
+            <span class="p"><span class="a" style="background:#AB5C57;color:#FFF5E8">G</span>Grandma</span>
+          </div>
+          <div class="label">Tags</div>
+          <div class="tags"><span>birthday</span><span>maple st</span><span>summer</span></div>
+          <div class="label">Albums</div>
+          <div class="tags"><span>Birthdays through the years</span></div>
+          <div class="label">Comments · 2</div>
+          <div class="cmt"><b>Mom</b><time>2d ago</time><br>I remember that cake! Betty crocker box mix, your father insisted.</div>
+          <div class="cmt"><b>Eric</b><time>1d ago</time><br>THE DOG!! 😂</div>
+          <div class="cmtin">Add a memory…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Player notes</h3>
+  <ul>
+    <li><b>Its own room</b>: the decade palette collapses to its deep end (iron black → shrimp brown → an ember of benihi) so footage glows, but it's still unmistakably the '90s world — every decade's player room derives from its palette.</li>
+    <li><b>Controls as typography</b>: monospace timecode, hairline track with a dawn-colored elapsed line, plain-text VOL / 1× / FULL. No buttons, no pills, no icons ripped from a UI kit. Controls fade out during playback, return on move/tap.</li>
+    <li><b>Colorist-friendly keys</b>: space play/pause, J/K/L shuttle, ←/→ frame-step, ↑/↓ prev/next item, F fullscreen, M mute.</li>
+    <li><b>The right rail is the memory</b>: date with tape provenance, description, people with ages computed for that day, tags, albums, comments ("Add a memory…"). On mobile it stacks under the video.</li>
+    <li>Photos open in this same room minus the control row.</li>
+  </ul>
+</div>
