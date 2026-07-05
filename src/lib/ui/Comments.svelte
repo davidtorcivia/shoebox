@@ -34,7 +34,9 @@
 	function canDelete(comment: CommentView): boolean {
 		if (!currentUser) return false;
 		if (comment.canDelete !== undefined) return comment.canDelete;
-		return comment.user.id === currentUser.id || ['editor', 'admin', 'owner'].includes(currentUser.role);
+		return (
+			comment.user.id === currentUser.id || ['editor', 'admin', 'owner'].includes(currentUser.role)
+		);
 	}
 
 	async function submit(event: SubmitEvent) {

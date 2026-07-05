@@ -95,6 +95,20 @@
 		color: rgba(255, 245, 232, 0.34);
 	}
 
+	:global(html.comfort) .near,
+	:global(html.comfort) .side {
+		display: none;
+	}
+
+	:global(html.comfort) button {
+		width: 48px;
+		height: 48px;
+	}
+
+	:global(html.comfort) .year-band {
+		grid-template-columns: 48px 1fr 48px;
+	}
+
 	@media (max-width: 760px) {
 		.year-band {
 			grid-template-columns: 44px 1fr 44px;

@@ -119,7 +119,7 @@
 		font-family: var(--sans);
 		font-size: 11px;
 		letter-spacing: 0.14em;
-		opacity: 0.5;
+		opacity: var(--chrome-opacity, 0.5);
 		text-align: left;
 		text-transform: uppercase;
 	}

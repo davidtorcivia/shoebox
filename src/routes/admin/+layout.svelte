@@ -62,7 +62,7 @@
 		font-family: var(--sans);
 		font-size: 12px;
 		letter-spacing: 0.14em;
-		opacity: 0.5;
+		opacity: var(--chrome-opacity, 0.5);
 		text-decoration: none;
 		text-transform: uppercase;
 	}

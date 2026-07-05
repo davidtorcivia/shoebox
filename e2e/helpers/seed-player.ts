@@ -50,13 +50,9 @@ export async function seedPlayerRoom(page: Page): Promise<SeededPlayer> {
 		{ id: string } | undefined;
 	if (!owner) throw new Error('owner user missing');
 
-	db.prepare('insert into people (id, name, slug, accent_color, created_at) values (?, ?, ?, ?, ?)').run(
-		personId,
-		'Aunt June',
-		`aunt-june-${suffix}`,
-		'#FA7B62',
-		Date.now()
-	);
+	db.prepare(
+		'insert into people (id, name, slug, accent_color, created_at) values (?, ?, ?, ?, ?)'
+	).run(personId, 'Aunt June', `aunt-june-${suffix}`, '#FA7B62', Date.now());
 
 	const videoBytes = await tinyWebm(page);
 	await writeMedia(`media/${videoId}/original.webm`, videoBytes);
@@ -64,6 +60,7 @@ export async function seedPlayerRoom(page: Page): Promise<SeededPlayer> {
 	await writeMedia(`media/${videoId}/thumb_400.webp`, Uint8Array.from([2]));
 	await writeMedia(`media/${videoId}/thumb_800.webp`, Uint8Array.from([3]));
 	await writeMedia(`media/${videoId}/thumb_1600.webp`, Uint8Array.from([4]));
+	await writeMedia(`media/${videoId}/sprite.webp`, Uint8Array.from([9]));
 
 	await writeMedia(`media/${photoId}/original.jpg`, Uint8Array.from([255, 216, 255, 217]));
 	await writeMedia(`media/${photoId}/poster.webp`, Uint8Array.from([5]));
@@ -137,7 +134,7 @@ async function createItem(page: Page, body: Record<string, unknown>): Promise<vo
 function mediaFiles(itemId: string, type: 'video' | 'photo') {
 	const originalExt = type === 'video' ? 'webm' : 'jpg';
 	const originalMime = type === 'video' ? 'video/webm' : 'image/jpeg';
-	return [
+	const files = [
 		{
 			kind: 'original',
 			storageKey: `media/${itemId}/original.${originalExt}`,
@@ -174,6 +171,16 @@ function mediaFiles(itemId: string, type: 'video' | 'photo') {
 			height: type === 'video' ? 900 : 1200
 		}
 	];
+	if (type === 'video') {
+		files.push({
+			kind: 'sprite',
+			storageKey: `media/${itemId}/sprite.webp`,
+			mime: 'image/webp',
+			width: 1600,
+			height: 900
+		});
+	}
+	return files;
 }
 
 async function writeMedia(key: string, bytes: Uint8Array): Promise<void> {

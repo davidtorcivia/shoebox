@@ -56,6 +56,7 @@ export const actions: Actions = {
 			String(fd.get('username') ?? '')
 		);
 		if (!result.ok) return fail(400, { message: result.error });
+		locals.user = { ...locals.user, username: String(fd.get('username') ?? '').trim() };
 		return { saved: 'account' };
 	},
 
@@ -76,11 +77,15 @@ export const actions: Actions = {
 		if (!locals.user) return fail(401, { message: 'Not signed in' });
 		const fd = await request.formData();
 		try {
+			const theme = String(fd.get('theme') ?? 'system') as 'system' | 'dark' | 'light';
+			const comfortMode = fd.get('comfortMode') === 'on';
+			const accentColor = String(fd.get('accentColor') ?? '');
 			await updateAppearance(locals.db, locals.user.id, {
-				accentColor: String(fd.get('accentColor') ?? ''),
-				theme: String(fd.get('theme') ?? 'system') as 'system' | 'dark' | 'light',
-				comfortMode: fd.get('comfortMode') === 'on'
+				accentColor,
+				theme,
+				comfortMode
 			});
+			locals.user = { ...locals.user, accentColor, theme, comfortMode };
 		} catch (err) {
 			return fail(400, { message: err instanceof Error ? err.message : 'Invalid preference' });
 		}

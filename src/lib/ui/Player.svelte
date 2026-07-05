@@ -9,7 +9,7 @@
 		type Shuttle
 	} from '$lib/domain/shuttle';
 	import { CREAM, DAWN, FONT, INK, MOTION } from '$lib/ui/tokens';
-	import { reducedMotion } from '$lib/ui/theme';
+	import { comfortMode, reducedMotion } from '$lib/ui/theme';
 	import ScrubTrack from './ScrubTrack.svelte';
 	import { FRAME_STEP, type PlayerAction } from './player-keys';
 
@@ -150,7 +150,7 @@
 	function poke() {
 		controlsVisible = true;
 		if (hideTimer) clearTimeout(hideTimer);
-		if (paused || noHover || $reducedMotion) return;
+		if (paused || noHover || $reducedMotion || $comfortMode) return;
 		hideTimer = setTimeout(() => {
 			const focusInside = root?.contains(document.activeElement);
 			if (!paused && !focusInside) controlsVisible = false;
@@ -189,7 +189,7 @@
 	onfullscreenchange={() => (fullscreen = document.fullscreenElement === root)}
 >
 	{#if loading && !errored}
-		<div class="hairline" class:sweep={!$reducedMotion} aria-hidden="true"></div>
+		<div class="hairline" class:sweep={!$reducedMotion && !$comfortMode} aria-hidden="true"></div>
 	{/if}
 
 	<!-- svelte-ignore a11y_media_has_caption -->

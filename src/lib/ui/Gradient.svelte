@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { GRAIN_URI, type DecadePalette } from '$lib/ui/tokens';
-	import { reducedMotion, resolvedTheme } from '$lib/ui/theme';
+	import { comfortMode, reducedMotion, resolvedTheme } from '$lib/ui/theme';
 
 	interface Props {
 		stops: [string, string, string];
@@ -18,9 +18,10 @@
 		);
 		return [...radials, linear].join(', ');
 	});
+	const still = $derived($reducedMotion || $comfortMode);
 </script>
 
-<div class="room" class:drift={!$reducedMotion} style:background-image={layers} aria-hidden="true">
+<div class="room" class:drift={!still} style:background-image={layers} aria-hidden="true">
 	<div class="grain" style:background-image={`url("${GRAIN_URI}")`}></div>
 </div>
 

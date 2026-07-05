@@ -84,7 +84,7 @@
 		font-family: var(--sans);
 		font-size: 11px;
 		letter-spacing: 0.14em;
-		opacity: 0.5;
+		opacity: var(--chrome-opacity, 0.5);
 		text-transform: uppercase;
 	}
 
@@ -121,7 +121,7 @@
 	.meta {
 		font-family: var(--sans);
 		font-size: 13px;
-		opacity: 0.5;
+		opacity: var(--chrome-opacity, 0.5);
 	}
 
 	.reason {

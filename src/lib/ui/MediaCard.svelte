@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { captionRight as defaultCaptionRight, formatDuration, thumbSrcset } from './card-format';
 	import type { ItemDTO } from '$lib/types';
+	import { comfortMode } from '$lib/ui/theme';
 
 	interface Props {
 		item: ItemDTO;
@@ -14,7 +15,9 @@
 	const sizes = '(max-width: 720px) 46vw, (max-width: 1100px) 30vw, 22vw';
 	let scrubPct = $state(0);
 	let scrubbing = $state(false);
+	let previewing = $state(false);
 	const spriteFrame = $derived(Math.min(99, Math.max(0, Math.floor(scrubPct))));
+	const spriteVisible = $derived(scrubbing || previewing);
 	const spriteStyle = $derived.by(() => {
 		if (!item.urls.sprite) return '';
 		const col = spriteFrame % 10;
@@ -27,45 +30,59 @@
 	});
 
 	function updateScrub(event: PointerEvent): void {
-		if (!item.urls.sprite) return;
+		if (!item.urls.sprite || $comfortMode) return;
 		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
 		const fraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
 		scrubPct = fraction * 100;
 		scrubbing = true;
 	}
+
+	function cyclePreview(event: MouseEvent): void {
+		event.stopPropagation();
+		scrubPct = (Math.floor(scrubPct / 10) * 10 + 10) % 100;
+		previewing = true;
+	}
 </script>
 
-<article class="card">
-	<button
-		class="media"
-		type="button"
-		aria-label={`Open ${item.title ?? item.displayDate}`}
-		onclick={() => {
-			window.location.href = `/item/${item.id}?y=${activeYear}`;
-		}}
-		onpointermove={updateScrub}
-		onpointerleave={() => (scrubbing = false)}
-	>
-		<img
-			src={item.urls.thumb800 || item.urls.poster}
-			srcset={thumbSrcset(item)}
-			{sizes}
-			alt={item.title ?? item.displayDate}
-			loading="lazy"
-		/>
-		{#if item.urls.sprite}
-			<span class="sprite" class:visible={scrubbing} style={spriteStyle} aria-hidden="true"></span>
-			<span
-				class="scrub-hairline"
-				data-testid="scrub-hairline"
-				style={`transform: scaleX(${scrubPct / 100})`}
-				aria-hidden="true"
-			></span>
+<article class="card" data-type={item.type}>
+	<div class="media-wrap">
+		<button
+			class="media"
+			type="button"
+			aria-label={`Open ${item.title ?? item.displayDate}`}
+			onclick={() => {
+				window.location.href = `/item/${item.id}?y=${activeYear}`;
+			}}
+			onpointermove={updateScrub}
+			onpointerleave={() => (scrubbing = false)}
+		>
+			<img
+				src={item.urls.thumb800 || item.urls.poster}
+				srcset={thumbSrcset(item)}
+				{sizes}
+				alt={item.title ?? item.displayDate}
+				loading="lazy"
+			/>
+			{#if item.urls.sprite}
+				<span class="sprite" class:visible={spriteVisible} style={spriteStyle} aria-hidden="true"
+				></span>
+				{#if !$comfortMode}
+					<span
+						class="scrub-hairline"
+						data-testid="scrub-hairline"
+						style={`transform: scaleX(${scrubPct / 100})`}
+						aria-hidden="true"
+					></span>
+				{/if}
+			{/if}
+			{#if duration}
+				<span class="duration">{duration}</span>
+			{/if}
+		</button>
+		{#if $comfortMode && item.urls.sprite}
+			<button class="preview" type="button" onclick={cyclePreview}>Preview</button>
 		{/if}
-		{#if duration}
-			<span class="duration">{duration}</span>
-		{/if}
-	</button>
+	</div>
 	<div class="caption">
 		<span>{item.shortDate}</span>
 		<span class="right">{captionRight ?? right}</span>
@@ -75,6 +92,10 @@
 <style>
 	.card {
 		color: var(--timeline-chrome, var(--ink));
+	}
+
+	.media-wrap {
+		position: relative;
 	}
 
 	.media {
@@ -145,5 +166,23 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		color: var(--timeline-muted, rgba(23, 20, 18, 0.56));
+	}
+
+	.preview {
+		position: absolute;
+		bottom: 8px;
+		left: 8px;
+		min-width: 48px;
+		min-height: 48px;
+		padding: 0 12px;
+		border: 0;
+		background: var(--cream);
+		color: var(--ink);
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: 0.65rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
 	}
 </style>

@@ -115,7 +115,7 @@
 
 	.eyebrow {
 		margin: 0 0 12px;
-		opacity: 0.58;
+		opacity: var(--chrome-opacity, 0.5);
 	}
 
 	.gate h1 {
@@ -162,7 +162,7 @@
 		font-family: var(--sans);
 		font-size: 12px;
 		letter-spacing: 0.3em;
-		opacity: 0.5;
+		opacity: var(--chrome-opacity, 0.5);
 		pointer-events: none;
 		text-align: center;
 		text-transform: uppercase;

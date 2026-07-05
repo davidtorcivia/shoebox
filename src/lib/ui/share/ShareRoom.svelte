@@ -47,7 +47,7 @@
 		font-family: var(--sans);
 		font-size: 12px;
 		letter-spacing: 0.3em;
-		opacity: 0.5;
+		opacity: var(--chrome-opacity, 0.5);
 		text-align: center;
 		text-transform: uppercase;
 	}

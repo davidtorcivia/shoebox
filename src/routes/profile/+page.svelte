@@ -1,12 +1,18 @@
 <script lang="ts">
 	import AccentSwatches from '$lib/ui/AccentSwatches.svelte';
 	import Gradient from '$lib/ui/Gradient.svelte';
+	import { comfortMode, themePref } from '$lib/ui/theme';
 	import { personRoomFor } from '$lib/ui/tokens';
 
 	let { data, form } = $props();
 	// svelte-ignore state_referenced_locally
 	let accentColor = $state(data.profile.accentColor);
 	const room = $derived(personRoomFor(accentColor));
+
+	$effect(() => {
+		themePref.set(data.profile.theme);
+		comfortMode.set(data.profile.comfortMode);
+	});
 </script>
 
 <svelte:head>
@@ -61,7 +67,12 @@
 						</select>
 					</label>
 					<label class="check">
-						<input type="checkbox" name="comfortMode" checked={data.profile.comfortMode} />
+						<input
+							type="checkbox"
+							name="comfortMode"
+							checked={data.profile.comfortMode}
+							data-testid="comfort-toggle"
+						/>
 						<span>Comfort mode</span>
 					</label>
 					<button type="submit" data-testid="save-appearance">Save appearance</button>

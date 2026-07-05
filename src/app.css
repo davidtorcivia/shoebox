@@ -22,6 +22,7 @@
 	--font-sans: 'Archivo Variable', 'Helvetica Neue', sans-serif;
 	--motion-fast: 200ms;
 	--motion-slow: 300ms;
+	--chrome-opacity: 0.5;
 }
 
 *,
@@ -49,6 +50,33 @@ html {
 
 html.comfort {
 	font-size: 125%;
+	--chrome-opacity: 0.75;
+}
+
+html.comfort *,
+html.comfort *::before,
+html.comfort *::after {
+	animation-duration: 0.01ms !important;
+	animation-iteration-count: 1 !important;
+	scroll-behavior: auto !important;
+	transition-duration: 0.01ms !important;
+}
+
+html.comfort
+	:is(button, [role='button'], select, input:not([type='checkbox']):not([type='radio'])) {
+	min-height: 48px;
+}
+
+html.comfort nav a {
+	display: inline-flex;
+	min-height: 48px;
+	align-items: center;
+}
+
+html.comfort input[type='checkbox'],
+html.comfort input[type='radio'] {
+	width: 28px;
+	height: 28px;
 }
 
 body {

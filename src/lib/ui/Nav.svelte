@@ -26,9 +26,10 @@
 		<a
 			class="profile-link"
 			href={resolve('/profile')}
+			style:--user-accent={user.accentColor}
 			aria-label={`Edit account for ${user.username}`}
 		>
-			<span class="name" style:color={user.accentColor}>{user.username}</span>
+			<span class="name">{user.username}</span>
 			<span
 				class="monogram"
 				style:background={user.accentColor}
@@ -94,7 +95,12 @@
 	}
 
 	.name {
+		color: inherit;
 		font-weight: 600;
+		text-decoration: underline;
+		text-decoration-color: var(--user-accent);
+		text-decoration-thickness: 2px;
+		text-underline-offset: 4px;
 	}
 
 	.monogram {

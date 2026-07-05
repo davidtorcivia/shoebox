@@ -86,7 +86,7 @@
 		font-family: var(--sans);
 		font-size: 11px;
 		letter-spacing: 0.14em;
-		opacity: 0.5;
+		opacity: var(--chrome-opacity, 0.5);
 		text-transform: uppercase;
 	}
 
@@ -193,7 +193,7 @@
 		max-width: 560px;
 		font-family: var(--sans);
 		font-size: 13px;
-		opacity: 0.5;
+		opacity: var(--chrome-opacity, 0.5);
 	}
 
 	:is(input, button):focus-visible {
