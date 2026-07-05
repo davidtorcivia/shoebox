@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { nextAccent } from '$lib/domain/accents';
 import { ACCENTS } from '$lib/ui/tokens';
@@ -13,7 +14,14 @@ import {
 	tagPerson,
 	type TestDb
 } from './testing/db';
-import { createPerson, getPersonDetail, listPeople } from './people';
+import {
+	applyRelationshipChanges,
+	createPerson,
+	deletePersonGuarded,
+	getPersonDetail,
+	listPeople,
+	updatePerson
+} from './people';
 
 let db: TestDb;
 let uploader: Awaited<ReturnType<typeof makeUser>>;
@@ -129,5 +137,175 @@ describe('getPersonDetail', () => {
 		await makeUser(db, { username: 'grandma', personId: meg.id });
 		const detail = (await getPersonDetail(db, stubStorage, meg.id))!;
 		expect(detail.linkedUsername).toBe('grandma');
+	});
+});
+
+describe('updatePerson', () => {
+	it('rejects unknown accents, bad dates, empty names, and missing people', async () => {
+		const meg = await makePerson(db, {});
+		await expect(updatePerson(db, meg.id, { accentColor: '#123456' })).rejects.toMatchObject({
+			status: 400
+		});
+		await expect(updatePerson(db, meg.id, { birthdate: '14 June 1941' })).rejects.toMatchObject({
+			status: 400
+		});
+		await expect(updatePerson(db, meg.id, { name: '  ' })).rejects.toMatchObject({
+			status: 400
+		});
+		await expect(updatePerson(db, nanoid(12), { name: 'X' })).rejects.toMatchObject({
+			status: 404
+		});
+	});
+
+	it('rejects avatar items the person is not tagged in, and bad crops', async () => {
+		const meg = await makePerson(db, {});
+		const item = await makeItem(db, { uploadedBy: uploader.id });
+		await expect(updatePerson(db, meg.id, { avatarItemId: item.id })).rejects.toMatchObject({
+			status: 400
+		});
+		await tagPerson(db, item.id, meg.id);
+		await expect(
+			updatePerson(db, meg.id, {
+				avatarItemId: item.id,
+				avatarCrop: { x: 0.8, y: 0, w: 0.4, h: 0.5 }
+			})
+		).rejects.toMatchObject({ status: 400 });
+		await updatePerson(db, meg.id, {
+			avatarItemId: item.id,
+			avatarCrop: { x: 0.1, y: 0.1, w: 0.4, h: 0.5 }
+		});
+		const detail = (await getPersonDetail(db, stubStorage, meg.id))!;
+		expect(detail.avatarCrop).toEqual({ x: 0.1, y: 0.1, w: 0.4, h: 0.5 });
+	});
+
+	it('updates plain fields', async () => {
+		const meg = await makePerson(db, { name: 'M' });
+		await updatePerson(db, meg.id, {
+			name: 'Margaret Torcivia',
+			birthdate: '1941-03-15',
+			deathDate: '2019-06-01',
+			birthPlace: 'Brooklyn, New York',
+			bio: 'Ran the kitchen.',
+			accentColor: ACCENTS[7].hex
+		});
+		const detail = (await getPersonDetail(db, stubStorage, meg.id))!;
+		expect(detail.name).toBe('Margaret Torcivia');
+		expect(detail.birthPlace).toBe('Brooklyn, New York');
+		expect(detail.accentColor).toBe(ACCENTS[7].hex);
+	});
+});
+
+describe('deletePersonGuarded', () => {
+	it('refuses with the tag count when item_people rows exist', async () => {
+		const meg = await makePerson(db, {});
+		const item = await makeItem(db, { uploadedBy: uploader.id });
+		await tagPerson(db, item.id, meg.id);
+		expect(await deletePersonGuarded(db, meg.id)).toEqual({ ok: false, taggedCount: 1 });
+	});
+
+	it('deletes an untagged person, their rels, and unlinks users', async () => {
+		const meg = await makePerson(db, {});
+		const frank = await makePerson(db, {});
+		await db.insert(schema.relationships).values({
+			id: nanoid(12),
+			personA: frank.id,
+			personB: meg.id,
+			type: 'spouse-of'
+		});
+		const account = await makeUser(db, { personId: meg.id });
+		expect(await deletePersonGuarded(db, meg.id)).toEqual({ ok: true });
+		expect(await db.select().from(schema.people).where(eq(schema.people.id, meg.id))).toHaveLength(0);
+		expect(await db.select().from(schema.relationships)).toHaveLength(0);
+		const after = (await db.select().from(schema.users)).find((user) => user.id === account.id)!;
+		expect(after.personId).toBeNull();
+	});
+
+	it('404s on a missing person', async () => {
+		await expect(deletePersonGuarded(db, nanoid(12))).rejects.toMatchObject({ status: 404 });
+	});
+});
+
+describe('applyRelationshipChanges', () => {
+	it('canonicalizes symmetric rels at write time', async () => {
+		const meg = await makePerson(db, { id: 'p-meg' });
+		await makePerson(db, { id: 'p-frank' });
+		await applyRelationshipChanges(db, meg.id, {
+			add: [{ personA: 'p-meg', personB: 'p-frank', type: 'spouse-of' }],
+			remove: []
+		});
+		const [row] = await db.select().from(schema.relationships);
+		expect(row.personA).toBe('p-frank');
+		expect(row.personB).toBe('p-meg');
+	});
+
+	it('rejects self-rels, unknown people, rels not involving the person, and bad types', async () => {
+		const meg = await makePerson(db, {});
+		const other = await makePerson(db, {});
+		const third = await makePerson(db, {});
+		const bad = (add: object) =>
+			applyRelationshipChanges(db, meg.id, { add: [add as never], remove: [] });
+		await expect(
+			bad({ personA: meg.id, personB: meg.id, type: 'spouse-of' })
+		).rejects.toMatchObject({ status: 400 });
+		await expect(
+			bad({ personA: meg.id, personB: nanoid(12), type: 'spouse-of' })
+		).rejects.toMatchObject({ status: 400 });
+		await expect(
+			bad({ personA: other.id, personB: third.id, type: 'spouse-of' })
+		).rejects.toMatchObject({ status: 400 });
+		await expect(
+			bad({ personA: meg.id, personB: other.id, type: 'best-of' })
+		).rejects.toMatchObject({ status: 400 });
+	});
+
+	it('409s on duplicates in either input order', async () => {
+		const meg = await makePerson(db, { id: 'p-meg' });
+		await makePerson(db, { id: 'p-frank' });
+		await applyRelationshipChanges(db, meg.id, {
+			add: [{ personA: 'p-frank', personB: 'p-meg', type: 'spouse-of' }],
+			remove: []
+		});
+		await expect(
+			applyRelationshipChanges(db, meg.id, {
+				add: [{ personA: 'p-meg', personB: 'p-frank', type: 'spouse-of' }],
+				remove: []
+			})
+		).rejects.toMatchObject({ status: 409 });
+	});
+
+	it('allows replacing a relationship removed in the same change set', async () => {
+		const meg = await makePerson(db, { id: 'p-meg' });
+		await makePerson(db, { id: 'p-frank' });
+		await applyRelationshipChanges(db, meg.id, {
+			add: [{ personA: 'p-meg', personB: 'p-frank', type: 'spouse-of' }],
+			remove: []
+		});
+		await expect(
+			applyRelationshipChanges(db, meg.id, {
+				add: [{ personA: 'p-frank', personB: 'p-meg', type: 'spouse-of' }],
+				remove: [{ personA: 'p-meg', personB: 'p-frank', type: 'spouse-of' }]
+			})
+		).resolves.toMatchObject({ spouses: [{ id: 'p-frank' }] });
+	});
+
+	it('removes rels given either order and returns the updated family', async () => {
+		const meg = await makePerson(db, { id: 'p-meg', name: 'Margaret' });
+		const frank = await makePerson(db, { id: 'p-frank', name: 'Frank' });
+		const carol = await makePerson(db, { id: 'p-carol', name: 'Carol' });
+		let family = await applyRelationshipChanges(db, meg.id, {
+			add: [
+				{ personA: 'p-meg', personB: 'p-frank', type: 'spouse-of' },
+				{ personA: 'p-meg', personB: 'p-carol', type: 'parent-of' }
+			],
+			remove: []
+		});
+		expect(family.spouses.map((person) => person.id)).toEqual([frank.id]);
+		expect(family.children.map((person) => person.id)).toEqual([carol.id]);
+		family = await applyRelationshipChanges(db, meg.id, {
+			add: [],
+			remove: [{ personA: 'p-meg', personB: 'p-frank', type: 'spouse-of' }]
+		});
+		expect(family.spouses).toEqual([]);
+		expect(family.children.map((person) => person.id)).toEqual([carol.id]);
 	});
 });

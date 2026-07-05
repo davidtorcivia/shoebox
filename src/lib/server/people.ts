@@ -1,10 +1,11 @@
 import { error } from '@sveltejs/kit';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { nextAccent } from '$lib/domain/accents';
 import { ageAt } from '$lib/domain/ages';
 import type { CropRect, FamilyRefs, PersonDetailDTO, PersonListDTO, PersonRef } from '$lib/domain/people-dto';
-import { familyOf, type Rel } from '$lib/domain/relationships';
+import { canonicalRel, familyOf, type Rel, type RelType } from '$lib/domain/relationships';
+import { ACCENTS } from '$lib/ui/tokens';
 import type { Db } from '$lib/server/db';
 import {
 	albumItems,
@@ -235,4 +236,163 @@ async function avatarUrls(
 		.where(and(inArray(itemFiles.itemId, ids), eq(itemFiles.kind, kind)));
 	for (const row of rows) map.set(row.itemId, await storage.mediaUrl(row.key));
 	return map;
+}
+
+export const PERSON_PATCH_KEYS = [
+	'name',
+	'birthdate',
+	'deathDate',
+	'birthPlace',
+	'bio',
+	'accentColor',
+	'avatarItemId',
+	'avatarCrop'
+] as const;
+
+export type PersonPatch = {
+	name?: string;
+	birthdate?: string | null;
+	deathDate?: string | null;
+	birthPlace?: string | null;
+	bio?: string | null;
+	accentColor?: string;
+	avatarItemId?: string | null;
+	avatarCrop?: CropRect | null;
+};
+
+export async function updatePerson(db: Db, id: string, patch: PersonPatch): Promise<void> {
+	const row = (await db.select().from(people).where(eq(people.id, id)).limit(1))[0];
+	if (!row) error(404, 'person not found');
+
+	if (patch.name !== undefined && !patch.name.trim()) error(400, 'name must be non-empty');
+	for (const date of [patch.birthdate, patch.deathDate]) {
+		if (date != null && !ISO_DATE.test(date)) error(400, 'dates must be ISO YYYY-MM-DD');
+	}
+	if (
+		patch.accentColor !== undefined &&
+		!ACCENTS.some((accent) => accent.hex === patch.accentColor)
+	) {
+		error(400, 'accentColor must be one of the ACCENTS hexes');
+	}
+	if (patch.avatarItemId != null) {
+		const tagged = await db
+			.select({ itemId: itemPeople.itemId })
+			.from(itemPeople)
+			.where(and(eq(itemPeople.itemId, patch.avatarItemId), eq(itemPeople.personId, id)))
+			.limit(1);
+		if (tagged.length === 0) error(400, 'avatar item must be tagged with this person');
+	}
+	if (patch.avatarCrop != null && !validCrop(patch.avatarCrop)) error(400, 'invalid avatar crop');
+
+	const set: Partial<typeof people.$inferInsert> = {};
+	if (patch.name !== undefined) set.name = patch.name.trim();
+	if (patch.birthdate !== undefined) set.birthdate = patch.birthdate;
+	if (patch.deathDate !== undefined) set.deathDate = patch.deathDate;
+	if (patch.birthPlace !== undefined) set.birthPlace = patch.birthPlace;
+	if (patch.bio !== undefined) set.bio = patch.bio;
+	if (patch.accentColor !== undefined) set.accentColor = patch.accentColor;
+	if (patch.avatarItemId !== undefined) set.avatarItemId = patch.avatarItemId;
+	if (patch.avatarCrop !== undefined) {
+		set.avatarCrop = patch.avatarCrop === null ? null : JSON.stringify(patch.avatarCrop);
+	}
+	if (Object.keys(set).length > 0) await db.update(people).set(set).where(eq(people.id, id));
+}
+
+export async function deletePersonGuarded(
+	db: Db,
+	id: string
+): Promise<{ ok: true } | { ok: false; taggedCount: number }> {
+	const row = (await db.select().from(people).where(eq(people.id, id)).limit(1))[0];
+	if (!row) error(404, 'person not found');
+
+	const [{ count }] = await db
+		.select({ count: sql<number>`count(*)` })
+		.from(itemPeople)
+		.where(eq(itemPeople.personId, id));
+	const taggedCount = Number(count);
+	if (taggedCount > 0) return { ok: false, taggedCount };
+
+	await db.delete(relationships).where(or(eq(relationships.personA, id), eq(relationships.personB, id)));
+	await db.update(users).set({ personId: null }).where(eq(users.personId, id));
+	await db.delete(people).where(eq(people.id, id));
+	return { ok: true };
+}
+
+export async function applyRelationshipChanges(
+	db: Db,
+	personId: string,
+	changes: { add: Rel[]; remove: Rel[] }
+): Promise<FamilyRefs> {
+	const row = (await db.select().from(people).where(eq(people.id, personId)).limit(1))[0];
+	if (!row) error(404, 'person not found');
+
+	const all = [...changes.add, ...changes.remove];
+	for (const rel of all) {
+		if (
+			typeof rel?.personA !== 'string' ||
+			typeof rel?.personB !== 'string' ||
+			!REL_TYPES.includes(rel.type)
+		) {
+			error(400, 'malformed relationship');
+		}
+		if (rel.personA === rel.personB) error(400, 'a person cannot relate to themself');
+		if (rel.personA !== personId && rel.personB !== personId) {
+			error(400, 'relationship must involve this person');
+		}
+	}
+
+	const personIds = [...new Set(all.flatMap((rel) => [rel.personA, rel.personB]))];
+	if (personIds.length > 0) {
+		const found = await db
+			.select({ id: people.id })
+			.from(people)
+			.where(inArray(people.id, personIds));
+		if (found.length !== personIds.length) error(400, 'unknown person id in relationship');
+	}
+
+	const adds = changes.add.map(canonicalRel);
+	const removes = changes.remove.map(canonicalRel);
+	const existing = new Set((await db.select().from(relationships)).map(relKey));
+	for (const rel of removes) existing.delete(relKey(rel));
+	const batch = new Set<string>();
+	for (const rel of adds) {
+		const key = relKey(rel);
+		if (existing.has(key) || batch.has(key)) error(409, 'duplicate relationship');
+		batch.add(key);
+	}
+
+	for (const rel of removes) {
+		await db
+			.delete(relationships)
+			.where(
+				and(
+					eq(relationships.personA, rel.personA),
+					eq(relationships.personB, rel.personB),
+					eq(relationships.type, rel.type)
+				)
+			);
+	}
+	if (adds.length > 0) {
+		await db.insert(relationships).values(adds.map((rel) => ({ id: nanoid(12), ...rel })));
+	}
+
+	return resolveFamily(db, personId);
+}
+
+const REL_TYPES: RelType[] = ['parent-of', 'spouse-of', 'sibling-of'];
+
+function relKey(rel: Rel): string {
+	return `${rel.personA}|${rel.personB}|${rel.type}`;
+}
+
+function validCrop(crop: CropRect): boolean {
+	return (
+		[crop.x, crop.y, crop.w, crop.h].every(
+			(value) => Number.isFinite(value) && value >= 0 && value <= 1
+		) &&
+		crop.w > 0 &&
+		crop.h > 0 &&
+		crop.x + crop.w <= 1 &&
+		crop.y + crop.h <= 1
+	);
 }
