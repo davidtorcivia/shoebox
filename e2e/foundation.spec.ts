@@ -146,7 +146,7 @@ test('media upload API golden path, range streaming, dedupe, trash and restore',
 
 	const timeline = await page.request.get('/api/timeline');
 	expect(timeline.ok()).toBe(true);
-	expect((await timeline.json()).years).toContainEqual({ year: 1994, count: 1 });
+	expect((await timeline.json()).years).toContainEqual({ year: 1994, count: 1, people: 0 });
 
 	const duplicate = await page.request.post('/api/upload/init', {
 		data: { sha256, sizeBytes: bytes.length, mime: 'video/mp4', filename: 'tiny.mp4' }
@@ -162,4 +162,9 @@ test('media upload API golden path, range streaming, dedupe, trash and restore',
 		data: { action: 'restore' }
 	});
 	expect(restored.ok()).toBe(true);
+
+	await page.goto('/?y=1994');
+	await expect(page.getByRole('heading', { name: '1994' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Open Tiny clip' })).toBeVisible();
+	await expect(page.getByText('1 moments · 0 people')).toBeVisible();
 });
