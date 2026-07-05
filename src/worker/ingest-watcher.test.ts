@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
 import { copyFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -7,7 +7,12 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { FIXTURE_JPG, FIXTURE_MP4, generateFixtures } from '../../e2e/fixtures/generate';
 import * as schema from '../lib/server/db/schema';
 import { createFsStorage } from '../lib/server/platform/storage-fs';
-import { processIngestFile, sha256File, type IngestDeps } from './ingest-watcher';
+import {
+	processIngestFile,
+	sha256File,
+	startIngestWatcher,
+	type IngestDeps
+} from './ingest-watcher';
 import { createTestDb, seedOwner } from './test-helpers';
 
 beforeAll(async () => {
@@ -58,6 +63,85 @@ describe('sha256File', () => {
 		expect(first).toMatch(/^[0-9a-f]{64}$/);
 		expect(await sha256File(abs)).toBe(first);
 	});
+});
+
+describe('processIngestFile for duplicates and failures', () => {
+	it('moves a re-dropped identical file to _duplicates', async () => {
+		const env = makeEnv();
+		const first = await drop(env, '1994/christmas/clip.mp4', FIXTURE_MP4);
+		await processIngestFile(env.deps, first);
+		const second = await drop(env, '1994/christmas/clip-copy.mp4', FIXTURE_MP4);
+		const result = await processIngestFile(env.deps, second);
+
+		expect(result.status).toBe('duplicate');
+		expect(existsSync(second)).toBe(false);
+		expect(readdirSync(join(env.ingestPath, '_duplicates'))).toEqual(['clip-copy.mp4']);
+		expect(env.deps.db.select().from(schema.items).all()).toHaveLength(1);
+	});
+
+	it('routes unsupported extensions to _failed with a failed ingest_scan jobs row', async () => {
+		const env = makeEnv();
+		const abs = await drop(env, 'notes/readme.txt', FIXTURE_JPG);
+		const result = await processIngestFile(env.deps, abs);
+
+		expect(result.status).toBe('failed');
+		expect(readdirSync(join(env.ingestPath, '_failed'))).toEqual(['readme.txt']);
+		const jobs = env.deps.db.select().from(schema.jobs).all();
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0].kind).toBe('ingest_scan');
+		expect(jobs[0].status).toBe('failed');
+		expect(JSON.parse(jobs[0].payload)).toEqual({
+			path: 'notes/readme.txt',
+			reason: 'unsupported extension .txt'
+		});
+	});
+
+	it('routes extension/content mismatches to _failed', async () => {
+		const env = makeEnv();
+		const abs = await drop(env, '1994/fake.mp4', FIXTURE_JPG);
+		const result = await processIngestFile(env.deps, abs);
+
+		expect(result.status).toBe('failed');
+		if (result.status !== 'failed') throw new Error('expected failed result');
+		expect(result.reason).toContain('do not match');
+		expect(readdirSync(join(env.ingestPath, '_failed'))).toEqual(['fake.mp4']);
+	});
+});
+
+describe('startIngestWatcher', () => {
+	it('picks up files dropped after start once size is stable', async () => {
+		const env = makeEnv();
+		const watcher = startIngestWatcher(env.deps, { stabilityMs: 100, usePolling: true });
+		try {
+			await drop(env, '1994/christmas/clip.mp4', FIXTURE_MP4);
+			const deadline = Date.now() + 15_000;
+			for (;;) {
+				await watcher.idle();
+				if (env.deps.db.select().from(schema.items).all().length === 1) break;
+				if (Date.now() > deadline) throw new Error('watcher never ingested the file');
+				await new Promise((resolve) => setTimeout(resolve, 100));
+			}
+			const item = env.deps.db.select().from(schema.items).all()[0];
+			expect(item.status).toBe('needs_review');
+			expect(item.source).toBe('ingest');
+		} finally {
+			await watcher.close();
+		}
+	}, 20_000);
+
+	it('ignores files inside _duplicates and _failed', async () => {
+		const env = makeEnv();
+		await mkdir(join(env.ingestPath, '_duplicates'), { recursive: true });
+		await drop(env, '_duplicates/old.mp4', FIXTURE_MP4);
+		const watcher = startIngestWatcher(env.deps, { stabilityMs: 100, usePolling: true });
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 1500));
+			await watcher.idle();
+			expect(env.deps.db.select().from(schema.items).all()).toHaveLength(0);
+		} finally {
+			await watcher.close();
+		}
+	}, 10_000);
 });
 
 describe('processIngestFile for video with year and tag hints', () => {

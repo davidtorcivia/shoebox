@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import { copyFile, mkdir, rename, stat, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join, relative, sep } from 'node:path';
+import chokidar from 'chokidar';
 import { eq } from 'drizzle-orm';
 import exifr from 'exifr';
 import { fileTypeFromFile } from 'file-type';
@@ -227,4 +228,42 @@ export async function processIngestFile(
 	if (type === 'video') await deps.enqueue('sprite', { itemId: id });
 	console.log(`[ingest] created item ${id} from ${relPath}`);
 	return { status: 'ingested', itemId: id };
+}
+
+export function startIngestWatcher(
+	deps: IngestDeps,
+	opts: { stabilityMs?: number; usePolling?: boolean } = {}
+): { idle(): Promise<void>; close(): Promise<void> } {
+	const stabilityMs = opts.stabilityMs ?? 2000;
+	let queue: Promise<void> = Promise.resolve();
+	const watcher = chokidar.watch(deps.ingestPath, {
+		ignoreInitial: false,
+		ignored: (path: string) =>
+			path.includes(`${sep}_duplicates${sep}`) ||
+			path.endsWith(`${sep}_duplicates`) ||
+			path.includes(`${sep}_failed${sep}`) ||
+			path.endsWith(`${sep}_failed`),
+		awaitWriteFinish: {
+			stabilityThreshold: stabilityMs,
+			pollInterval: Math.min(200, stabilityMs)
+		},
+		usePolling: opts.usePolling ?? false
+	});
+
+	watcher.on('add', (absPath: string) => {
+		queue = queue
+			.then(() => processIngestFile(deps, absPath))
+			.then(
+				() => undefined,
+				(err) => console.error(`[ingest] unexpected error for ${absPath}`, err)
+			);
+	});
+
+	return {
+		idle: () => queue.then(() => undefined),
+		close: async () => {
+			await watcher.close();
+			await queue;
+		}
+	};
 }

@@ -5,6 +5,7 @@ import { openNodeDb } from '../lib/server/platform/db-node';
 import { createSqliteQueue } from '../lib/server/platform/queue-sqlite';
 import { createFsStorage } from '../lib/server/platform/storage-fs';
 import { derivativesHandler, spriteHandler } from './derivatives';
+import { startIngestWatcher } from './ingest-watcher';
 import {
 	claimJob,
 	runJob,
@@ -100,8 +101,14 @@ async function main(): Promise<void> {
 	if (ingestPath) {
 		const ownerId = await waitForOwner(db);
 		console.log(`[worker] ingestion watcher on ${ingestPath}`);
-		void queue;
-		void ownerId;
+		watcher = startIngestWatcher({
+			db,
+			storage,
+			ingestPath,
+			mediaPath,
+			ownerId,
+			enqueue: (kind, payload) => queue.enqueue(kind, payload)
+		});
 	}
 
 	const shutdown = async (signal: string): Promise<void> => {
