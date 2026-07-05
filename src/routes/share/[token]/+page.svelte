@@ -66,18 +66,8 @@
 		/>
 	{/if}
 {:else}
-	<main class="room" style={`${room}; ${themeVars}`}>
-		<div class="grain" style={`background-image:url("${GRAIN_URI}")`}></div>
-		<section class="gate">
-			<p class="eyebrow">A shared memory from Shoebox</p>
-			<h1>{data.album ? data.album.title : (data.items[0].title ?? 'A memory')}</h1>
-			<p class="sub">
-				{data.items.length}
-				{data.items.length === 1 ? 'memory' : 'memories'}
-			</p>
-		</section>
-		<footer class="wordmark">SHOEBOX</footer>
-	</main>
+	<ShareViewer items={data.items} index={0} allowDownload={data.share.allowDownload} single />
+	<footer class="item-wordmark" data-testid="share-wordmark">SHOEBOX</footer>
 {/if}
 
 <style>
@@ -160,6 +150,22 @@
 		font-family: var(--serif);
 		font-size: 18px;
 		line-height: 1.45;
+	}
+
+	.item-wordmark {
+		position: fixed;
+		right: 0;
+		bottom: 0;
+		left: 0;
+		padding: 12px 0;
+		color: var(--cream);
+		font-family: var(--sans);
+		font-size: 12px;
+		letter-spacing: 0.3em;
+		opacity: 0.5;
+		pointer-events: none;
+		text-align: center;
+		text-transform: uppercase;
 	}
 
 	.sub {
