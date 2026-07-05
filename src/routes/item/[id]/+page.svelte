@@ -6,6 +6,7 @@
 	import type { PlayerAction } from '$lib/ui/player-keys';
 	import { isTypingTag, mapPlayerKey } from '$lib/ui/player-keys';
 	import { GRAIN_URI, playerRoomFor } from '$lib/ui/tokens';
+	import AlbumToggle from '$lib/ui/AlbumToggle.svelte';
 	import Lightbox from '$lib/ui/Lightbox.svelte';
 	import MetaForm, { type MetaPatchPayload } from '$lib/ui/MetaForm.svelte';
 	import PeopleRow from '$lib/ui/PeopleRow.svelte';
@@ -171,6 +172,7 @@
 				<details class="edit">
 					<summary>Edit metadata</summary>
 					<MetaForm {item} onsubmit={(payload) => void save(payload)} />
+					<AlbumToggle itemId={item.id} memberships={item.albums} />
 					{#if saveState}
 						<p class="save-state">{saveState}</p>
 					{/if}
