@@ -17,7 +17,12 @@ type SeededPlayer = {
 
 export async function ensureOwner(page: Page): Promise<void> {
 	await page.goto('/setup');
-	if (await page.getByRole('heading', { name: 'Set up Shoebox' }).isVisible().catch(() => false)) {
+	if (
+		await page
+			.getByRole('heading', { name: 'Set up Shoebox' })
+			.isVisible()
+			.catch(() => false)
+	) {
 		await page.getByLabel('Username').fill(OWNER.username);
 		await page.getByLabel('Password').fill(OWNER.password);
 		await page.getByRole('button', { name: 'Create owner' }).click();
@@ -42,13 +47,15 @@ export async function seedPlayerRoom(page: Page): Promise<SeededPlayer> {
 
 	const db = new Database(DB_PATH);
 	const owner = db.prepare('select id from users where username = ?').get(OWNER.username) as
-		| { id: string }
-		| undefined;
+		{ id: string } | undefined;
 	if (!owner) throw new Error('owner user missing');
 
-	db.prepare(
-		'insert into people (id, name, accent_color, created_at) values (?, ?, ?, ?)'
-	).run(personId, 'Aunt June', '#FA7B62', Date.now());
+	db.prepare('insert into people (id, name, accent_color, created_at) values (?, ?, ?, ?)').run(
+		personId,
+		'Aunt June',
+		'#FA7B62',
+		Date.now()
+	);
 
 	const videoBytes = await tinyWebm(page);
 	await writeMedia(`media/${videoId}/original.webm`, videoBytes);
@@ -100,9 +107,12 @@ export async function seedPlayerRoom(page: Page): Promise<SeededPlayer> {
 		files: mediaFiles(photoId, 'photo')
 	});
 
-	db.prepare(
-		'insert into albums (id, title, created_by, created_at) values (?, ?, ?, ?)'
-	).run(albumId, 'Player E2E Album', owner.id, Date.now());
+	db.prepare('insert into albums (id, title, created_by, created_at) values (?, ?, ?, ?)').run(
+		albumId,
+		'Player E2E Album',
+		owner.id,
+		Date.now()
+	);
 	db.prepare('insert into album_items (album_id, item_id, position) values (?, ?, ?)').run(
 		albumId,
 		videoId,
@@ -185,7 +195,9 @@ async function tinyWebm(page: Page): Promise<Uint8Array> {
 		recorder.addEventListener('dataavailable', (event) => {
 			if (event.data.size > 0) chunks.push(event.data);
 		});
-		const stopped = new Promise<void>((resolve) => recorder.addEventListener('stop', () => resolve()));
+		const stopped = new Promise<void>((resolve) =>
+			recorder.addEventListener('stop', () => resolve())
+		);
 		recorder.start();
 		await new Promise((resolve) => setTimeout(resolve, 250));
 		ctx.fillStyle = '#FA7B62';

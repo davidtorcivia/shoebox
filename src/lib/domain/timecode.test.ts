@@ -18,4 +18,3 @@ describe('formatTimecode', () => {
 		expect(formatTimecode(Infinity)).toBe('00:00');
 	});
 });
-

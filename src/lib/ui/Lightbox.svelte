@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { MOTION } from '$lib/ui/tokens';
 	import { reducedMotion } from '$lib/ui/theme';
+	import { SvelteMap } from 'svelte/reactivity';
 	import { clampOffset, pinchScale, toggleZoom } from './zoom-math';
 
 	interface Props {
@@ -16,7 +17,7 @@
 	let y = $state(0);
 	let dragging = $state(false);
 
-	const pointers = new Map<number, { x: number; y: number }>();
+	const pointers = new SvelteMap<number, { x: number; y: number }>();
 	let pinchStart: { distance: number; scale: number } | null = null;
 	let panStart: { px: number; py: number; x: number; y: number } | null = null;
 	let lastTap = { time: 0, x: 0, y: 0 };
@@ -40,8 +41,18 @@
 			x = 0;
 			y = 0;
 		} else {
-			x = clampOffset(-(clientX - (rect.left + rect.width / 2)) * next, next, rect.width, rect.width);
-			y = clampOffset(-(clientY - (rect.top + rect.height / 2)) * next, next, rect.height, rect.height);
+			x = clampOffset(
+				-(clientX - (rect.left + rect.width / 2)) * next,
+				next,
+				rect.width,
+				rect.width
+			);
+			y = clampOffset(
+				-(clientY - (rect.top + rect.height / 2)) * next,
+				next,
+				rect.height,
+				rect.height
+			);
 		}
 	}
 

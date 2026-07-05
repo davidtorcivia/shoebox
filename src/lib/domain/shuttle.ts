@@ -1,7 +1,5 @@
 export type Shuttle =
-	| { mode: 'pause' }
-	| { mode: 'forward'; rate: 1 | 2 }
-	| { mode: 'reverse'; rate: 2 };
+	{ mode: 'pause' } | { mode: 'forward'; rate: 1 | 2 } | { mode: 'reverse'; rate: 2 };
 
 export const SHUTTLE_PAUSED: Shuttle = { mode: 'pause' };
 
@@ -22,4 +20,3 @@ export function nextRate(rate: number): number {
 	const index = (RATES as readonly number[]).indexOf(rate);
 	return index === -1 ? 1 : RATES[(index + 1) % RATES.length];
 }
-

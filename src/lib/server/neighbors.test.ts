@@ -8,7 +8,11 @@ let db: TestDb;
 async function seedItem(
 	id: string,
 	sortDate: string | null,
-	opts: Partial<{ type: 'video' | 'photo'; status: 'ready' | 'needs_review'; deleted: boolean }> = {}
+	opts: Partial<{
+		type: 'video' | 'photo';
+		status: 'ready' | 'needs_review';
+		deleted: boolean;
+	}> = {}
 ) {
 	await db.insert(items).values({
 		id,

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { CREAM, FONT, accentOn } from '$lib/ui/tokens';
 	import type { ItemDTO } from '$lib/dto';
 
@@ -22,7 +23,7 @@
 			<span class="empty">Unidentified</span>
 		{:else}
 			{#each people as person (person.id)}
-				<a class="person" href={`/people/${person.id}`}>
+				<a class="person" href={resolve(`/people?person=${person.id}`)}>
 					<span
 						class="avatar"
 						aria-hidden="true"

@@ -158,8 +158,7 @@
 	}
 
 	$effect(() => {
-		paused;
-		poke();
+		if (paused !== undefined) poke();
 	});
 
 	$effect(() => {
@@ -209,7 +208,8 @@
 		ontimeupdate={() => (currentTime = video?.currentTime ?? 0)}
 		ondurationchange={() => (duration = video?.duration || durationHint || 0)}
 		onprogress={() => {
-			if (video && video.buffered.length > 0) buffered = video.buffered.end(video.buffered.length - 1);
+			if (video && video.buffered.length > 0)
+				buffered = video.buffered.end(video.buffered.length - 1);
 		}}
 		onwaiting={() => (loading = true)}
 		oncanplay={() => (loading = false)}

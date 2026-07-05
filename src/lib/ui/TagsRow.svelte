@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { CREAM, DAWN_PALE, FONT } from '$lib/ui/tokens';
 	import type { ItemDTO } from '$lib/dto';
 
@@ -24,10 +25,10 @@
 			<span class="empty">None</span>
 		{:else}
 			{#each tags as tag (tag.id)}
-				<a href={`/?tags=${tag.id}`}>{tag.name}</a>
+				<a href={resolve(`/?tags=${tag.id}`)}>{tag.name}</a>
 			{/each}
 			{#each albums as album (album.id)}
-				<a href={`/albums/${album.id}`}>{album.title}</a>
+				<a href={resolve(`/albums?album=${album.id}`)}>{album.title}</a>
 			{/each}
 		{/if}
 	</div>

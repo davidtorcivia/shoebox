@@ -7,4 +7,3 @@ export function formatTimecode(seconds: number): string {
 	const ss = String(remainder).padStart(2, '0');
 	return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
 }
-

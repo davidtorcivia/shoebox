@@ -19,4 +19,3 @@ export function eyebrowFor(
 	);
 	return parts.join(' · ');
 }
-

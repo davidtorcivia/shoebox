@@ -19,9 +19,7 @@ describe('weekdayOf', () => {
 
 describe('eyebrowFor', () => {
 	it('renders full provenance', () => {
-		expect(eyebrowFor(day('1994-06-14'), 'ingest', 'Tape 04')).toBe(
-			'Tuesday · Ingest · Tape 04'
-		);
+		expect(eyebrowFor(day('1994-06-14'), 'ingest', 'Tape 04')).toBe('Tuesday · Ingest · Tape 04');
 	});
 
 	it('drops empty segments', () => {
@@ -35,4 +33,3 @@ describe('eyebrowFor', () => {
 		expect(eyebrowFor(day('1994-06-14'), 'upload', null)).toBe('Tuesday · Upload');
 	});
 });
-

@@ -31,7 +31,6 @@
 	const roomYear = $derived(year ?? data.backYear ?? new Date().getFullYear());
 	const room = $derived(playerRoomFor(roomYear));
 	const backLabel = $derived(data.backYear ?? year ?? 'Timeline');
-	const backHref = $derived(data.backYear ? resolve(`/?y=${data.backYear}`) : resolve('/'));
 	const title = $derived(item.title ?? item.displayDate);
 	const mediaSrc = $derived(item.urls.original ?? item.urls.thumb1600 ?? item.urls.poster);
 	const poster = $derived(item.urls.poster || item.urls.thumb800 || item.urls.thumb1600);
@@ -43,14 +42,9 @@
 		saveState = '';
 	});
 
-	function itemHref(id: string | null): string | null {
-		if (!id) return null;
-		return `/item/${id}${data.contextQuery ? `?${data.contextQuery}` : ''}`;
-	}
-
 	function navigateTo(id: string | null) {
-		const href = itemHref(id);
-		if (href) void goto(href);
+		if (!id) return;
+		void goto(resolve(`/item/${id}${data.contextQuery ? `?${data.contextQuery}` : ''}`));
 	}
 
 	function handleRoomAction(action: PlayerAction) {
@@ -68,7 +62,7 @@
 		} else if (action.type === 'next-item') {
 			navigateTo(data.neighbors.nextId);
 		} else if (action.type === 'close') {
-			void goto(backHref);
+			void goto(data.backYear ? resolve(`/?y=${data.backYear}`) : resolve('/'));
 		}
 	}
 
@@ -113,9 +107,13 @@
 	style={`--stop-0: ${room.stops[0]}; --stop-1: ${room.stops[1]}; --stop-2: ${room.stops[2]}; --pool: ${room.pool}; --grain: url("${GRAIN_URI}")`}
 >
 	<header class="topbar">
-		<a href={backHref}>← Back to {backLabel}</a>
+		<a href={data.backYear ? resolve(`/?y=${data.backYear}`) : resolve('/')}
+			>← Back to {backLabel}</a
+		>
 		<h1>{title}</h1>
-		<a href={backHref} aria-label="Close">✕ Close</a>
+		<a href={data.backYear ? resolve(`/?y=${data.backYear}`) : resolve('/')} aria-label="Close"
+			>✕ Close</a
+		>
 	</header>
 
 	<div class="room-grid">
@@ -188,8 +186,7 @@
 		padding: clamp(1rem, 2vw, 2rem);
 		color: var(--cream);
 		background-image:
-			var(--grain),
-			radial-gradient(80% 60% at 100% 0%, var(--pool) 0%, transparent 60%),
+			var(--grain), radial-gradient(80% 60% at 100% 0%, var(--pool) 0%, transparent 60%),
 			linear-gradient(160deg, var(--stop-0) 0%, var(--stop-1) 55%, var(--stop-2) 100%);
 		background-blend-mode: overlay, normal, normal;
 	}

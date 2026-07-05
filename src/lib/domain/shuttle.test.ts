@@ -46,4 +46,3 @@ describe('nextRate', () => {
 		expect(nextRate(3)).toBe(1);
 	});
 });
-

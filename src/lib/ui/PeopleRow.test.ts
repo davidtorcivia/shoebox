@@ -15,7 +15,7 @@ describe('PeopleRow', () => {
 		expect(body).toContain('Marta');
 		expect(body).toContain('Eric');
 		expect(body).toContain('age 38');
-		expect(body).toContain('/people/p1');
+		expect(body).toContain('/people?person=p1');
 	});
 
 	it('does not emit italic, radius, or media-border styling', () => {
