@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import {
 	albumItems,
@@ -19,6 +19,7 @@ import {
 	yearOf,
 	type ItemDate
 } from '$lib/domain/dates';
+import { HOLIDAYS, holidaysFor } from '$lib/domain/holidays';
 import { bumpYearCount } from '$lib/server/aggregates';
 import { ROLE_RANK } from '$lib/server/roles';
 import { reindexItem } from '$lib/server/search';
@@ -174,6 +175,7 @@ export async function createItem(
 	await setItemPeople(db, id, personIds, { reindex: false });
 	await setItemTags(db, id, input.tags, { reindex: false });
 	await bumpYearCount(db, yearOf(input.date), input.type, 1);
+	await applyHolidayTags(db, id);
 	await reindexItem(db, id);
 
 	await queue.enqueue('derivatives', { itemId: id });
@@ -465,6 +467,7 @@ export async function updateItem(
 	}
 	if (patch.people) await setItemPeople(db, id, patch.people, { reindex: false });
 	if (patch.tags) await setItemTags(db, id, patch.tags, { reindex: false });
+	await applyHolidayTags(db, id);
 	await reindexItem(db, id);
 
 	const dto = await getItemDTO(db, storage, id, { includeDeleted: Boolean(row.deletedAt) });
@@ -482,6 +485,7 @@ export async function deleteItem(db: Db, id: string): Promise<void> {
 		row.type,
 		-1
 	);
+	await applyHolidayTags(db, id);
 	await reindexItem(db, id);
 }
 
@@ -495,6 +499,7 @@ export async function restoreItem(db: Db, storage: StorageAdapter, id: string): 
 		row.type,
 		1
 	);
+	await applyHolidayTags(db, id);
 	await reindexItem(db, id);
 	const dto = await getItemDTO(db, storage, id);
 	if (!dto) throw error(500, 'item restore failed');
@@ -518,4 +523,65 @@ async function getItemRow(
 	if (rows.length === 0) return null;
 	if (rows[0].deletedAt && !opts?.includeDeleted) return null;
 	return rows[0];
+}
+
+async function enabledHolidaySet(db: Db): Promise<Set<string>> {
+	const rows = (await db.all(sql`SELECT value FROM settings WHERE key = 'holidaySet'`)) as Array<{
+		value: string;
+	}>;
+	if (rows[0]) {
+		try {
+			const parsed = JSON.parse(rows[0].value) as unknown;
+			if (Array.isArray(parsed)) {
+				return new Set(parsed.filter((value): value is string => typeof value === 'string'));
+			}
+		} catch {
+			// Invalid settings fall back to the full registry.
+		}
+	}
+	return new Set(HOLIDAYS.map((holiday) => holiday.id));
+}
+
+export async function applyHolidayTags(db: Db, itemId: string): Promise<string[]> {
+	const rows = (await db.all(
+		sql`SELECT date_start AS dateStart, date_precision AS datePrecision, deleted_at AS deletedAt
+		    FROM items
+		    WHERE id = ${itemId}`
+	)) as Array<{ dateStart: string | null; datePrecision: string; deletedAt: unknown | null }>;
+	const item = rows[0];
+	if (!item) return [];
+
+	let wanted: string[] = [];
+	if (item.deletedAt == null && item.datePrecision === 'day' && item.dateStart) {
+		const enabled = await enabledHolidaySet(db);
+		wanted = holidaysFor(item.dateStart).filter((holiday) => enabled.has(holiday));
+	}
+	const wantedSet = new Set(wanted);
+
+	const current = (await db.all(
+		sql`SELECT t.id AS id, t.name AS name
+		    FROM item_tags it
+		    INNER JOIN tags t ON t.id = it.tag_id
+		    WHERE it.item_id = ${itemId} AND t.kind = 'holiday'`
+	)) as Array<{ id: string; name: string }>;
+
+	for (const tag of current) {
+		if (!wantedSet.has(tag.name)) {
+			await db.run(sql`DELETE FROM item_tags WHERE item_id = ${itemId} AND tag_id = ${tag.id}`);
+		}
+	}
+
+	for (const name of wanted) {
+		const existing = (await db.all(sql`SELECT id FROM tags WHERE name = ${name}`)) as Array<{
+			id: string;
+		}>;
+		let tagId = existing[0]?.id;
+		if (!tagId) {
+			tagId = nanoid(12);
+			await db.run(sql`INSERT INTO tags (id, name, kind) VALUES (${tagId}, ${name}, 'holiday')`);
+		}
+		await db.run(sql`INSERT OR IGNORE INTO item_tags (item_id, tag_id) VALUES (${itemId}, ${tagId})`);
+	}
+
+	return wanted;
 }
