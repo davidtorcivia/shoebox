@@ -12,6 +12,7 @@
 	import MetaForm, { type MetaPatchPayload } from '$lib/ui/MetaForm.svelte';
 	import PeopleRow from '$lib/ui/PeopleRow.svelte';
 	import Player from '$lib/ui/Player.svelte';
+	import ShareDialog from '$lib/ui/ShareDialog.svelte';
 	import TagsRow from '$lib/ui/TagsRow.svelte';
 	import type { ItemDTO } from '$lib/dto';
 	import type { PageData } from './$types';
@@ -28,6 +29,7 @@
 	let loadedItemId = $state(data.item.id);
 	let player = $state<PlayerHandle | null>(null);
 	let saveState = $state('');
+	let shareOpen = $state(false);
 
 	const year = $derived(yearOf(item.date));
 	const roomYear = $derived(year ?? data.backYear ?? new Date().getFullYear());
@@ -164,6 +166,32 @@
 			{#if item.description}
 				<p class="story">{item.description}</p>
 			{/if}
+
+			<div class="rail-actions">
+				{#if item.urls.original}
+					<a
+						class="download-original"
+						data-testid="download-original"
+						href={item.urls.original}
+						download>Download original</a
+					>
+				{/if}
+				{#if data.canShare}
+					<button
+						class="share-action"
+						data-testid="share-button"
+						onclick={() => (shareOpen = true)}
+					>
+						Share
+					</button>
+					<ShareDialog
+						targetType="item"
+						targetId={item.id}
+						open={shareOpen}
+						onClose={() => (shareOpen = false)}
+					/>
+				{/if}
+			</div>
 
 			<div data-testid="comments-slot">
 				<Comments itemId={item.id} currentUser={data.me} />
@@ -304,6 +332,27 @@
 		font-family: var(--font-serif);
 		font-size: 1.08rem;
 		line-height: 1.5;
+	}
+
+	.rail-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+	}
+
+	.download-original,
+	.share-action {
+		min-height: 48px;
+		border: 0;
+		background: none;
+		color: var(--cream);
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: 12px;
+		letter-spacing: 0.14em;
+		line-height: 48px;
+		text-decoration: none;
+		text-transform: uppercase;
 	}
 
 	[data-testid='comments-slot'] {

@@ -3,6 +3,7 @@
 	import Gradient from '$lib/ui/Gradient.svelte';
 	import MasonryGrid from '$lib/ui/MasonryGrid.svelte';
 	import ReorderGrid from '$lib/ui/ReorderGrid.svelte';
+	import ShareDialog from '$lib/ui/ShareDialog.svelte';
 	import { personRoomFor } from '$lib/ui/tokens';
 	import type { ItemDTO } from '$lib/types';
 
@@ -11,6 +12,7 @@
 	const room = $derived(personRoomFor(album.createdBy.accentColor));
 	const activeYear = $derived(yearFor(data.items));
 	let arranging = $state(false);
+	let shareOpen = $state(false);
 
 	function yearFor(items: ItemDTO[]): number {
 		for (const item of items) {
@@ -55,9 +57,24 @@
 			<div class="meta">
 				<span>{album.itemCount} {album.itemCount === 1 ? 'moment' : 'moments'}</span>
 				{#if data.canEdit}
-					<button class="arrange" data-testid="arrange-toggle" onclick={() => (arranging = !arranging)}>
+					<button
+						class="arrange"
+						data-testid="arrange-toggle"
+						onclick={() => (arranging = !arranging)}
+					>
 						{arranging ? 'Done arranging' : 'Arrange'}
 					</button>
+				{/if}
+				{#if data.canShare}
+					<button class="arrange" data-testid="share-button" onclick={() => (shareOpen = true)}>
+						Share
+					</button>
+					<ShareDialog
+						targetType="album"
+						targetId={album.id}
+						open={shareOpen}
+						onClose={() => (shareOpen = false)}
+					/>
 				{/if}
 			</div>
 		</header>

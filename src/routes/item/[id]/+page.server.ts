@@ -32,6 +32,7 @@ export const load: PageServerLoad = async ({ fetch, locals, params, url }) => {
 		neighbors,
 		me,
 		canEdit,
+		canShare: ROLE_RANK[me.role] >= ROLE_RANK.editor,
 		backYear,
 		contextQuery: url.searchParams.toString()
 	};
