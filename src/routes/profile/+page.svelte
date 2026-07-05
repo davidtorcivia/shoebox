@@ -127,13 +127,16 @@
 			<section>
 				<div class="label">Avatar</div>
 				<div class="avatar-row">
-					{#if data.profile.avatarUrl}
-						<img class="avatar-preview" src={data.profile.avatarUrl} alt="" />
-					{:else}
-						<div class="avatar-preview fallback" aria-hidden="true">
-							{data.profile.username.slice(0, 1)}
-						</div>
-					{/if}
+					<div class="avatar-current">
+						<div class="avatar-subhead">Current</div>
+						{#if data.profile.avatarUrl}
+							<img class="avatar-preview" src={data.profile.avatarUrl} alt="" />
+						{:else}
+							<div class="avatar-preview fallback" aria-hidden="true">
+								{data.profile.username.slice(0, 1)}
+							</div>
+						{/if}
+					</div>
 					<div class="avatar-actions">
 						<form
 							class="avatar-form"
@@ -142,7 +145,7 @@
 							enctype="multipart/form-data"
 							use:enhance={avatarSubmit}
 						>
-							<div class="file-label">Image</div>
+							<div class="avatar-subhead">Image</div>
 							<label class="file-picker">
 								<input
 									class="native-file"
@@ -162,28 +165,32 @@
 									{/if}
 								</span>
 							</label>
-							<div class="upload-status" data-state={avatarUploadState} aria-live="polite">
-								<span class="upload-track"><span></span></span>
-								<span class="upload-copy">{avatarMessage}</span>
+							<div class="avatar-footer">
+								<div class="upload-status" data-state={avatarUploadState} aria-live="polite">
+									<span class="upload-track"><span></span></span>
+									<span class="upload-copy">{avatarMessage}</span>
+								</div>
+								<div class="avatar-buttons">
+									<button
+										type="submit"
+										data-testid="save-avatar"
+										disabled={avatarUploadState === 'uploading' || avatarTooLarge}
+									>
+										{data.profile.avatarUrl ? 'Replace avatar' : 'Upload avatar'}
+									</button>
+									{#if data.profile.avatarUrl}
+										<button
+											class="secondary delete-avatar-trigger"
+											type="button"
+											data-testid="delete-avatar"
+											onclick={() => (confirmDeleteAvatar = true)}
+										>
+											Delete
+										</button>
+									{/if}
+								</div>
 							</div>
-							<button
-								type="submit"
-								data-testid="save-avatar"
-								disabled={avatarUploadState === 'uploading' || avatarTooLarge}
-							>
-								{data.profile.avatarUrl ? 'Replace avatar' : 'Upload avatar'}
-							</button>
 						</form>
-						{#if data.profile.avatarUrl}
-							<button
-								class="secondary delete-avatar-trigger"
-								type="button"
-								data-testid="delete-avatar"
-								onclick={() => (confirmDeleteAvatar = true)}
-							>
-								Delete avatar
-							</button>
-						{/if}
 					</div>
 				</div>
 			</section>
@@ -305,14 +312,31 @@
 
 	.avatar-row {
 		display: grid;
-		grid-template-columns: 128px minmax(280px, 420px);
-		gap: 22px;
+		grid-template-columns: 150px minmax(0, 520px);
+		gap: 26px;
 		align-items: start;
 	}
 
+	.avatar-current,
+	.avatar-actions {
+		display: grid;
+		gap: 10px;
+		min-width: 0;
+	}
+
+	.avatar-subhead {
+		height: 16px;
+		color: color-mix(in srgb, var(--cream) 82%, transparent);
+		font-family: var(--font-sans);
+		font-size: 10px;
+		letter-spacing: 0.2em;
+		line-height: 1;
+		text-transform: uppercase;
+	}
+
 	.avatar-preview {
-		width: 128px;
-		height: 128px;
+		width: 150px;
+		height: 150px;
 		object-fit: cover;
 		background: var(--profile-accent);
 		color: var(--profile-on);
@@ -322,43 +346,26 @@
 		display: grid;
 		place-items: center;
 		font-family: var(--font-sans);
-		font-size: 54px;
+		font-size: 62px;
 		font-weight: 800;
 		line-height: 1;
 		text-transform: uppercase;
 	}
 
-	.avatar-actions form {
-		margin-bottom: 12px;
-	}
-
-	.avatar-actions {
-		min-width: 0;
-	}
-
 	.avatar-form {
 		display: grid;
-		gap: 12px;
+		gap: 10px;
 		min-width: 0;
-		max-width: 420px;
-	}
-
-	.file-label {
-		color: color-mix(in srgb, var(--cream) 82%, transparent);
-		font-family: var(--font-sans);
-		font-size: 10px;
-		letter-spacing: 0.2em;
-		text-transform: uppercase;
+		margin: 0;
 	}
 
 	.file-picker {
 		position: relative;
 		display: grid;
-		grid-template-columns: minmax(132px, max-content) minmax(0, 1fr);
+		grid-template-columns: 168px minmax(0, 1fr);
 		align-items: stretch;
-		min-height: 54px;
+		min-height: 58px;
 		width: 100%;
-		max-width: 420px;
 		background:
 			linear-gradient(
 				90deg,
@@ -393,7 +400,7 @@
 
 	.file-button {
 		justify-content: center;
-		padding: 0 18px;
+		padding: 0 20px;
 		background: var(--profile-accent);
 		color: var(--profile-on);
 		font-family: var(--font-sans);
@@ -407,7 +414,7 @@
 		flex-direction: column;
 		justify-content: center;
 		gap: 3px;
-		padding: 9px 14px;
+		padding: 9px 16px;
 		color: color-mix(in srgb, var(--cream) 88%, transparent);
 		font-family: var(--font-serif);
 		font-size: 17px;
@@ -438,7 +445,8 @@
 	.upload-status {
 		display: grid;
 		gap: 7px;
-		max-width: 420px;
+		min-width: 180px;
+		flex: 1 1 220px;
 		color: color-mix(in srgb, var(--cream) 72%, transparent);
 		font-family: var(--font-sans);
 		font-size: 11px;
@@ -474,6 +482,21 @@
 
 	.upload-status[data-state='error'] {
 		color: var(--dawn);
+	}
+
+	.avatar-footer {
+		display: flex;
+		align-items: end;
+		gap: 14px;
+		padding-top: 2px;
+	}
+
+	.avatar-buttons {
+		display: flex;
+		flex: none;
+		flex-wrap: wrap;
+		gap: 8px;
+		justify-content: flex-end;
 	}
 
 	.field {
@@ -536,10 +559,13 @@
 		text-transform: uppercase;
 	}
 
-	.avatar-form > button,
+	.avatar-buttons button {
+		margin-top: 0;
+		white-space: nowrap;
+	}
+
 	.delete-avatar-trigger {
-		justify-self: start;
-		width: auto;
+		padding-inline: 16px;
 	}
 
 	button:disabled {
@@ -646,17 +672,17 @@
 		}
 
 		.avatar-row {
-			grid-template-columns: 88px minmax(0, 1fr);
+			grid-template-columns: 96px minmax(0, 1fr);
 			gap: 16px;
 		}
 
 		.avatar-preview {
-			width: 88px;
-			height: 88px;
+			width: 96px;
+			height: 96px;
 		}
 
 		.avatar-preview.fallback {
-			font-size: 40px;
+			font-size: 42px;
 		}
 
 		.file-picker {
@@ -666,6 +692,15 @@
 
 		.file-button {
 			min-height: 44px;
+		}
+
+		.avatar-footer {
+			display: grid;
+			gap: 10px;
+		}
+
+		.avatar-buttons {
+			justify-content: start;
 		}
 	}
 
