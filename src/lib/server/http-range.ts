@@ -19,10 +19,15 @@ export function parseRange(header: string | null, size: number): ParsedRange | n
 
 	const start = Number(startRaw);
 	const end = endRaw ? Number(endRaw) : size - 1;
-	if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || start >= size) {
+	if (
+		!Number.isInteger(start) ||
+		!Number.isInteger(end) ||
+		start < 0 ||
+		end < start ||
+		start >= size
+	) {
 		return null;
 	}
 
 	return { start, end: Math.min(end, size - 1) };
 }
-

@@ -51,8 +51,9 @@
 			});
 
 			message = 'Processing';
-			const derived =
-				file.type.startsWith('image/') ? await derivePhoto(file) : await deriveVideo(file);
+			const derived = file.type.startsWith('image/')
+				? await derivePhoto(file)
+				: await deriveVideo(file);
 			const meta: UploadMeta = {
 				type: file.type.startsWith('image/') ? 'photo' : 'video',
 				width: derived.width,
@@ -100,7 +101,12 @@
 		<h1>Upload</h1>
 	</div>
 
-	<form onsubmit={(event) => { event.preventDefault(); void submit(); }}>
+	<form
+		onsubmit={(event) => {
+			event.preventDefault();
+			void submit();
+		}}
+	>
 		<label class="drop">
 			<span>Media</span>
 			<input
@@ -137,7 +143,7 @@
 		<label>
 			<span>People</span>
 			<select multiple bind:value={selectedPeople}>
-				{#each data.people as person}
+				{#each data.people as person (person.id)}
 					<option value={person.id}>{person.name}</option>
 				{/each}
 			</select>
@@ -164,7 +170,7 @@
 				<meter min="0" max="100" value={progress}>{progress}</meter>
 			{/if}
 			{#if item}
-				<a href={`/item/${item.id}`}>{item.title ?? item.displayDate}</a>
+				<p>{item.title ?? item.displayDate}</p>
 			{/if}
 		</div>
 	</form>
@@ -275,10 +281,5 @@
 	meter {
 		width: min(100%, 14rem);
 		height: 0.8rem;
-	}
-
-	a {
-		text-decoration: underline;
-		text-underline-offset: 0.2em;
 	}
 </style>

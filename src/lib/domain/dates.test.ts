@@ -39,18 +39,14 @@ describe('sortDate', () => {
 });
 
 describe('displayDate', () => {
-	it('day', () =>
-		expect(displayDate(d('1994-06-14', '1994-06-14', 'day'))).toBe('June 14, 1994'));
+	it('day', () => expect(displayDate(d('1994-06-14', '1994-06-14', 'day'))).toBe('June 14, 1994'));
 
-	it('month', () =>
-		expect(displayDate(d('1994-06-01', '1994-06-30', 'month'))).toBe('June 1994'));
+	it('month', () => expect(displayDate(d('1994-06-01', '1994-06-30', 'month'))).toBe('June 1994'));
 
 	it('year', () => expect(displayDate(d('1994-01-01', '1994-12-31', 'year'))).toBe('1994'));
 
 	it('range', () =>
-		expect(displayDate(d('1992-01-01', '1995-12-31', 'range'))).toBe(
-			'Between 1992 and 1995'
-		));
+		expect(displayDate(d('1992-01-01', '1995-12-31', 'range'))).toBe('Between 1992 and 1995'));
 
 	it('unknown', () => expect(displayDate(d(null, null, 'unknown'))).toBe('Undated'));
 });
@@ -141,4 +137,3 @@ describe('daysInMonth', () => {
 		expect(daysInMonth(1994, 2)).toBe(28);
 	});
 });
-

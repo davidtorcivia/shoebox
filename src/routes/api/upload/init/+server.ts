@@ -8,4 +8,3 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const body = (await request.json()) as InitUploadInput;
 	return json(await initUpload(locals.db, locals.platform.storage, user.id, body));
 };
-

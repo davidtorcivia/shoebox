@@ -37,7 +37,6 @@ export const MONTHS_SHORT = [
 ] as const;
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 type ItemDateInput =
 	| { precision: 'day'; day?: string }
@@ -55,7 +54,13 @@ export function daysInMonth(year: number, month: number): number {
 }
 
 export function sortDate(d: ItemDate): string | null {
-	if (d.precision === 'unknown' || !d.dateStart || !d.dateEnd || !isValidIsoDay(d.dateStart) || !isValidIsoDay(d.dateEnd)) {
+	if (
+		d.precision === 'unknown' ||
+		!d.dateStart ||
+		!d.dateEnd ||
+		!isValidIsoDay(d.dateStart) ||
+		!isValidIsoDay(d.dateEnd)
+	) {
 		return null;
 	}
 
@@ -166,7 +171,8 @@ export function isValidItemDate(d: ItemDate): boolean {
 export function itemDateFrom(input: ItemDateInput): ItemDate {
 	switch (input.precision) {
 		case 'day': {
-			if (!input.day || !isValidIsoDay(input.day)) throw new Error('Day precision requires a valid day');
+			if (!input.day || !isValidIsoDay(input.day))
+				throw new Error('Day precision requires a valid day');
 			return { dateStart: input.day, dateEnd: input.day, precision: 'day' };
 		}
 		case 'month': {

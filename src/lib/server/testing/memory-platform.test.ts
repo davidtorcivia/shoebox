@@ -74,4 +74,3 @@ describe('memoryDb', () => {
 		expect(rows).toHaveLength(1);
 	});
 });
-

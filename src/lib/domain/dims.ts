@@ -14,4 +14,3 @@ export function fitWithin(
 	const scale = maxWidth / width;
 	return { width: Math.round(maxWidth), height: Math.round(height * scale) };
 }
-

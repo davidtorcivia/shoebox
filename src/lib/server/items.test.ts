@@ -268,15 +268,15 @@ describe('listItems', () => {
 		]);
 		expect((await listItems(db, storage, { status: 'needs_review' })).items).toHaveLength(2);
 		expect((await listItems(db, storage, { people: [mom.id] })).items).toHaveLength(2);
-		expect((await listItems(db, storage, { people: [mom.id, dad.id] })).items.map((item) => item.id)).toEqual([
-			'itm_a3'
-		]);
-		expect((await listItems(db, storage, { tags: ['Christmas'] })).items.map((item) => item.id)).toEqual([
-			'itm_a4'
-		]);
-		expect((await listItems(db, storage, { q: 'sprinkler' })).items.map((item) => item.id)).toEqual([
-			'itm_a2'
-		]);
+		expect(
+			(await listItems(db, storage, { people: [mom.id, dad.id] })).items.map((item) => item.id)
+		).toEqual(['itm_a3']);
+		expect(
+			(await listItems(db, storage, { tags: ['Christmas'] })).items.map((item) => item.id)
+		).toEqual(['itm_a4']);
+		expect((await listItems(db, storage, { q: 'sprinkler' })).items.map((item) => item.id)).toEqual(
+			['itm_a2']
+		);
 	});
 
 	it('filters by album membership', async () => {
@@ -332,7 +332,9 @@ describe('update/delete/restore', () => {
 	it('lets uploaders edit only their own items', async () => {
 		await createItem(db, storage, queue, baseInput());
 		const other = await seedUser(db, { id: 'u_other', username: 'other', role: 'uploader' });
-		await expect(updateItem(db, storage, other, 'itm000000001', { title: 'Nope' })).rejects.toMatchObject({
+		await expect(
+			updateItem(db, storage, other, 'itm000000001', { title: 'Nope' })
+		).rejects.toMatchObject({
 			status: 403
 		});
 	});

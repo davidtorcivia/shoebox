@@ -21,4 +21,3 @@ export const GET: RequestHandler = async ({ locals }) => {
 		.orderBy(asc(people.name));
 	return json({ people: rows });
 };
-

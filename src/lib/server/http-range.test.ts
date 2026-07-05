@@ -15,4 +15,3 @@ describe('parseRange', () => {
 		expect(parseRange('bytes=5-4', 10)).toBeNull();
 	});
 });
-

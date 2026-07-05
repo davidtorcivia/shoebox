@@ -85,4 +85,3 @@ describe('bumpYearCount', () => {
 		expect(await db.select().from(yearCounts)).toEqual([]);
 	});
 });
-

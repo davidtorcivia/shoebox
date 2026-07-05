@@ -56,7 +56,7 @@
 			<label>
 				<span>Month</span>
 				<select bind:value={month}>
-					{#each Array.from({ length: 12 }, (_, i) => i + 1) as m}
+					{#each Array.from({ length: 12 }, (_, i) => i + 1) as m (m)}
 						<option value={String(m).padStart(2, '0')}>{m}</option>
 					{/each}
 				</select>
@@ -118,4 +118,3 @@
 		background: color-mix(in srgb, var(--ink) 8%, transparent);
 	}
 </style>
-

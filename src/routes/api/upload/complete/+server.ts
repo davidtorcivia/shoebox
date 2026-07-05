@@ -23,14 +23,19 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		derivatives[field] = { data: new Uint8Array(await value.arrayBuffer()), mime: value.type };
 	}
 
-	const item = await completeUpload(locals.db, locals.platform.storage, locals.platform.queue, user, {
-		uploadId,
-		allowDuplicate,
-		meta,
-		blurhash: typeof blurhashRaw === 'string' && blurhashRaw.length > 0 ? blurhashRaw : null,
-		derivatives
-	});
+	const item = await completeUpload(
+		locals.db,
+		locals.platform.storage,
+		locals.platform.queue,
+		user,
+		{
+			uploadId,
+			allowDuplicate,
+			meta,
+			blurhash: typeof blurhashRaw === 'string' && blurhashRaw.length > 0 ? blurhashRaw : null,
+			derivatives
+		}
+	);
 
 	return json({ item }, { status: 201 });
 };
-

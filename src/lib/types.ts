@@ -50,4 +50,3 @@ export interface PersonListDTO {
 	accentColor: string;
 	avatarItemId: string | null;
 }
-

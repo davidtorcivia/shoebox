@@ -80,4 +80,3 @@ async function message(res: Response): Promise<string> {
 		return res.statusText;
 	}
 }
-

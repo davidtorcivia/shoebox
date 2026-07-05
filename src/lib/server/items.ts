@@ -111,7 +111,10 @@ export async function createItem(
 	const personIds = [...new Set(input.people)];
 
 	if (personIds.length > 0) {
-		const found = await db.select({ id: people.id }).from(people).where(inArray(people.id, personIds));
+		const found = await db
+			.select({ id: people.id })
+			.from(people)
+			.where(inArray(people.id, personIds));
 		if (found.length !== personIds.length) throw error(400, 'unknown person id');
 	}
 
@@ -230,13 +233,17 @@ export async function buildItemDTOs(
 			blurhash: row.blurhash ?? null,
 			people: itemPeopleRows
 				.filter((person) => person.itemId === row.id)
-				.map(({ itemId: _itemId, ...person }) => person),
+				.map((person) => ({
+					id: person.id,
+					name: person.name,
+					accentColor: person.accentColor
+				})),
 			tags: itemTagRows
 				.filter((tag) => tag.itemId === row.id)
-				.map(({ itemId: _itemId, ...tag }) => tag),
+				.map((tag) => ({ id: tag.id, name: tag.name, kind: tag.kind })),
 			albums: albumRows
 				.filter((album) => album.itemId === row.id)
-				.map(({ itemId: _itemId, ...album }) => album),
+				.map((album) => ({ id: album.id, title: album.title })),
 			uploadedBy: row.uploadedBy,
 			tapeLabel: row.tapeLabel
 		});
@@ -289,7 +296,10 @@ export function encodeCursor(cursor: Cursor): string {
 }
 
 export function decodeCursor(cursor: string): Cursor {
-	const padded = cursor.replaceAll('-', '+').replaceAll('_', '/').padEnd(Math.ceil(cursor.length / 4) * 4, '=');
+	const padded = cursor
+		.replaceAll('-', '+')
+		.replaceAll('_', '/')
+		.padEnd(Math.ceil(cursor.length / 4) * 4, '=');
 	const parsed = JSON.parse(atob(padded)) as Cursor;
 	if (typeof parsed.id !== 'string' || !('s' in parsed)) throw new Error('invalid cursor');
 	return parsed;
@@ -347,7 +357,9 @@ export async function listItems(
 			.innerJoin(tags, eq(itemTags.tagId, tags.id))
 			.where(inArray(tags.name, tagNames));
 		rows = rows.filter((row) => {
-			const linkedTags = new Set(linked.filter((link) => link.itemId === row.id).map((link) => link.name));
+			const linkedTags = new Set(
+				linked.filter((link) => link.itemId === row.id).map((link) => link.name)
+			);
 			return tagNames.every((name) => linkedTags.has(name));
 		});
 	}
@@ -390,7 +402,12 @@ export async function updateItem(
 	};
 	if (!isValidItemDate(nextDate)) throw error(400, 'invalid date');
 	const afterYear = yearOf(nextDate);
-	const nextStatus = nextDate.precision === 'unknown' ? 'needs_review' : row.status === 'processing' ? 'processing' : 'ready';
+	const nextStatus =
+		nextDate.precision === 'unknown'
+			? 'needs_review'
+			: row.status === 'processing'
+				? 'processing'
+				: 'ready';
 
 	await db
 		.update(items)
@@ -446,7 +463,8 @@ export async function restoreItem(db: Db, storage: StorageAdapter, id: string): 
 }
 
 function compareItemRows(a: ItemRow, b: ItemRow): number {
-	if (a.sortDate && b.sortDate && a.sortDate !== b.sortDate) return a.sortDate.localeCompare(b.sortDate);
+	if (a.sortDate && b.sortDate && a.sortDate !== b.sortDate)
+		return a.sortDate.localeCompare(b.sortDate);
 	if (a.sortDate && !b.sortDate) return -1;
 	if (!a.sortDate && b.sortDate) return 1;
 	return a.id.localeCompare(b.id);

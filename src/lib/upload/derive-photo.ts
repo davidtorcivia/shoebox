@@ -59,7 +59,8 @@ async function blurhashFor(bitmap: ImageBitmap): Promise<string> {
 }
 
 async function exifDate(file: File): Promise<ItemDate | null> {
-	const parsed = (await exifr.parse(file, ['DateTimeOriginal'])) as { DateTimeOriginal?: Date } | undefined;
+	const parsed = (await exifr.parse(file, ['DateTimeOriginal'])) as
+		{ DateTimeOriginal?: Date } | undefined;
 	const date = parsed?.DateTimeOriginal;
 	if (!date) return null;
 	const yyyy = date.getFullYear();
@@ -70,7 +71,10 @@ async function exifDate(file: File): Promise<ItemDate | null> {
 
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 	return new Promise((resolve, reject) => {
-		canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Failed to encode canvas'))), 'image/webp', 0.86);
+		canvas.toBlob(
+			(blob) => (blob ? resolve(blob) : reject(new Error('Failed to encode canvas'))),
+			'image/webp',
+			0.86
+		);
 	});
 }
-

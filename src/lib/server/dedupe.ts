@@ -12,4 +12,3 @@ export async function findDuplicate(db: Db, sha256: string): Promise<{ itemId: s
 
 	return rows.length > 0 ? { itemId: rows[0].id } : null;
 }
-

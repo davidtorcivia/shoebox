@@ -45,4 +45,3 @@ export async function bumpYearCount(
 		.set({ count: sql`max(${yearCounts.count} - 1, 0)` })
 		.where(and(eq(yearCounts.year, year), eq(yearCounts.type, type)));
 }
-

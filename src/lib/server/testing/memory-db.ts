@@ -63,4 +63,3 @@ export async function seedPerson(
 
 	return { id, name };
 }
-

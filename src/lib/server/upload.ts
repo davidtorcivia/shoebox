@@ -232,7 +232,8 @@ export function validateUploadMeta(raw: unknown): UploadMeta {
 		throw error(400, 'meta.height invalid');
 	}
 
-	const duration = value.duration === null || value.duration === undefined ? null : Number(value.duration);
+	const duration =
+		value.duration === null || value.duration === undefined ? null : Number(value.duration);
 	if (duration !== null && !(Number.isFinite(duration) && duration > 0)) {
 		throw error(400, 'meta.duration invalid');
 	}
@@ -282,7 +283,10 @@ export async function completeUpload(
 	const kind = ALLOWED_MIME[manifest.mime];
 	if (!kind) throw error(400, `unsupported mime: ${manifest.mime}`);
 	if (input.meta.type !== kind.type) {
-		throw error(400, `meta.type '${input.meta.type}' does not match uploaded mime '${manifest.mime}'`);
+		throw error(
+			400,
+			`meta.type '${input.meta.type}' does not match uploaded mime '${manifest.mime}'`
+		);
 	}
 
 	const itemId = nanoid(12);
@@ -362,5 +366,7 @@ function stringOrNull(value: unknown): string | null {
 }
 
 function stringArray(value: unknown): string[] {
-	return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+	return Array.isArray(value)
+		? value.filter((item): item is string => typeof item === 'string')
+		: [];
 }

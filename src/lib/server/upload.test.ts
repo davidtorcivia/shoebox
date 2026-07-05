@@ -173,7 +173,10 @@ describe('completeUpload', () => {
 	}
 
 	async function uploadAll(bytes: Uint8Array, sha: string) {
-		const user = await seedUser(db, { id: `u_${sha.slice(0, 4)}`, username: `up_${sha.slice(0, 4)}` });
+		const user = await seedUser(db, {
+			id: `u_${sha.slice(0, 4)}`,
+			username: `up_${sha.slice(0, 4)}`
+		});
 		const init = await initUpload(db, storage, user.id, {
 			sha256: sha,
 			sizeBytes: bytes.length,

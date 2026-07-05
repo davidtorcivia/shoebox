@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { apiCompleteUpload, apiInitUpload, chunkBytes, uploadChunks, type InitResponse } from './uploader';
+import {
+	apiCompleteUpload,
+	apiInitUpload,
+	chunkBytes,
+	uploadChunks,
+	type InitResponse
+} from './uploader';
 
 describe('apiInitUpload', () => {
 	it('posts json and returns the init response', async () => {
@@ -94,4 +100,3 @@ describe('chunkBytes', () => {
 		expect(chunkBytes(10, 4, 2)).toBe(2);
 	});
 });
-

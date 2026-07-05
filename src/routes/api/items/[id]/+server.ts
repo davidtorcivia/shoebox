@@ -46,4 +46,3 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	const item = await restoreItem(locals.db, locals.platform.storage, params.id);
 	return json({ item });
 };
-

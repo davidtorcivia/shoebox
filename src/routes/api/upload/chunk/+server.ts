@@ -10,4 +10,3 @@ export const PUT: RequestHandler = async ({ locals, request, url }) => {
 	const data = new Uint8Array(await request.arrayBuffer());
 	return json(await saveChunk(locals.platform.storage, uploadId, index, data));
 };
-

@@ -20,4 +20,3 @@ export const load: PageServerLoad = async ({ locals }) => {
 		.orderBy(asc(people.name));
 	return { people: rows };
 };
-

@@ -19,4 +19,3 @@ describe('fitWithin', () => {
 		expect(() => fitWithin(100, 100, 0)).toThrow();
 	});
 });
-

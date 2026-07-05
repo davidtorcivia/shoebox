@@ -1,5 +1,10 @@
 import { json } from '@sveltejs/kit';
-import { createItem, listItems, type CreateItemInput, type ListItemsQuery } from '$lib/server/items';
+import {
+	createItem,
+	listItems,
+	type CreateItemInput,
+	type ListItemsQuery
+} from '$lib/server/items';
 import { requireRole } from '$lib/server/roles';
 import type { RequestHandler } from './$types';
 
@@ -10,7 +15,9 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
 export const POST: RequestHandler = async ({ locals, request }) => {
 	const user = requireRole(locals, 'uploader');
-	const body = (await request.json()) as Omit<CreateItemInput, 'uploadedBy'> & { uploadedBy?: string };
+	const body = (await request.json()) as Omit<CreateItemInput, 'uploadedBy'> & {
+		uploadedBy?: string;
+	};
 	const item = await createItem(locals.db, locals.platform.storage, locals.platform.queue, {
 		...body,
 		uploadedBy: body.uploadedBy ?? user.id
@@ -58,4 +65,3 @@ function enumParam<T extends string>(url: URL, name: string, allowed: readonly T
 	const raw = stringParam(url, name);
 	return allowed.includes(raw as T) ? (raw as T) : undefined;
 }
-

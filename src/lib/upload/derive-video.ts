@@ -49,13 +49,18 @@ async function renderVideo(video: HTMLVideoElement, maxWidth: number): Promise<B
 function once(target: EventTarget, event: string): Promise<void> {
 	return new Promise((resolve, reject) => {
 		target.addEventListener(event, () => resolve(), { once: true });
-		target.addEventListener('error', () => reject(new Error(`Video ${event} failed`)), { once: true });
+		target.addEventListener('error', () => reject(new Error(`Video ${event} failed`)), {
+			once: true
+		});
 	});
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 	return new Promise((resolve, reject) => {
-		canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Failed to encode canvas'))), 'image/webp', 0.86);
+		canvas.toBlob(
+			(blob) => (blob ? resolve(blob) : reject(new Error('Failed to encode canvas'))),
+			'image/webp',
+			0.86
+		);
 	});
 }
-
