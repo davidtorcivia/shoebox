@@ -1,12 +1,20 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import Gradient from '$lib/ui/Gradient.svelte';
 	import PersonCard from '$lib/ui/PersonCard.svelte';
-	import { GRAIN_URI } from '$lib/ui/tokens';
 
 	let { data } = $props();
 	let creating = $state(false);
 	let newName = $state('');
 	let createError = $state('');
+	const peopleGradient = {
+		stops: ['#2B2621', '#A8D8EA', '#FFD9A8'] as [string, string, string],
+		pools: [
+			{ color: '#FA7B6255', pos: '4% 8%', size: '78% 54%' },
+			{ color: '#5E6F4D66', pos: '96% 28%', size: '72% 58%' },
+			{ color: '#C3272B44', pos: '42% 105%', size: '88% 48%' }
+		]
+	};
 
 	async function createPerson(event: SubmitEvent) {
 		event.preventDefault();
@@ -29,65 +37,55 @@
 	<title>People - Shoebox</title>
 </svelte:head>
 
-<section class="page" style:--grain={`url("${GRAIN_URI}")`}>
-	<header class="head">
-		<span class="label">People</span>
-		{#if data.canCreate}
-			{#if creating}
-				<form class="newform" onsubmit={createPerson}>
-					<input name="name" placeholder="Full name" bind:value={newName} required minlength="1" />
-					<button type="submit" data-testid="create-person">Add</button>
-					<button type="button" onclick={() => (creating = false)}>Cancel</button>
-				</form>
-				{#if createError}<span class="err">{createError}</span>{/if}
-			{:else}
-				<button class="new" data-testid="new-person" onclick={() => (creating = true)}>
-					New person
-				</button>
+<div class="room">
+	<Gradient stops={peopleGradient.stops} pools={peopleGradient.pools} />
+	<section class="page">
+		<header class="head">
+			<span class="label">People</span>
+			{#if data.canCreate}
+				{#if creating}
+					<form class="newform" onsubmit={createPerson}>
+						<input
+							name="name"
+							placeholder="Full name"
+							bind:value={newName}
+							required
+							minlength="1"
+						/>
+						<button type="submit" data-testid="create-person">Add</button>
+						<button type="button" onclick={() => (creating = false)}>Cancel</button>
+					</form>
+					{#if createError}<span class="err">{createError}</span>{/if}
+				{:else}
+					<button class="new" data-testid="new-person" onclick={() => (creating = true)}>
+						New person
+					</button>
+				{/if}
 			{/if}
-		{/if}
-	</header>
+		</header>
 
-	<div class="grid" data-testid="people-grid">
-		{#each data.people as person (person.id)}
-			<PersonCard {person} />
-		{/each}
-	</div>
-</section>
+		<div class="grid" data-testid="people-grid">
+			{#each data.people as person (person.id)}
+				<PersonCard {person} />
+			{/each}
+		</div>
+	</section>
+</div>
 
 <style>
-	.page {
+	.room {
 		position: relative;
-		min-height: calc(100vh - 56px);
+		min-height: 100vh;
 		overflow: hidden;
-		background:
-			linear-gradient(115deg, rgb(73 42 42 / 0.72) 0%, transparent 36%),
-			conic-gradient(
-				from 214deg at 74% 18%,
-				rgb(255 217 168 / 0.54),
-				rgb(168 216 234 / 0.34),
-				rgb(94 111 77 / 0.46),
-				rgb(195 39 43 / 0.38),
-				rgb(255 217 168 / 0.54)
-			),
-			linear-gradient(180deg, rgb(23 20 18 / 0.2) 0%, var(--ink) 72%),
-			var(--ink);
 		color: var(--cream);
 	}
 
-	.page::before {
-		position: absolute;
-		inset: 0;
-		content: '';
-		background-image:
-			var(--grain),
-			linear-gradient(180deg, rgb(255 245 232 / 0.1), transparent 34%, rgb(23 20 18 / 0.72));
-		background-size:
-			140px 140px,
-			100% 100%;
-		mix-blend-mode: overlay;
-		opacity: 0.44;
-		pointer-events: none;
+	.page {
+		position: relative;
+		min-height: 100vh;
+		overflow: hidden;
+		background: linear-gradient(180deg, rgb(23 20 18 / 0.08) 0%, rgb(23 20 18 / 0.62) 100%);
+		color: var(--cream);
 	}
 
 	.head {
