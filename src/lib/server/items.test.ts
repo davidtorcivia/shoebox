@@ -12,6 +12,7 @@ import {
 	deleteItem,
 	encodeCursor,
 	getItemDTO,
+	getItemDTOsByIds,
 	listItems,
 	normalizeTagName,
 	restoreItem,
@@ -205,6 +206,15 @@ describe('createItem', () => {
 describe('getItemDTO', () => {
 	it('returns null for missing ids', async () => {
 		expect(await getItemDTO(db, storage, 'nope')).toBeNull();
+	});
+
+	it('gets multiple items in caller order and skips missing/deleted ids', async () => {
+		await createItem(db, storage, queue, baseInput({ id: 'itm_a', sha256: 'a'.repeat(64) }));
+		await createItem(db, storage, queue, baseInput({ id: 'itm_b', sha256: 'b'.repeat(64) }));
+		await deleteItem(db, 'itm_a');
+		expect((await getItemDTOsByIds(db, storage, ['itm_b', 'missing', 'itm_a'])).map((item) => item.id)).toEqual([
+			'itm_b'
+		]);
 	});
 });
 

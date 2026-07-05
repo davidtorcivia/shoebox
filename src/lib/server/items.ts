@@ -264,6 +264,24 @@ export async function getItemDTO(
 	return (await buildItemDTOs(db, storage, rows))[0];
 }
 
+export async function getItemDTOsByIds(
+	db: Db,
+	storage: StorageAdapter,
+	ids: string[]
+): Promise<ItemDTO[]> {
+	if (ids.length === 0) return [];
+	const rows = await db
+		.select()
+		.from(items)
+		.where(and(inArray(items.id, ids), isNull(items.deletedAt)));
+	const byId = new Map(rows.map((row) => [row.id, row]));
+	return buildItemDTOs(
+		db,
+		storage,
+		ids.map((id) => byId.get(id)).filter((row): row is ItemRow => Boolean(row))
+	);
+}
+
 export interface ListItemsQuery {
 	year?: number;
 	month?: number;
