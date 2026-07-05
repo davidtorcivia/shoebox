@@ -202,7 +202,7 @@
 					<button class="more" type="button" onclick={loadMore}>More</button>
 				{/if}
 			{:else if !result.people.length && !result.albums.length}
-				<p class="empty" data-testid="search-empty">No matching moments.</p>
+				<p class="empty" data-testid="search-empty">Nothing found in the shoebox for {data.q}.</p>
 			{/if}
 		{/if}
 	</section>
