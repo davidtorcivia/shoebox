@@ -1,0 +1,179 @@
+<h2>Person page v2 + mobile v2</h2>
+<p class="subtitle">Tree removed (the family rows imply it). Hero text tops out level with the portrait. Full nav restored. Mobile: arrows match the year's cream, and the bottom rail is now a designed object — no hard band, ticks rising out of a fade, labeled thumb.</p>
+
+<style>
+  .pp2 *, .mb2 * { border-radius: 0 !important; font-style: normal !important; }
+  .split2 { display: flex; gap: 18px; align-items: flex-start; }
+  .grain2 { position: absolute; inset: 0; z-index: 9; pointer-events: none; opacity: .5; mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+  /* ---------- PERSON v2 ---------- */
+  .pp2 { position: relative; overflow: hidden; flex: 1.65; height: 840px; color: #FFF5E8; font-family: Georgia, serif;
+        background:
+          radial-gradient(80% 55% at 100% 0%, rgba(211,130,110,.55) 0%, rgba(211,130,110,0) 60%),
+          radial-gradient(60% 45% at -5% 70%, rgba(71,91,92,.5) 0%, rgba(71,91,92,0) 65%),
+          linear-gradient(165deg, #171412 0%, #472520 55%, #D3826E 135%); }
+  .pp2 .nav { display: flex; align-items: center; gap: 24px; padding: 20px 30px 0; font-family: 'Helvetica Neue', sans-serif; font-size: 12px; letter-spacing: .18em; text-transform: uppercase; position: relative; z-index: 3; color: rgba(255,245,232,.8); }
+  .pp2 .nav .wm { font-weight: 700; font-size: 14px; margin-right: auto; letter-spacing: .26em; color: #FFF5E8; }
+  .pp2 .nav b { color: #FFF5E8; font-weight: 400; }
+  .pp2 .nav .acct { display: flex; align-items: center; gap: 10px; margin-left: 4px; }
+  .pp2 .nav .acct .av { width: 28px; height: 28px; background: #FFF5E8; color: #171412; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+
+  .pp2 .hero { display: flex; gap: 30px; align-items: flex-start; padding: 38px 30px 0; position: relative; z-index: 2; }
+  .pp2 .por { width: 168px; height: 210px; flex: none; }
+  .pp2 .por img { width: 100%; height: 100%; object-fit: cover; display: block; filter: sepia(.45) contrast(.9); }
+  .pp2 .who { flex: 1; display: flex; flex-direction: column; height: 210px; }
+  .pp2 .who .eyebrow { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; letter-spacing: .26em; text-transform: uppercase; color: #FA9B84; margin: 2px 0 10px; }
+  .pp2 .who h1 { font-size: 58px; line-height: .95; margin: 0; font-weight: 400; letter-spacing: -.01em; }
+  .pp2 .who .nick { font-size: 22px; color: rgba(255,245,232,.75); margin-top: 8px; }
+  .pp2 .who .stats { margin-top: auto; display: flex; gap: 34px; font-family: 'Helvetica Neue', sans-serif; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,245,232,.7); }
+  .pp2 .who .stats b { display: block; font-family: Georgia, serif; font-size: 22px; letter-spacing: 0; text-transform: none; color: #FFF5E8; margin-bottom: 3px; font-weight: 400; }
+
+  .pp2 .body { display: flex; gap: 44px; padding: 30px 30px 0; position: relative; z-index: 2; }
+  .pp2 .bio { flex: 1.45; }
+  .pp2 .bio p { font-size: 17px; line-height: 1.7; color: rgba(255,245,232,.92); margin: 0; }
+  .pp2 .bio .edit { font-family: 'Helvetica Neue', sans-serif; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: rgba(255,245,232,.45); margin-top: 12px; }
+  .pp2 .label { font-family: 'Helvetica Neue', sans-serif; font-size: 10.5px; letter-spacing: .26em; text-transform: uppercase; color: rgba(255,245,232,.5); margin-bottom: 14px; }
+  .pp2 .fam { flex: 1; }
+  .pp2 .fam .grp { margin-bottom: 16px; display: flex; align-items: baseline; gap: 14px; }
+  .pp2 .fam .g { flex: none; width: 82px; font-family: 'Helvetica Neue', sans-serif; font-size: 9.5px; letter-spacing: .2em; text-transform: uppercase; color: rgba(255,245,232,.45); }
+  .pp2 .fam .names { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 17px; }
+  .pp2 .fam .p { display: inline-flex; align-items: center; gap: 8px; }
+  .pp2 .av19 { width: 19px; height: 19px; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; font-size: 10px; display: inline-flex; align-items: center; justify-content: center; background: #FA7B62; color: #171412; }
+
+  .pp2 .years { padding: 34px 30px 0; position: relative; z-index: 2; }
+  .pp2 .yhdr { display: flex; align-items: baseline; gap: 20px; }
+  .pp2 .yhdr h3 { font-size: 34px; font-weight: 400; margin: 0; }
+  .pp2 .yhdr .age { font-family: 'Helvetica Neue', sans-serif; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: #FA9B84; }
+  .pp2 .yhdr .jump { margin-left: auto; font-family: 'Helvetica Neue', sans-serif; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,245,232,.6); }
+  .pp2 .grid { column-count: 3; column-gap: 10px; padding-top: 16px; }
+  .pp2 .cell { break-inside: avoid; margin-bottom: 12px; }
+  .pp2 .cell img { width: 100%; display: block; filter: sepia(.4) contrast(.9); }
+  .pp2 .cap { display: flex; justify-content: space-between; padding-top: 5px; font-family: 'Helvetica Neue', sans-serif; font-size: 9px; letter-spacing: .1em; color: rgba(255,245,232,.65); text-transform: uppercase; }
+
+  /* ---------- MOBILE v2 ---------- */
+  .mb2 { position: relative; overflow: hidden; width: 340px; flex: none; height: 700px; color: #FFF5E8; font-family: 'Helvetica Neue', sans-serif;
+        background:
+          radial-gradient(90% 50% at 10% -8%, #9D2B22 0%, rgba(157,43,34,0) 55%),
+          linear-gradient(168deg, #F35336 0%, #FA7B62 48%, #FFD9A8 100%); }
+  .mb2 .bar { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 0; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; position: relative; z-index: 3; }
+  .mb2 .bar .wm { font-weight: 700; font-size: 12px; letter-spacing: .24em; }
+  .mb2 .bar .right { display: flex; gap: 12px; align-items: center; }
+  .mb2 .bar .avm { width: 24px; height: 24px; background: #171412; color: #FFF5E8; font-weight: 700; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+  .mb2 .yearrow { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 18px 10px 0; position: relative; z-index: 2; }
+  .mb2 .step { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 300; color: #FFF5E8; text-shadow: 0 2px 24px rgba(157,43,34,.5); }
+  .mb2 .yr { font-family: Georgia, serif; font-size: 78px; color: #FFF5E8; text-shadow: 0 3px 40px rgba(157,43,34,.45); }
+  .mb2 .sub { text-align: center; font-size: 9px; letter-spacing: .26em; text-transform: uppercase; color: rgba(23,20,18,.7); padding-top: 6px; }
+  .mb2 .grid { column-count: 2; column-gap: 8px; padding: 16px 12px 96px; position: relative; z-index: 2; }
+  .mb2 .cell { break-inside: avoid; margin-bottom: 10px; }
+  .mb2 .cell img { width: 100%; display: block; filter: sepia(.32) contrast(.93) saturate(.88); }
+  .mb2 .cap { display: flex; justify-content: space-between; padding-top: 4px; font-size: 8.5px; letter-spacing: .08em; color: rgba(23,20,18,.75); text-transform: uppercase; }
+  .mb2 .month { break-inside: avoid; margin: 4px 0 10px; }
+  .mb2 .month h4 { font-size: 22px; font-weight: 800; color: #171412; margin: 0; }
+  .mb2 .month span { font-size: 8px; letter-spacing: .2em; color: rgba(23,20,18,.6); text-transform: uppercase; }
+
+  .mb2 .dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; padding: 30px 16px 14px;
+        background: linear-gradient(180deg, rgba(23,20,18,0) 0%, rgba(23,20,18,.72) 34%, rgba(23,20,18,.94) 100%); }
+  .mb2 .dock .ticks { display: flex; align-items: flex-end; gap: 2px; height: 30px; position: relative; }
+  .mb2 .dock .ticks i { flex: 1; background: rgba(255,245,232,.28); }
+  .mb2 .dock .ticks i.dot { height: 2px !important; background: rgba(255,245,232,.14); }
+  .mb2 .dock .ticks i.warm { background: rgba(250,123,98,.75); }
+  .mb2 .dock .thumb { position: absolute; left: 71%; top: -22px; width: 2px; height: 52px; background: #FFF5E8; box-shadow: 0 0 18px rgba(255,245,232,.55); }
+  .mb2 .dock .thumb b { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); font-family: Georgia, serif; font-size: 13px; font-weight: 400; color: #FFF5E8; letter-spacing: .04em; }
+  .mb2 .dock .lbls { display: flex; justify-content: space-between; font-size: 7.5px; letter-spacing: .14em; color: rgba(255,245,232,.45); padding-top: 8px; }
+  .mb2 .dock .lbls b { color: #FA7B62; font-weight: 700; }
+</style>
+
+<div class="split2">
+  <div class="mockup" style="flex:1.65">
+    <div class="mockup-header">Person v2 — no tree, level hero, full nav</div>
+    <div class="mockup-body" style="padding:0">
+      <div class="pp2">
+        <div class="grain2"></div>
+        <div class="nav">
+          <span class="wm">SHOEBOX</span>
+          <span>Timeline</span><b>People</b><span>Albums</span><span>Search</span><span>Arrivals</span>
+          <span class="acct"><span style="font-size:11px;letter-spacing:.14em;color:rgba(255,245,232,.7)">David</span><span class="av">D</span></span>
+        </div>
+        <div class="hero">
+          <div class="por"><img src="https://picsum.photos/id/1027/340/420"></div>
+          <div class="who">
+            <div class="eyebrow">1941 — 2019 · Born Brooklyn, New York</div>
+            <h1>Margaret Torcivia</h1>
+            <div class="nick">“Grandma”</div>
+            <div class="stats">
+              <span><b>241</b>Moments</span>
+              <span><b>1943–2018</b>On film</span>
+              <span><b>6</b>Albums</span>
+            </div>
+          </div>
+        </div>
+        <div class="body">
+          <div class="bio">
+            <div class="label">Her story</div>
+            <p>Margaret ran the Maple St. kitchen like a bridge crew and never once missed a birthday, a recital, or a chance to tell the story about the hurricane of '54. Half the tapes in this archive exist because she insisted somebody "get the camera."</p>
+            <div class="edit">Edit bio — you are linked to this person</div>
+          </div>
+          <div class="fam">
+            <div class="label">Family</div>
+            <div class="grp"><span class="g">Spouse</span><span class="names"><span class="p"><span class="av19" style="background:#446179;color:#FFF5E8">F</span>Frank</span></span></div>
+            <div class="grp"><span class="g">Children</span><span class="names"><span class="p"><span class="av19" style="background:#FFD9A8">D</span>David Sr.</span><span class="p"><span class="av19" style="background:#A8D8EA">C</span>Carol</span><span class="p"><span class="av19" style="background:#FFD700">J</span>Joe</span></span></div>
+            <div class="grp"><span class="g">Siblings</span><span class="names"><span class="p"><span class="av19" style="background:#6B6E23;color:#FFF5E8">R</span>Rose</span></span></div>
+            <div class="grp"><span class="g">Grandkids</span><span class="names"><span class="p"><span class="av19">D</span>David</span><span class="p"><span class="av19" style="background:#C3272B;color:#FFF5E8">E</span>Eric</span></span></div>
+          </div>
+        </div>
+        <div class="years">
+          <div class="yhdr"><h3>1994</h3><span class="age">Age 53 · 18 moments</span><span class="jump">All years ↓</span></div>
+          <div class="grid">
+            <div class="cell"><img src="https://picsum.photos/id/305/300/200"><div class="cap"><span>Jun 21</span><span>age 53</span></div></div>
+            <div class="cell"><img src="https://picsum.photos/id/1041/300/300"><div class="cap"><span>Jun 14</span><span>age 53</span></div></div>
+            <div class="cell"><img src="https://picsum.photos/id/177/300/240"><div class="cap"><span>Jul 04</span><span>age 53</span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup" style="flex:none;width:342px">
+    <div class="mockup-header">Mobile v2 — cream arrows, designed rail</div>
+    <div class="mockup-body" style="padding:0">
+      <div class="mb2">
+        <div class="grain2"></div>
+        <div class="bar"><span class="wm">SHOEBOX</span><span class="right"><span>Menu</span><span class="avm">D</span></span></div>
+        <div class="yearrow">
+          <span class="step">◀</span>
+          <span class="yr">1994</span>
+          <span class="step">▶</span>
+        </div>
+        <div class="sub">214 moments · swipe or drag the rail</div>
+        <div class="grid">
+          <div class="cell month"><span>June 1994</span><h4>JUNE</h4></div>
+          <div class="cell"><img src="https://picsum.photos/id/1041/300/380"><div class="cap"><span>Jun 14</span><span>Birthday</span></div></div>
+          <div class="cell"><img src="https://picsum.photos/id/177/300/220"><div class="cap"><span>Jun 14</span><span>0:42</span></div></div>
+          <div class="cell"><img src="https://picsum.photos/id/305/300/200"><div class="cap"><span>Jun 21</span><span>1:15</span></div></div>
+          <div class="cell"><img src="https://picsum.photos/id/453/300/300"><div class="cap"><span>c. 1994</span><span>Lake</span></div></div>
+          <div class="cell"><img src="https://picsum.photos/id/823/300/240"><div class="cap"><span>Jul 04</span><span>0:28</span></div></div>
+          <div class="cell"><img src="https://picsum.photos/id/64/300/360"><div class="cap"><span>Jul 09</span><span>Carol</span></div></div>
+        </div>
+        <div class="dock">
+          <div class="ticks">
+            <i class="dot"></i><i class="dot"></i><i style="height:5px"></i><i class="dot"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:7px"></i><i style="height:10px"></i><i style="height:9px"></i><i style="height:13px"></i><i style="height:11px"></i><i style="height:15px"></i><i style="height:14px"></i><i style="height:18px"></i><i style="height:16px"></i><i style="height:20px"></i><i class="warm" style="height:17px"></i><i class="warm" style="height:23px"></i><i class="warm" style="height:30px"></i><i class="warm" style="height:19px"></i><i style="height:15px"></i><i style="height:12px"></i><i style="height:9px"></i><i class="dot"></i>
+            <span class="thumb"><b>1994</b></span>
+          </div>
+          <div class="lbls"><span>1900</span><span>'20</span><span>'40</span><span>'60</span><span>'80</span><b>'90</b><span>2000</span><span>'20</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Answers & notes</h3>
+  <ul>
+    <li><b>Tree removed</b> — the family rows carry the structure; every name is a link, so the "tree" is implied by traversal.</li>
+    <li><b>Hero leveled</b> — eyebrow/name top-aligned with the portrait's top edge; the stats row (Moments / On film / Albums) locks to the portrait's bottom edge.</li>
+    <li><b>Accent colors — how they're picked</b>: a curated set of ~12 accents extracted from the gradient anchors (each pre-checked for AA contrast in both themes). New users and people are auto-assigned the least-used accent (so a family spreads across the palette); anyone can swap theirs in profile/person-edit. Person pages derive their whole room gradient from the person's accent.</li>
+    <li><b>Mobile arrows</b> now cream, matching the year numeral (with the same soft ember shadow).</li>
+    <li><b>Mobile rail</b>: no hard band — ticks rise out of a bottom fade; the active decade's ticks warm to dawn-orange; the thumb is a glowing hairline with the year set above it in serif; decade labels sit quiet underneath with the current one in dawn.</li>
+  </ul>
+</div>

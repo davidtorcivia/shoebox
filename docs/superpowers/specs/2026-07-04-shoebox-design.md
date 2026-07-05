@@ -38,7 +38,7 @@ Role hierarchy (each includes everything below it):
 - **Account ↔ Person link**: a user account can be linked to a `person` record. Users can edit their **own** linked person's bio/details regardless of role (or an editor can do it for them).
 - **Public shares**: albums and individual items get unlisted token URLs with optional password (hashed) and optional expiry; toggle for allowing original-file download. Public viewers get a stripped, read-only UI without comments.
 - **Comments**: flat (non-threaded), any authenticated user; author or editor+ can delete. Input is labeled "Add a memory…".
-- Every user gets a **personal accent color** from the gradient palette (auto-assigned, changeable in profile); it colors their username, avatar block, and activity everywhere.
+- Every user and every person gets a **personal accent color**: a curated set of ~12 accents extracted from the gradient anchors, each pre-verified for AA contrast in both themes. Auto-assignment picks the least-used accent; users can swap theirs in profile (editors can set a person's). The accent colors usernames, avatar blocks, and activity everywhere; person pages derive their entire room gradient from the person's accent.
 
 ## 4. The date model
 
@@ -59,8 +59,8 @@ Every item carries:
 **Person page** = destination, not filter:
 - Gradient hero (person's accent palette), name, lifespan ("1941 – 2019"), birth place
 - Editable bio (markdown; owner of linked account or editor+)
-- Immediate-family strip: parents / spouse / siblings / children as tappable chips
-- Mini tree view: 2 generations up/down, auto-laid-out from relationship primitives
+- Family rows (label-led: spouse / children / siblings / grandkids…) with tappable inline-avatar names — **no rendered tree view**; the tree is implied by traversing person links
+- Hero text top-aligns with the portrait's top edge; a stats row (moments / years on film / albums) locks to the portrait's bottom edge
 - The person's timeline: every item they appear in, chronological, with age badges
 - Stats: items count, years covered
 
@@ -183,6 +183,7 @@ Soft-delete everywhere user-facing (30-day trash; admins can empty). All destruc
 
 - WCAG AA contrast in both themes (each decade palette ships pre-verified ink/cream assignments).
 - **Comfort mode** (one tap, persisted per account): ~1.25× type, larger targets, simplified chrome, reduced motion, stronger contrast.
+- Mobile timeline: 44px cream year-stepper arrows (matching the year numeral, same ember shadow) flanking a ~78px serif year; the century rail docks to the bottom with no hard band — ticks rise out of a dark fade, active decade's ticks in dawn-orange, a glowing hairline thumb labeled with the year in serif, decade labels beneath (current in dawn). 2-col masonry; player stacks video → people/tags → date/story → comments.
 - 44px+ touch targets, visible year stepper buttons (◀ ▶) alongside drag, no hover-only functionality (tap equivalents everywhere), full keyboard nav + focus states, screen-reader landmarks/alt flows, `prefers-reduced-motion` honored globally (kills gradient drift + crossfades).
 - Base type ≥16px; motion 200–300ms springs.
 
