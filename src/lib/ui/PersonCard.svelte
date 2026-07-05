@@ -16,7 +16,7 @@
 	const lifespan = $derived.by(() => {
 		const born = person.birthdate?.slice(0, 4);
 		const died = person.deathDate?.slice(0, 4);
-		if (born && died) return `${born}-${died}`;
+		if (born && died) return `${born}–${died}`;
 		if (born) return `b. ${born}`;
 		return '';
 	});
