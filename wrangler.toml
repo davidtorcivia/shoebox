@@ -1,6 +1,7 @@
 name = "shoebox"
 main = ".svelte-kit/cloudflare/_worker.js"
-compatibility_date = "2026-07-04"
+compatibility_date = "2026-06-01"
+compatibility_flags = ["nodejs_compat"]
 
 [assets]
 directory = ".svelte-kit/cloudflare"
