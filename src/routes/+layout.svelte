@@ -11,7 +11,7 @@
 	onMount(() => initTheme(data.user));
 </script>
 
-{#if data.user}
+{#if data.user && !data.pathname.startsWith('/share')}
 	<Nav user={data.user} />
 {/if}
 <main>
