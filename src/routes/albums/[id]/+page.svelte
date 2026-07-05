@@ -76,6 +76,14 @@
 						onClose={() => (shareOpen = false)}
 					/>
 				{/if}
+				{#if data.canExport}
+					<a
+						class="arrange export"
+						data-testid="export-button"
+						href={`/api/albums/${album.id}/export`}
+						download>Export album</a
+					>
+				{/if}
 			</div>
 		</header>
 
@@ -157,6 +165,8 @@
 	}
 
 	.arrange {
+		display: inline-flex;
+		align-items: center;
 		min-height: 44px;
 		border: 0;
 		background: none;
@@ -165,6 +175,7 @@
 		font-family: var(--font-sans);
 		font-size: 11px;
 		letter-spacing: 0.16em;
+		text-decoration: none;
 		text-transform: uppercase;
 	}
 

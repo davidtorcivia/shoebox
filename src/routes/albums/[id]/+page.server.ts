@@ -13,6 +13,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		album: detail.album,
 		items,
 		canEdit: canEditAlbum(locals.user, detail.album),
-		canShare: ROLE_RANK[locals.user.role] >= ROLE_RANK.editor
+		canShare: ROLE_RANK[locals.user.role] >= ROLE_RANK.editor,
+		canExport: locals.platform.features.serverDerivatives
 	};
 };
