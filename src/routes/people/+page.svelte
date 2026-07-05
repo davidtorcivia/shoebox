@@ -29,7 +29,7 @@
 			return;
 		}
 		const { person } = await res.json();
-		await goto(`/people/${person.id}/edit`);
+		await goto(`/people/${person.slug}/edit`);
 	}
 </script>
 

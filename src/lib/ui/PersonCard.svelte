@@ -23,18 +23,14 @@
 	const initial = $derived(person.name.trim().charAt(0).toUpperCase());
 </script>
 
-<a class="card" href={`/people/${person.id}`} data-testid="person-card">
+<a class="card" href={`/people/${person.slug}`} data-testid="person-card">
 	<div class="square">
 		{#if person.avatarUrl && person.avatarCrop}
 			<div class="portrait-slot" data-testid="person-card-photo">
 				<CroppedPortrait url={person.avatarUrl} crop={person.avatarCrop} name={person.name} />
 			</div>
 		{:else}
-			<div
-				class="fill"
-				data-testid="person-card-fill"
-				style:background={fillBackground}
-			>
+			<div class="fill" data-testid="person-card-fill" style:background={fillBackground}>
 				<span>{initial}</span>
 			</div>
 		{/if}
@@ -63,7 +59,11 @@
 		inset: 0;
 		content: '';
 		background:
-			linear-gradient(180deg, color-mix(in srgb, var(--cream) 22%, transparent) 0%, transparent 38%),
+			linear-gradient(
+				180deg,
+				color-mix(in srgb, var(--cream) 22%, transparent) 0%,
+				transparent 38%
+			),
 			linear-gradient(135deg, transparent 0%, color-mix(in srgb, var(--ink) 28%, transparent) 100%);
 		pointer-events: none;
 	}

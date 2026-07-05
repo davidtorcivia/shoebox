@@ -96,19 +96,24 @@ export const itemFiles = sqliteTable(
 	(t) => [index('item_files_item').on(t.itemId)]
 );
 
-export const people = sqliteTable('people', {
-	id: text('id').primaryKey(),
-	name: text('name').notNull(),
-	nickname: text('nickname'),
-	birthdate: text('birthdate'),
-	deathDate: text('death_date'),
-	birthPlace: text('birth_place'),
-	bio: text('bio'),
-	avatarItemId: text('avatar_item_id'),
-	avatarCrop: text('avatar_crop'),
-	accentColor: text('accent_color').notNull(),
-	createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
-});
+export const people = sqliteTable(
+	'people',
+	{
+		id: text('id').primaryKey(),
+		name: text('name').notNull(),
+		slug: text('slug').notNull(),
+		nickname: text('nickname'),
+		birthdate: text('birthdate'),
+		deathDate: text('death_date'),
+		birthPlace: text('birth_place'),
+		bio: text('bio'),
+		avatarItemId: text('avatar_item_id'),
+		avatarCrop: text('avatar_crop'),
+		accentColor: text('accent_color').notNull(),
+		createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+	},
+	(t) => [uniqueIndex('people_slug_unique').on(t.slug)]
+);
 
 export const relationships = sqliteTable(
 	'relationships',

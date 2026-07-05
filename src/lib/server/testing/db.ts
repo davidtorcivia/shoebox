@@ -44,6 +44,7 @@ export async function makePerson(
 	await db.insert(schema.people).values({
 		id,
 		name: over.name ?? `Person ${id}`,
+		slug: over.slug ?? `person-${id.toLowerCase()}`,
 		nickname: over.nickname ?? null,
 		birthdate: over.birthdate ?? null,
 		deathDate: over.deathDate ?? null,

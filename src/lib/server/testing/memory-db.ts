@@ -56,6 +56,7 @@ export async function seedPerson(
 	await db.insert(people).values({
 		id,
 		name,
+		slug: `person-${id.toLowerCase()}`,
 		birthdate: over.birthdate ?? null,
 		accentColor: '#A8D8EA',
 		createdAt: new Date()

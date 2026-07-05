@@ -1,11 +1,17 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
 	import Avatar from '$lib/ui/Avatar.svelte';
 	import CroppedPortrait from '$lib/ui/CroppedPortrait.svelte';
 	import Gradient from '$lib/ui/Gradient.svelte';
+	import { renderMarkdown } from '$lib/ui/markdown';
 	import { personRoomFor } from '$lib/ui/tokens';
 	import type { PersonRef } from '$lib/domain/people-dto';
 
 	let { data } = $props();
+	let editingBio = $state(false);
+	let bioDraft = $state('');
+	let bioSaving = $state(false);
+	let bioError = $state('');
 	const person = $derived(data.person);
 	const room = $derived(personRoomFor(person.accentColor));
 	const fallbackBackground = $derived(
@@ -40,6 +46,29 @@
 			] as [string, PersonRef[]][]
 		).filter(([, members]) => members.length > 0)
 	);
+
+	function startBioEdit() {
+		bioDraft = person.bio ?? '';
+		bioError = '';
+		editingBio = true;
+	}
+
+	async function saveBio() {
+		bioSaving = true;
+		bioError = '';
+		const res = await fetch(`/api/people/${person.id}`, {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ bio: bioDraft })
+		});
+		bioSaving = false;
+		if (!res.ok) {
+			bioError = 'Could not save.';
+			return;
+		}
+		editingBio = false;
+		await invalidateAll();
+	}
 </script>
 
 <svelte:head>
@@ -75,7 +104,35 @@
 		<div class="body">
 			<section class="bio">
 				<div class="label">Story</div>
-				<p class="bio-text" data-testid="person-bio">{person.bio ?? 'No story yet.'}</p>
+				{#if editingBio}
+					<textarea
+						class="bio-edit"
+						data-testid="bio-textarea"
+						bind:value={bioDraft}
+						rows="8"
+						placeholder="Their story, in markdown…"
+					></textarea>
+					<div class="bio-actions">
+						<button data-testid="bio-save" onclick={saveBio} disabled={bioSaving}>Save</button>
+						<button onclick={() => (editingBio = false)}>Cancel</button>
+						{#if bioError}<span class="bio-err">{bioError}</span>{/if}
+					</div>
+				{:else}
+					{#if person.bio}
+						<div class="bio-text bio-md" data-testid="person-bio">
+							{@html renderMarkdown(person.bio)}
+						</div>
+					{:else}
+						<p class="bio-text" data-testid="person-bio">No story yet.</p>
+					{/if}
+					{#if data.canEditBio}
+						<button class="edit" data-testid="edit-bio" onclick={startBioEdit}>
+							{data.isLinked && !data.canEdit
+								? 'Edit bio — you are linked to this person'
+								: 'Edit bio'}
+						</button>
+					{/if}
+				{/if}
 			</section>
 			<section class="family" data-testid="family-rows">
 				<div class="label">Family</div>
@@ -84,7 +141,7 @@
 						<span class="group-label">{label}</span>
 						<span class="names">
 							{#each members as member (member.id)}
-								<a class="person-link" href={`/people/${member.id}`}>
+								<a class="person-link" href={`/people/${member.slug}`}>
 									<Avatar name={member.name} accentColor={member.accentColor} size={19} />
 									{member.name}
 								</a>
@@ -93,7 +150,7 @@
 					</div>
 				{/each}
 				{#if data.canEdit}
-					<a class="editlink" href={`/people/${person.id}/edit`} data-testid="edit-person">
+					<a class="editlink" href={`/people/${person.slug}/edit`} data-testid="edit-person">
 						Edit person
 					</a>
 				{/if}
@@ -215,6 +272,72 @@
 		font-family: var(--font-serif);
 		font-size: 17px;
 		line-height: 1.7;
+	}
+
+	.bio-md :global(p) {
+		margin: 0 0 12px;
+	}
+
+	.bio-md :global(em) {
+		font-style: normal;
+	}
+
+	.bio-md :global(a) {
+		color: var(--dawn);
+		text-decoration: none;
+	}
+
+	.bio-edit {
+		width: 100%;
+		padding: 14px;
+		border: 0;
+		background: color-mix(in srgb, var(--cream) 12%, transparent);
+		color: var(--cream);
+		font-family: var(--font-serif);
+		font-size: 17px;
+		line-height: 1.7;
+	}
+
+	.bio-actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 10px;
+	}
+
+	.bio-actions button,
+	.edit {
+		min-height: 44px;
+		padding: 0 10px 0 0;
+		border: 0;
+		background: none;
+		color: color-mix(in srgb, var(--cream) 45%, transparent);
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: 10px;
+		letter-spacing: 0.2em;
+		text-align: left;
+		text-transform: uppercase;
+	}
+
+	.bio-actions button[data-testid='bio-save'] {
+		color: var(--dawn);
+	}
+
+	.bio-actions button:disabled {
+		cursor: wait;
+		opacity: 0.55;
+	}
+
+	.bio-err {
+		color: var(--dawn);
+		font-family: var(--font-sans);
+		font-size: 11px;
+	}
+
+	.edit {
+		display: block;
+		margin-top: 12px;
 	}
 
 	.label {

@@ -7,6 +7,7 @@ export interface CropRect {
 
 export interface PersonRef {
 	id: string;
+	slug: string;
 	name: string;
 	accentColor: string;
 }

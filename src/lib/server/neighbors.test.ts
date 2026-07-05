@@ -49,6 +49,7 @@ beforeEach(async () => {
 	await db.insert(people).values({
 		id: 'p_eric000000',
 		name: 'Eric',
+		slug: 'eric',
 		accentColor: '#FA7B62',
 		createdAt: new Date()
 	});

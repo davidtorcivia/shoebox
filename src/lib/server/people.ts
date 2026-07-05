@@ -3,7 +3,13 @@ import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { nextAccent } from '$lib/domain/accents';
 import { ageAt } from '$lib/domain/ages';
-import type { CropRect, FamilyRefs, PersonDetailDTO, PersonListDTO, PersonRef } from '$lib/domain/people-dto';
+import type {
+	CropRect,
+	FamilyRefs,
+	PersonDetailDTO,
+	PersonListDTO,
+	PersonRef
+} from '$lib/domain/people-dto';
 import { canonicalRel, familyOf, type Rel, type RelType } from '$lib/domain/relationships';
 import { ACCENTS } from '$lib/ui/tokens';
 import type { Db } from '$lib/server/db';
@@ -25,6 +31,7 @@ export async function listPeople(db: Db, storage: StorageAdapter): Promise<Perso
 	const rows = await db
 		.select({
 			id: people.id,
+			slug: people.slug,
 			name: people.name,
 			accentColor: people.accentColor,
 			birthdate: people.birthdate,
@@ -47,6 +54,7 @@ export async function listPeople(db: Db, storage: StorageAdapter): Promise<Perso
 	return rows
 		.map((row) => ({
 			id: row.id,
+			slug: row.slug,
 			name: row.name,
 			accentColor: row.accentColor,
 			birthdate: row.birthdate,
@@ -75,16 +83,20 @@ export async function createPerson(
 	}
 
 	const used = [
-		...(await db.select({ accentColor: users.accentColor }).from(users)).map((row) => row.accentColor),
+		...(await db.select({ accentColor: users.accentColor }).from(users)).map(
+			(row) => row.accentColor
+		),
 		...(await db.select({ accentColor: people.accentColor }).from(people)).map(
 			(row) => row.accentColor
 		)
 	];
 	const id = nanoid(12);
 	const accentColor = nextAccent(used);
+	const slug = await uniquePersonSlug(db, name);
 	await db.insert(people).values({
 		id,
 		name,
+		slug,
 		birthdate: input.birthdate ?? null,
 		deathDate: input.deathDate ?? null,
 		birthPlace: input.birthPlace ?? null,
@@ -94,6 +106,7 @@ export async function createPerson(
 
 	return {
 		id,
+		slug,
 		name,
 		accentColor,
 		birthdate: input.birthdate ?? null,
@@ -109,15 +122,18 @@ export async function resolveFamily(db: Db, personId: string): Promise<FamilyRef
 	const relRows = await db.select().from(relationships);
 	const ids = familyOf(
 		personId,
-		relRows.map(
-			(row): Rel => ({ personA: row.personA, personB: row.personB, type: row.type })
-		)
+		relRows.map((row): Rel => ({ personA: row.personA, personB: row.personB, type: row.type }))
 	);
 	const all = [...new Set(Object.values(ids).flat())];
 	const refs = new Map<string, PersonRef>();
 	if (all.length > 0) {
 		const rows = await db
-			.select({ id: people.id, name: people.name, accentColor: people.accentColor })
+			.select({
+				id: people.id,
+				slug: people.slug,
+				name: people.name,
+				accentColor: people.accentColor
+			})
 			.from(people)
 			.where(inArray(people.id, all));
 		for (const row of rows) refs.set(row.id, row);
@@ -144,7 +160,11 @@ export async function getPersonDetail(
 	const row = (await db.select().from(people).where(eq(people.id, id)).limit(1))[0];
 	if (!row) return null;
 
-	const liveTagged = and(eq(itemPeople.personId, id), isNull(items.deletedAt), eq(items.status, 'ready'));
+	const liveTagged = and(
+		eq(itemPeople.personId, id),
+		isNull(items.deletedAt),
+		eq(items.status, 'ready')
+	);
 	const yearExpr = sql<number>`cast(substr(${items.sortDate}, 1, 4) as integer)`;
 	const yearRows = await db
 		.select({
@@ -185,6 +205,7 @@ export async function getPersonDetail(
 
 	return {
 		id: row.id,
+		slug: row.slug,
 		name: row.name,
 		accentColor: row.accentColor,
 		birthdate: row.birthdate,
@@ -204,6 +225,17 @@ export async function getPersonDetail(
 		},
 		linkedUsername: linked?.username ?? null
 	};
+}
+
+export async function resolvePersonId(db: Db, idOrSlug: string): Promise<string | null> {
+	const row = (
+		await db
+			.select({ id: people.id })
+			.from(people)
+			.where(or(eq(people.id, idOrSlug), eq(people.slug, idOrSlug)))
+			.limit(1)
+	)[0];
+	return row?.id ?? null;
 }
 
 function parseCrop(raw: string | null): CropRect | null {
@@ -285,7 +317,10 @@ export async function updatePerson(db: Db, id: string, patch: PersonPatch): Prom
 	if (patch.avatarCrop != null && !validCrop(patch.avatarCrop)) error(400, 'invalid avatar crop');
 
 	const set: Partial<typeof people.$inferInsert> = {};
-	if (patch.name !== undefined) set.name = patch.name.trim();
+	if (patch.name !== undefined) {
+		set.name = patch.name.trim();
+		set.slug = await uniquePersonSlug(db, set.name, id);
+	}
 	if (patch.birthdate !== undefined) set.birthdate = patch.birthdate;
 	if (patch.deathDate !== undefined) set.deathDate = patch.deathDate;
 	if (patch.birthPlace !== undefined) set.birthPlace = patch.birthPlace;
@@ -312,7 +347,9 @@ export async function deletePersonGuarded(
 	const taggedCount = Number(count);
 	if (taggedCount > 0) return { ok: false, taggedCount };
 
-	await db.delete(relationships).where(or(eq(relationships.personA, id), eq(relationships.personB, id)));
+	await db
+		.delete(relationships)
+		.where(or(eq(relationships.personA, id), eq(relationships.personB, id)));
 	await db.update(users).set({ personId: null }).where(eq(users.personId, id));
 	await db.delete(people).where(eq(people.id, id));
 	return { ok: true };
@@ -395,4 +432,26 @@ function validCrop(crop: CropRect): boolean {
 		crop.x + crop.w <= 1 &&
 		crop.y + crop.h <= 1
 	);
+}
+
+export function personSlugBase(name: string): string {
+	const slug = name
+		.normalize('NFKD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.toLowerCase()
+		.replace(/&/g, ' and ')
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '');
+	return slug || 'person';
+}
+
+async function uniquePersonSlug(db: Db, name: string, ignoreId?: string): Promise<string> {
+	const base = personSlugBase(name);
+	const rows = await db.select({ id: people.id, slug: people.slug }).from(people);
+	const used = new Set(rows.filter((row) => row.id !== ignoreId).map((row) => row.slug));
+	if (!used.has(base)) return base;
+	for (let n = 2; ; n += 1) {
+		const candidate = `${base}-${n}`;
+		if (!used.has(candidate)) return candidate;
+	}
 }

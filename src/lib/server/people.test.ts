@@ -20,6 +20,8 @@ import {
 	deletePersonGuarded,
 	getPersonDetail,
 	listPeople,
+	personSlugBase,
+	resolvePersonId,
 	updatePerson
 } from './people';
 
@@ -42,6 +44,15 @@ describe('createPerson', () => {
 		expect(person.accentColor).toBe(nextAccent(used));
 		expect(person.itemCount).toBe(0);
 		expect(person.name).toBe('Margaret Torcivia');
+		expect(person.slug).toBe('margaret-torcivia');
+	});
+
+	it('generates stable readable slugs and suffixes duplicates', async () => {
+		expect(personSlugBase('  José & Rose Torcivia!  ')).toBe('jose-and-rose-torcivia');
+		const first = await createPerson(db, { name: 'Margaret Torcivia' });
+		const second = await createPerson(db, { name: 'Margaret Torcivia' });
+		expect(first.slug).toBe('margaret-torcivia');
+		expect(second.slug).toBe('margaret-torcivia-2');
 	});
 });
 
@@ -127,9 +138,16 @@ describe('getPersonDetail', () => {
 		]);
 		expect(detail.stats).toEqual({ moments: 4, onFilm: { from: 1993, to: 1994 }, albums: 1 });
 		expect(detail.family.spouses).toEqual([
-			{ id: frank.id, name: 'Frank', accentColor: frank.accentColor }
+			{ id: frank.id, slug: frank.slug, name: 'Frank', accentColor: frank.accentColor }
 		]);
 		expect(detail.linkedUsername).toBeNull();
+	});
+
+	it('resolves people by slug or legacy id', async () => {
+		const meg = await makePerson(db, { name: 'Margaret', slug: 'margaret' });
+		expect(await resolvePersonId(db, 'margaret')).toBe(meg.id);
+		expect(await resolvePersonId(db, meg.id)).toBe(meg.id);
+		expect(await resolvePersonId(db, 'missing')).toBeNull();
 	});
 
 	it('reports the linked username', async () => {
@@ -192,6 +210,7 @@ describe('updatePerson', () => {
 		expect(detail.name).toBe('Margaret Torcivia');
 		expect(detail.birthPlace).toBe('Brooklyn, New York');
 		expect(detail.accentColor).toBe(ACCENTS[7].hex);
+		expect(detail.slug).toBe('margaret-torcivia');
 	});
 });
 
@@ -214,7 +233,9 @@ describe('deletePersonGuarded', () => {
 		});
 		const account = await makeUser(db, { personId: meg.id });
 		expect(await deletePersonGuarded(db, meg.id)).toEqual({ ok: true });
-		expect(await db.select().from(schema.people).where(eq(schema.people.id, meg.id))).toHaveLength(0);
+		expect(await db.select().from(schema.people).where(eq(schema.people.id, meg.id))).toHaveLength(
+			0
+		);
 		expect(await db.select().from(schema.relationships)).toHaveLength(0);
 		const after = (await db.select().from(schema.users)).find((user) => user.id === account.id)!;
 		expect(after.personId).toBeNull();
