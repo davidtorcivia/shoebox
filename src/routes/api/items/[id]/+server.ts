@@ -8,6 +8,7 @@ import {
 	type UpdateItemInput
 } from '$lib/server/items';
 import { requireRole } from '$lib/server/roles';
+import type { ItemDate } from '$lib/domain/dates';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
@@ -23,7 +24,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		locals.platform.storage,
 		user,
 		params.id,
-		(await request.json()) as UpdateItemInput
+		normalizeUpdatePatch((await request.json()) as FlatUpdateItemInput | UpdateItemInput)
 	);
 	return json({ item });
 };
@@ -46,3 +47,34 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	const item = await restoreItem(locals.db, locals.platform.storage, params.id);
 	return json({ item });
 };
+
+type FlatUpdateItemInput = {
+	title?: string | null;
+	description?: string | null;
+	tapeLabel?: string | null;
+	dateStart?: string | null;
+	dateEnd?: string | null;
+	datePrecision?: ItemDate['precision'];
+	people?: string[];
+	tags?: string[];
+};
+
+function normalizeUpdatePatch(input: FlatUpdateItemInput | UpdateItemInput): UpdateItemInput {
+	if ('date' in input) return input;
+	const flat = input as FlatUpdateItemInput;
+	const patch: UpdateItemInput = {
+		title: flat.title,
+		description: flat.description,
+		tapeLabel: flat.tapeLabel,
+		people: flat.people,
+		tags: flat.tags
+	};
+	if (flat.datePrecision) {
+		patch.date = {
+			dateStart: flat.dateStart ?? null,
+			dateEnd: flat.dateEnd ?? null,
+			precision: flat.datePrecision
+		};
+	}
+	return patch;
+}
