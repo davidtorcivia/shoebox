@@ -2,12 +2,13 @@
 	import AccentSwatches from '$lib/ui/AccentSwatches.svelte';
 	import Gradient from '$lib/ui/Gradient.svelte';
 	import { comfortMode, themePref } from '$lib/ui/theme';
-	import { personRoomFor } from '$lib/ui/tokens';
+	import { accentOn, personRoomFor } from '$lib/ui/tokens';
 
 	let { data, form } = $props();
 	// svelte-ignore state_referenced_locally
 	let accentColor = $state(data.profile.accentColor);
 	const room = $derived(personRoomFor(accentColor));
+	const profileOn = $derived(accentOn(accentColor));
 
 	$effect(() => {
 		themePref.set(data.profile.theme);
@@ -19,7 +20,7 @@
 	<title>Profile - Shoebox</title>
 </svelte:head>
 
-<div class="room" style={`--profile-accent: ${accentColor}`}>
+<div class="room" style={`--profile-accent: ${accentColor}; --profile-on: ${profileOn}`}>
 	<Gradient stops={room.stops} pools={room.pools} />
 	<section class="page">
 		<div class="wrap">
@@ -54,18 +55,47 @@
 			</section>
 
 			<section>
+				<div class="label">Avatar</div>
+				<div class="avatar-row">
+					{#if data.profile.avatarUrl}
+						<img class="avatar-preview" src={data.profile.avatarUrl} alt="" />
+					{:else}
+						<div class="avatar-preview fallback" aria-hidden="true">
+							{data.profile.username.slice(0, 1)}
+						</div>
+					{/if}
+					<div class="avatar-actions">
+						<form method="POST" action="?/avatar" enctype="multipart/form-data">
+							<label class="field file-field">
+								<span>Image</span>
+								<input
+									name="avatar"
+									type="file"
+									accept="image/avif,image/gif,image/jpeg,image/png,image/webp"
+									required
+								/>
+							</label>
+							<button type="submit" data-testid="save-avatar">
+								{data.profile.avatarUrl ? 'Replace avatar' : 'Upload avatar'}
+							</button>
+						</form>
+						{#if data.profile.avatarUrl}
+							<form method="POST" action="?/deleteAvatar">
+								<button class="secondary" type="submit" data-testid="delete-avatar">
+									Delete avatar
+								</button>
+							</form>
+						{/if}
+					</div>
+				</div>
+			</section>
+
+			<section>
 				<div class="label">Appearance</div>
 				<form method="POST" action="?/appearance">
 					<AccentSwatches bind:value={accentColor} />
 					<input type="hidden" name="accentColor" value={accentColor} />
-					<label class="field">
-						<span>Theme</span>
-						<select name="theme" value={data.profile.theme}>
-							<option value="system">System</option>
-							<option value="dark">Dark</option>
-							<option value="light">Light</option>
-						</select>
-					</label>
+					<input type="hidden" name="theme" value="system" />
 					<label class="check">
 						<input
 							type="checkbox"
@@ -142,7 +172,7 @@
 
 	.label {
 		margin-bottom: 14px;
-		color: color-mix(in srgb, var(--cream) 50%, transparent);
+		color: color-mix(in srgb, var(--cream) 78%, transparent);
 		font-family: var(--font-sans);
 		font-size: 10.5px;
 		letter-spacing: 0.26em;
@@ -153,6 +183,35 @@
 		margin-bottom: 20px;
 	}
 
+	.avatar-row {
+		display: grid;
+		grid-template-columns: 116px minmax(0, 1fr);
+		gap: 22px;
+		align-items: start;
+	}
+
+	.avatar-preview {
+		width: 116px;
+		aspect-ratio: 1;
+		object-fit: cover;
+		background: var(--profile-accent);
+		color: var(--profile-on);
+	}
+
+	.avatar-preview.fallback {
+		display: grid;
+		place-items: center;
+		font-family: var(--font-sans);
+		font-size: 54px;
+		font-weight: 800;
+		line-height: 1;
+		text-transform: uppercase;
+	}
+
+	.avatar-actions form {
+		margin-bottom: 12px;
+	}
+
 	.field {
 		display: block;
 		margin-bottom: 12px;
@@ -161,20 +220,18 @@
 	.field span {
 		display: block;
 		margin-bottom: 6px;
-		color: color-mix(in srgb, var(--cream) 60%, transparent);
+		color: color-mix(in srgb, var(--cream) 82%, transparent);
 		font-family: var(--font-sans);
 		font-size: 10px;
 		letter-spacing: 0.2em;
 		text-transform: uppercase;
 	}
 
-	input,
-	select {
+	input {
 		color-scheme: dark;
 	}
 
-	.field input,
-	.field select {
+	.field input {
 		width: 100%;
 		min-height: 44px;
 		border: 0;
@@ -183,6 +240,14 @@
 		font-family: var(--font-serif);
 		font-size: 17px;
 		padding: 12px 14px;
+	}
+
+	.file-field input {
+		display: block;
+		padding: 10px 0;
+		background: transparent;
+		font-family: var(--font-sans);
+		font-size: 14px;
 	}
 
 	.check {
@@ -206,13 +271,18 @@
 		margin-top: 8px;
 		border: 0;
 		background: var(--profile-accent);
-		color: var(--ink);
+		color: var(--profile-on);
 		cursor: pointer;
 		font-family: var(--font-sans);
 		font-size: 11px;
 		letter-spacing: 0.18em;
 		padding: 0 20px;
 		text-transform: uppercase;
+	}
+
+	.secondary {
+		background: color-mix(in srgb, var(--cream) 15%, transparent);
+		color: var(--cream);
 	}
 
 	.danger-zone {
@@ -255,6 +325,19 @@
 	@media (max-width: 640px) {
 		.wrap {
 			padding-inline: 18px;
+		}
+
+		.avatar-row {
+			grid-template-columns: 88px minmax(0, 1fr);
+			gap: 16px;
+		}
+
+		.avatar-preview {
+			width: 88px;
+		}
+
+		.avatar-preview.fallback {
+			font-size: 40px;
 		}
 	}
 </style>

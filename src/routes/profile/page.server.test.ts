@@ -4,6 +4,7 @@ import { isRedirect } from '@sveltejs/kit';
 import * as schema from '$lib/server/db/schema';
 import { SESSION_COOKIE, hashPassword, verifyPassword } from '$lib/server/auth';
 import { makeTestDb, makeUser, sessionUser, type TestDb } from '$lib/server/testing/db';
+import { MemoryStorage } from '$lib/server/testing/memory-platform';
 import { actions } from './+page.server';
 
 let db: TestDb;
@@ -12,11 +13,11 @@ beforeEach(() => {
 	db = makeTestDb();
 });
 
-function evt(user: unknown, fields: Record<string, string>) {
+function evt(user: unknown, fields: Record<string, string | File>, storage = new MemoryStorage()) {
 	const fd = new FormData();
 	for (const [key, value] of Object.entries(fields)) fd.set(key, value);
 	return {
-		locals: { db, user },
+		locals: { db, user, platform: { storage } },
 		cookies: { delete: () => undefined },
 		request: new Request('http://test/profile', { method: 'POST', body: fd })
 	} as never;
@@ -76,6 +77,39 @@ describe('profile actions', () => {
 		expect(row.accentColor).toBe('#FFD9A8');
 		expect(row.theme).toBe('dark');
 		expect(row.comfortMode).toBe(true);
+	});
+
+	it('uploads an avatar image for the signed-in user', async () => {
+		const storage = new MemoryStorage();
+		const me = sessionUser(await makeUser(db, {}));
+		const file = new File([new Uint8Array([1, 2, 3])], 'avatar.png', { type: 'image/png' });
+
+		await actions.avatar(evt(me, { avatar: file }, storage));
+
+		const row = (await db.select().from(schema.users).where(eq(schema.users.id, me.id)))[0];
+		expect(row.avatarStorageKey).toMatch(new RegExp(`^avatars/users/${me.id}/.+\\.png$`));
+		expect(row.avatarMime).toBe('image/png');
+		expect(storage.files.get(row.avatarStorageKey!)?.contentType).toBe('image/png');
+	});
+
+	it('deletes the signed-in user avatar', async () => {
+		const storage = new MemoryStorage();
+		await storage.put('avatars/users/me/avatar.png', new Uint8Array([1, 2, 3]), {
+			contentType: 'image/png'
+		});
+		const row = await makeUser(db, {
+			id: 'me',
+			avatarStorageKey: 'avatars/users/me/avatar.png',
+			avatarMime: 'image/png'
+		});
+		const me = sessionUser(row);
+
+		await actions.deleteAvatar(evt(me, {}, storage));
+
+		const after = (await db.select().from(schema.users).where(eq(schema.users.id, me.id)))[0];
+		expect(after.avatarStorageKey).toBeNull();
+		expect(after.avatarMime).toBeNull();
+		expect(storage.files.has('avatars/users/me/avatar.png')).toBe(false);
 	});
 
 	it('deleteAccount rejects the owner account', async () => {

@@ -11,7 +11,13 @@ import {
 	shares,
 	users
 } from '$lib/server/db/schema';
-import { changePassword, changeUsername, updateAppearance } from '$lib/server/profile';
+import {
+	changePassword,
+	changeUsername,
+	deleteAvatar,
+	updateAppearance,
+	updateAvatar
+} from '$lib/server/profile';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -38,6 +44,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 			username: row.username,
 			role: row.role,
 			accentColor: row.accentColor,
+			avatarStorageKey: row.avatarStorageKey,
+			avatarUrl: row.avatarStorageKey
+				? await locals.platform.storage.mediaUrl(row.avatarStorageKey)
+				: null,
 			theme: row.theme,
 			comfortMode: row.comfortMode
 		},
@@ -90,6 +100,35 @@ export const actions: Actions = {
 			return fail(400, { message: err instanceof Error ? err.message : 'Invalid preference' });
 		}
 		return { saved: 'appearance' };
+	},
+
+	avatar: async ({ locals, request }) => {
+		if (!locals.user) return fail(401, { message: 'Not signed in' });
+		const fd = await request.formData();
+		const file = fd.get('avatar');
+		if (!(file instanceof File)) return fail(400, { message: 'Choose an avatar image' });
+
+		try {
+			const { key } = await updateAvatar(locals.db, locals.platform.storage, locals.user.id, {
+				bytes: new Uint8Array(await file.arrayBuffer()),
+				contentType: file.type
+			});
+			locals.user = { ...locals.user, avatarStorageKey: key };
+		} catch (err) {
+			return fail(400, { message: err instanceof Error ? err.message : 'Invalid avatar' });
+		}
+		return { saved: 'avatar' };
+	},
+
+	deleteAvatar: async ({ locals }) => {
+		if (!locals.user) return fail(401, { message: 'Not signed in' });
+		try {
+			await deleteAvatar(locals.db, locals.platform.storage, locals.user.id);
+			locals.user = { ...locals.user, avatarStorageKey: null };
+		} catch (err) {
+			return fail(400, { message: err instanceof Error ? err.message : 'Could not delete avatar' });
+		}
+		return { saved: 'avatar' };
 	},
 
 	deleteAccount: async ({ cookies, locals, request }) => {

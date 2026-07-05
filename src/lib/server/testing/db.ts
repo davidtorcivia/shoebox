@@ -28,6 +28,8 @@ export async function makeUser(
 		passwordHash: over.passwordHash ?? 'pbkdf2$310000$c2FsdA==$aGFzaA==',
 		role: over.role ?? 'user',
 		accentColor: over.accentColor ?? '#FA7B62',
+		avatarStorageKey: over.avatarStorageKey ?? null,
+		avatarMime: over.avatarMime ?? null,
 		personId: over.personId ?? null,
 		comfortMode: over.comfortMode ?? false,
 		theme: over.theme ?? 'system',
@@ -130,6 +132,7 @@ export function sessionUser(row: typeof schema.users.$inferSelect): SessionUser 
 		username: row.username,
 		role: row.role,
 		accentColor: row.accentColor,
+		avatarStorageKey: row.avatarStorageKey,
 		personId: row.personId,
 		comfortMode: row.comfortMode,
 		theme: row.theme

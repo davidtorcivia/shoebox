@@ -29,6 +29,13 @@
       "when": 1783264022455,
       "tag": "0003_search-fts-v2",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783270800000,
+      "tag": "0004_user-avatars",
+      "breakpoints": true
     }
   ]
 }

@@ -9,7 +9,7 @@ export const reducedMotion: Writable<boolean> = writable(false);
 
 export const resolvedTheme: Readable<'dark' | 'light'> = derived(
 	[themePref, systemPrefersDark],
-	([pref, sysDark]) => (pref === 'system' ? (sysDark ? 'dark' : 'light') : pref)
+	(): 'dark' => 'dark'
 );
 
 export function initTheme(

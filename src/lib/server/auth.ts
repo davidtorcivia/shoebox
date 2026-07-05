@@ -13,6 +13,7 @@ export type SessionUser = {
 	username: string;
 	role: Role;
 	accentColor: string;
+	avatarStorageKey: string | null;
 	personId: string | null;
 	comfortMode: boolean;
 	theme: 'system' | 'dark' | 'light';
@@ -115,6 +116,7 @@ export async function validateSession(db: Db, token: string): Promise<SessionUse
 		username: user.username,
 		role: user.role,
 		accentColor: user.accentColor,
+		avatarStorageKey: user.avatarStorageKey,
 		personId: user.personId,
 		comfortMode: user.comfortMode,
 		theme: user.theme

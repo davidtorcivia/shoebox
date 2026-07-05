@@ -8,20 +8,20 @@ describe('resolvedTheme', () => {
 		systemPrefersDark.set(true);
 	});
 
-	it('follows the system preference when pref is system', () => {
+	it('uses the high-contrast dark treatment when pref is system', () => {
 		systemPrefersDark.set(true);
 		expect(get(resolvedTheme)).toBe('dark');
 		systemPrefersDark.set(false);
-		expect(get(resolvedTheme)).toBe('light');
+		expect(get(resolvedTheme)).toBe('dark');
 	});
 
-	it('a manual pref overrides the system preference', () => {
+	it('keeps the high-contrast dark treatment for manual prefs', () => {
 		systemPrefersDark.set(false);
 		themePref.set('dark');
 		expect(get(resolvedTheme)).toBe('dark');
 		systemPrefersDark.set(true);
 		themePref.set('light');
-		expect(get(resolvedTheme)).toBe('light');
+		expect(get(resolvedTheme)).toBe('dark');
 	});
 });
 

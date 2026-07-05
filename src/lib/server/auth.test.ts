@@ -58,6 +58,7 @@ describe('sessions', () => {
 		expect(user!.id).toBe(userId);
 		expect(user!.role).toBe('owner');
 		expect(user!.accentColor).toBe('#FA7B62');
+		expect(user!.avatarStorageKey).toBeNull();
 		expect(user!.personId).toBeNull();
 	});
 

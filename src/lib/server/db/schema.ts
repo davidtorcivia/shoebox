@@ -15,6 +15,8 @@ export const users = sqliteTable('users', {
 	passwordHash: text('password_hash').notNull(),
 	role: text('role', { enum: ['owner', 'admin', 'editor', 'uploader', 'user'] }).notNull(),
 	accentColor: text('accent_color').notNull(),
+	avatarStorageKey: text('avatar_storage_key'),
+	avatarMime: text('avatar_mime'),
 	personId: text('person_id'),
 	comfortMode: integer('comfort_mode', { mode: 'boolean' }).notNull().default(false),
 	theme: text('theme', { enum: ['system', 'dark', 'light'] })

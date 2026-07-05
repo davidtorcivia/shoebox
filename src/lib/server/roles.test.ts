@@ -9,6 +9,7 @@ function userWith(role: SessionUser['role']): { user: SessionUser } {
 			username: 'tester',
 			role,
 			accentColor: '#FA7B62',
+			avatarStorageKey: null,
 			personId: null,
 			comfortMode: false,
 			theme: 'system'

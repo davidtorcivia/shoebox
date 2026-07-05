@@ -30,6 +30,8 @@ export async function seedUser(
 		passwordHash: 'pbkdf2$310000$dGVzdA$dGVzdA',
 		role,
 		accentColor: '#FA7B62',
+		avatarStorageKey: null,
+		avatarMime: null,
 		comfortMode: false,
 		theme: 'system',
 		createdAt: new Date()
@@ -40,6 +42,7 @@ export async function seedUser(
 		username,
 		role,
 		accentColor: '#FA7B62',
+		avatarStorageKey: null,
 		personId: null,
 		comfortMode: false,
 		theme: 'system'

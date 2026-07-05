@@ -13,6 +13,7 @@ const owner = {
 	username: 'gran',
 	role: 'owner',
 	accentColor: '#FA7B62',
+	avatarStorageKey: null,
 	personId: null,
 	comfortMode: false,
 	theme: 'system'
@@ -22,6 +23,7 @@ const admin = {
 	username: 'ada',
 	role: 'admin',
 	accentColor: '#FFD700',
+	avatarStorageKey: null,
 	personId: null,
 	comfortMode: false,
 	theme: 'system'

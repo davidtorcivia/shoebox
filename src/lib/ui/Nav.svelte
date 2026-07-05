@@ -6,6 +6,7 @@
 		username: string;
 		role: 'owner' | 'admin' | 'editor' | 'uploader' | 'user';
 		accentColor: string;
+		avatarStorageKey: string | null;
 	}
 	let { user }: { user: NavUser } = $props();
 
@@ -30,12 +31,21 @@
 			aria-label={`Edit account for ${user.username}`}
 		>
 			<span class="name">{user.username}</span>
-			<span
-				class="monogram"
-				style:background={user.accentColor}
-				style:color={accentOn === 'ink' ? 'var(--ink)' : 'var(--cream)'}
-				aria-hidden="true">{user.username.slice(0, 1)}</span
-			>
+			{#if user.avatarStorageKey}
+				<img
+					class="monogram photo"
+					src={resolve(`/media/${user.avatarStorageKey}`)}
+					alt=""
+					aria-hidden="true"
+				/>
+			{:else}
+				<span
+					class="monogram"
+					style:background={user.accentColor}
+					style:color={accentOn === 'ink' ? 'var(--ink)' : 'var(--cream)'}
+					aria-hidden="true">{user.username.slice(0, 1)}</span
+				>
+			{/if}
 		</a>
 		<form method="POST" action="/logout">
 			<button type="submit">Sign out</button>
@@ -109,6 +119,7 @@
 		justify-content: center;
 		width: 28px;
 		height: 28px;
+		object-fit: cover;
 		font-weight: 700;
 	}
 

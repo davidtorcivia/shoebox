@@ -85,6 +85,8 @@ export async function redeemInvite(
 		passwordHash: await hashPassword(input.password),
 		role: invite.role,
 		accentColor: nextAccent(accentRows.map((row) => row.accentColor)),
+		avatarStorageKey: null,
+		avatarMime: null,
 		personId: null,
 		comfortMode: false,
 		theme: 'system',

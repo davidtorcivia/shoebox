@@ -1,11 +1,21 @@
 import { ACCENTS } from '$lib/ui/tokens';
 import { and, eq, ne } from 'drizzle-orm';
+import { nanoid } from 'nanoid';
 import { hashPassword, verifyPassword } from './auth';
 import { users } from './db/schema';
 import type { Db } from './db';
+import type { StorageAdapter } from './platform/types';
 
 type Result = { ok: true } | { ok: false; error: string };
 const THEMES = ['system', 'dark', 'light'] as const;
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+const AVATAR_TYPES = new Map([
+	['image/avif', 'avif'],
+	['image/gif', 'gif'],
+	['image/jpeg', 'jpg'],
+	['image/png', 'png'],
+	['image/webp', 'webp']
+]);
 
 async function reauth(db: Db, userId: string, currentPassword: string): Promise<Result> {
 	const row = (await db.select().from(users).where(eq(users.id, userId)).limit(1))[0];
@@ -89,4 +99,57 @@ export async function updateAppearance(
 	if (Object.keys(patch).length > 0) {
 		await db.update(users).set(patch).where(eq(users.id, userId));
 	}
+}
+
+export async function updateAvatar(
+	db: Db,
+	storage: StorageAdapter,
+	userId: string,
+	input: { bytes: Uint8Array; contentType: string }
+): Promise<{ key: string }> {
+	const ext = AVATAR_TYPES.get(input.contentType);
+	if (!ext) throw new Error('Avatar must be an image file');
+	if (input.bytes.byteLength === 0) throw new Error('Choose an avatar image');
+	if (input.bytes.byteLength > MAX_AVATAR_BYTES) throw new Error('Avatar must be 5 MB or smaller');
+
+	const row = (
+		await db
+			.select({ avatarStorageKey: users.avatarStorageKey })
+			.from(users)
+			.where(eq(users.id, userId))
+			.limit(1)
+	)[0];
+	if (!row) throw new Error('Account not found.');
+
+	const key = `avatars/users/${userId}/${nanoid(12)}.${ext}`;
+	await storage.put(key, input.bytes, {
+		contentType: input.contentType,
+		sizeHint: input.bytes.byteLength
+	});
+	await db
+		.update(users)
+		.set({ avatarStorageKey: key, avatarMime: input.contentType })
+		.where(eq(users.id, userId));
+	if (row.avatarStorageKey && row.avatarStorageKey !== key) {
+		await storage.delete(row.avatarStorageKey);
+	}
+
+	return { key };
+}
+
+export async function deleteAvatar(db: Db, storage: StorageAdapter, userId: string): Promise<void> {
+	const row = (
+		await db
+			.select({ avatarStorageKey: users.avatarStorageKey })
+			.from(users)
+			.where(eq(users.id, userId))
+			.limit(1)
+	)[0];
+	if (!row) throw new Error('Account not found.');
+
+	await db
+		.update(users)
+		.set({ avatarStorageKey: null, avatarMime: null })
+		.where(eq(users.id, userId));
+	if (row.avatarStorageKey) await storage.delete(row.avatarStorageKey);
 }
