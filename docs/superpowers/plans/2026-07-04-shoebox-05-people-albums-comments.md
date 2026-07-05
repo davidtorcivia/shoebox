@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deliver the people layer (relationship derivation, ages, people API, `/people` index, the locked person page with accent-derived room, bio editing, family rows, year-chunked age-captioned timeline, person edit UI, user↔person linking) plus full album CRUD/pages with drag-reorder and the comment-identity polish pass.
+**Goal:** Deliver the people layer (relationship derivation, ages, people API, `/people` index, the locked person page with accent-derived room, bio editing, family rows, year-chunked age-captioned timeline, person edit UI, user↔person linking) plus full album CRUD/pages with drag-reorder and the complete comments feature (API, item-room component, soft delete, and accent identity).
 
-**Architecture:** Pure domain logic (`relationships.ts`, `ages.ts`) feeds thin server services (`people.ts`, `albums.ts`) that build DTOs; JSON routes under `src/routes/api/` enforce roles per master Contract 6; Svelte 5 pages compose Phase 01–04 UI primitives (MasonryGrid, MediaCard, Avatar, Comments) with new person/album components. Person-page rooms derive entirely from `personRoomFor(person.accentColor)` in tokens.
+**Architecture:** Pure domain logic (`relationships.ts`, `ages.ts`) feeds thin server services (`people.ts`, `albums.ts`, `comments.ts`) that build DTOs; JSON routes under `src/routes/api/` enforce roles per master Contract 6; Svelte 5 pages compose Phase 01–04 UI primitives (MasonryGrid, MediaCard, Avatar, Player room shell) with new person/album/comment components. Person-page rooms derive entirely from `personRoomFor(person.accentColor)` in tokens.
 
 **Tech Stack:** SvelteKit 2 + Svelte 5 (runes), TypeScript strict, Drizzle ORM (better-sqlite3/D1), Vitest, Playwright, `marked` + `isomorphic-dompurify` (bio markdown), pnpm.
 
@@ -76,7 +76,7 @@ ItemDTO = { id, type, title, description, date: ItemDate, displayDate, shortDate
   people: { id, name, accentColor, age? }[], tags: { id, name, kind }[], albums: { id, title }[], uploadedBy, tapeLabel }
 
 // Contract 6 — GET /api/items?year&people(csv)&album&limit → { items: ItemDTO[], nextCursor }
-// Contract 6 — GET/POST /api/items/[id]/comments (Phase 04) — comment JSON:
+// Contract 6 — GET/POST /api/items/[id]/comments (this phase) — comment JSON:
 //   { id: string; body: string; createdAt: string; user: { id: string; username: string; accentColor: string } }
 
 // Contract 2 — StorageAdapter.mediaUrl(key: string): Promise<string>
@@ -90,7 +90,7 @@ Assumed Phase 01–04 module locations (**semantics are contractual, exact paths
 - `src/lib/server/db/index.ts` exports `type Db = ReturnType<typeof drizzle>`.
 - `src/lib/ui/Avatar.svelte` props: `{ name: string; accentColor: string; size?: number }` — sharp square monogram, ink/cream text per ACCENTS pairing.
 - `src/lib/ui/MasonryGrid.svelte` props: `{ items: ItemDTO[] }` (renders one `MediaCard` per item, preserves given order). `src/lib/ui/MediaCard.svelte` props: `{ item: ItemDTO }` with the caption row (short date left, people/event right).
-- `src/lib/ui/Comments.svelte` props: `{ itemId: string }`; loads and posts `/api/items/[id]/comments`; input placeholder "Add a memory…".
+- Phase 04 leaves an empty `data-testid="comments-slot"` in `src/routes/item/[id]/+page.svelte`; this phase replaces that slot with `Comments.svelte`.
 - `src/app.css` defines `:root { --ink; --cream; --dawn; --font-serif; --font-sans }` from tokens (Phase 01). Components below use these vars, never raw hex.
 - Playwright (Phase 01 config) starts the app with `DATABASE_PATH=./e2e/.data/shoebox.db` and `MEDIA_PATH=./e2e/.data/media`; login form fields are `input[name="username"]`, `input[name="password"]` with a `button[type="submit"]`. Verify against `playwright.config.ts` and adjust the two constants in `e2e/support/seed-phase05.ts` if the actual env differs.
 
@@ -106,6 +106,7 @@ src/lib/server/
   testing/db.ts                                   # Task 3 — in-memory test DB + seeders (test-only)
   people.ts (+ people.test.ts)                    # Tasks 3–4 — person service
   albums.ts (+ albums.test.ts)                    # Task 12 — album service
+  comments.ts (+ comments.test.ts)                # Task 17 — list/add/delete comments
 src/routes/api/
   people/+server.ts (+ server.test.ts)            # Task 5
   people/[id]/+server.ts (+ server.test.ts)       # Task 5
@@ -114,6 +115,8 @@ src/routes/api/
   albums/[id]/+server.ts (+ server.test.ts)       # Task 13
   albums/[id]/items/+server.ts (+ server.test.ts) # Task 13
   admin/users/[id]/+server.ts (+ server.test.ts)  # Task 16
+  items/[id]/comments/+server.ts                  # Task 17 — GET/POST
+  items/[id]/comments/[commentId]/+server.ts      # Task 17 — DELETE soft
 src/lib/ui/
   crop.ts (+ crop.test.ts)                        # Tasks 6, 10 — crop CSS math + picker math
   CroppedPortrait.svelte                          # Task 6
@@ -128,7 +131,7 @@ src/lib/ui/
   ReorderGrid.svelte                              # Task 14
   AlbumToggle.svelte                              # Task 15
   relative-time.ts (+ relative-time.test.ts)      # Task 17
-  CommentList.svelte                              # Task 17
+  Comments.svelte, CommentList.svelte             # Task 17
 src/routes/
   people/+page.server.ts, +page.svelte            # Task 6
   people/[id]/+page.server.ts, +page.svelte       # Tasks 7–9
@@ -140,7 +143,7 @@ e2e/
   support/seed-phase05.ts                         # Task 18
   people-albums.spec.ts                           # Task 18
 Modified: src/lib/ui/MediaCard.svelte, src/lib/ui/MasonryGrid.svelte (Task 9 caption props),
-          src/lib/ui/Comments.svelte (Task 17), src/routes/item/[id]/+page.svelte (Task 15),
+          src/routes/item/[id]/+page.svelte (Task 17),
           package.json (Task 8: marked + isomorphic-dompurify).
 ```
 
@@ -5377,20 +5380,55 @@ git commit -m "feat: user-person linking endpoint and profile page (account, pas
 
 ---
 
-### Task 17: Comment identity polish — shared `CommentList` with accent usernames
+### Task 17: Comments API, item-room component, and accent identity
 
 **Files:**
-- Create: `src/lib/ui/relative-time.ts` — Test: `src/lib/ui/relative-time.test.ts` (if Phase 04 already shipped an equivalent helper, reuse it and skip these two files)
+- Create: `src/lib/server/comments.ts`
+- Create: `src/lib/server/comments.test.ts`
+- Create: `src/routes/api/items/[id]/comments/+server.ts`
+- Create: `src/routes/api/items/[id]/comments/[commentId]/+server.ts`
+- Create: `src/lib/ui/relative-time.ts` — Test: `src/lib/ui/relative-time.test.ts`
 - Create: `src/lib/ui/CommentList.svelte`
-- Modify: `src/lib/ui/Comments.svelte` (Phase 04 — delegate its list rendering)
+- Create: `src/lib/ui/Comments.svelte`
+- Modify: `src/routes/item/[id]/+page.svelte`
 
 **Interfaces:**
-- Consumes: comment JSON shape from Phase 04 endpoints (`{ id, body, createdAt, user: { id, username, accentColor } }`), `Avatar.svelte`.
+- Consumes: `comments`, `users`, `items` schema tables; `requireRole`; `Avatar.svelte`; Phase 04's `data-testid="comments-slot"` item-room placeholder.
 - Produces:
+  - `CommentDTO = { id: string; body: string; createdAt: string; user: { id: string; username: string; accentColor: string }; canDelete: boolean }`.
+  - `listComments(db, itemId, viewer)`, `addComment(db, itemId, viewer, body)`, `deleteComment(db, commentId, viewer)` in `$lib/server/comments`.
+  - Endpoints: `GET/POST /api/items/[id]/comments`; `DELETE /api/items/[id]/comments/[commentId]`.
   - `export function relativeTime(iso: string, now?: Date): string` — "just now", "4m ago", "3h ago", "2d ago", else "Jun 14, 1994".
   - `CommentList.svelte` props: `{ comments: CommentView[]; canDelete: (c: CommentView) => boolean; ondelete: (id: string) => void }` where `CommentView = { id: string; body: string; createdAt: string; user: { id: string; username: string; accentColor: string } }` (exported from the component's module script).
+  - `Comments.svelte` props: `{ itemId: string; currentUser: { id: string; role: Role } | null }`; loads, posts, and deletes comments; input placeholder is exactly **"Add a memory…"**.
 
-- [ ] **Step 1: Write the failing relative-time test**
+- [ ] **Step 1: Write server tests for comments**
+
+Create `src/lib/server/comments.test.ts` with coverage for: oldest-first listing, accent user identity, blank/oversized body rejection, missing/deleted item returns null/404 at route layer, author can delete, editor+ can delete, unrelated user cannot, and soft-deleted rows are hidden. Use the existing migrated test DB helper from earlier phases.
+
+Run: `pnpm vitest run src/lib/server/comments.test.ts`
+Expected: FAIL — `Cannot find module './comments'`.
+
+- [ ] **Step 2: Implement server module and routes**
+
+Implement:
+- `listComments`: joins `comments` → `users`, excludes `comments.deleted_at`, returns `createdAt` as ISO string.
+- `addComment`: trims body, requires 1..2000 chars, refuses missing/deleted items, inserts `nanoid(12)`.
+- `deleteComment`: soft-deletes only when viewer is author or editor+.
+
+Routes:
+- `GET /api/items/[id]/comments` → `{ comments }`.
+- `POST /api/items/[id]/comments` with `{ body }` → `201 { comment }`.
+- `DELETE /api/items/[id]/comments/[commentId]` → `{ ok: true }` or 403.
+
+Run: `pnpm vitest run src/lib/server/comments.test.ts && pnpm check`
+
+```bash
+git add src/lib/server/comments.ts src/lib/server/comments.test.ts "src/routes/api/items/[id]/comments"
+git commit -m "feat: add comments API with soft delete"
+```
+
+- [ ] **Step 3: Write the failing relative-time test**
 
 Create `src/lib/ui/relative-time.test.ts`:
 
@@ -5415,12 +5453,12 @@ describe('relativeTime', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 4: Run test to verify it fails**
 
 Run: `pnpm vitest run src/lib/ui/relative-time.test.ts`
 Expected: FAIL — "Failed to resolve import './relative-time'".
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 5: Implement**
 
 Create `src/lib/ui/relative-time.ts`:
 
@@ -5440,7 +5478,7 @@ export function relativeTime(iso: string, now: Date = new Date()): string {
 
 Run: `pnpm vitest run src/lib/ui/relative-time.test.ts` — Expected: PASS (3 tests).
 
-- [ ] **Step 4: Write `CommentList.svelte`**
+- [ ] **Step 6: Write `CommentList.svelte`**
 
 Create `src/lib/ui/CommentList.svelte`:
 
@@ -5534,23 +5572,22 @@ Create `src/lib/ui/CommentList.svelte`:
 </style>
 ```
 
-- [ ] **Step 5: Delegate `Comments.svelte` to it and audit accent usage**
+- [ ] **Step 7: Create `Comments.svelte`, wire item room, and audit accent usage**
 
-Surgical edit to the Phase 04 file `src/lib/ui/Comments.svelte`:
-1. Add `import CommentList from './CommentList.svelte';` to the script block.
-2. Replace its internal comment-list markup (the loop that renders avatar + username + time + body per comment) with:
+Create `src/lib/ui/Comments.svelte`:
+- On mount, fetch `/api/items/${itemId}/comments`.
+- Render `<CommentList>` for the loaded comments.
+- Submit POST with the filled sharp-cornered text box and placeholder **"Add a memory…"**.
+- Delete via the DELETE endpoint, then remove the row locally.
+- Use no borders, no radius, no underline field styling; filled cream-tint box on the player room.
+
+Replace Phase 04's item-room `data-testid="comments-slot"` placeholder with:
 
 ```svelte
-<CommentList
-	{comments}
-	canDelete={(c) => currentUser != null && (c.user.id === currentUser.id || isEditor)}
-	ondelete={deleteComment}
-/>
+<Comments itemId={data.item.id} currentUser={data.me} />
 ```
 
-using the file's existing `comments` array, current-user variable, editor check, and delete function names — keep the **"Add a memory…"** input form exactly as Phase 04 built it. Delete the now-unused per-comment markup and any styles it orphaned.
-
-3. Audit — run:
+Audit — run:
 
 ```bash
 grep -rn "username" src/lib/ui src/routes --include='*.svelte'
@@ -5558,16 +5595,16 @@ grep -rn "username" src/lib/ui src/routes --include='*.svelte'
 
 For every hit that renders a username: it must be uppercase sans colored by that user's `accentColor` (via `CommentList`, or `style:color={user.accentColor}`), **except** the Nav account block, which stays a monogram in ink per the locked mockups (spec §10). Fix any violations found (the fix is always `style:color={...accentColor}` on the username span).
 
-- [ ] **Step 6: Verify**
+- [ ] **Step 8: Verify**
 
 Run: `pnpm check && pnpm vitest run src/lib/ui` — Expected: 0 errors / PASS.
 Manual: open an item room with comments from two users with different accents — each username renders in its own accent, 19px avatar inline, serif 16px body, relative time; author/editor sees the delete ×; the input still says "Add a memory…".
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/lib/ui/relative-time.ts src/lib/ui/relative-time.test.ts src/lib/ui/CommentList.svelte src/lib/ui/Comments.svelte
-git commit -m "feat: shared CommentList with accent-colored usernames; comment identity audit"
+git add src/lib/ui/relative-time.ts src/lib/ui/relative-time.test.ts src/lib/ui/CommentList.svelte src/lib/ui/Comments.svelte "src/routes/item/[id]/+page.svelte"
+git commit -m "feat: add item comments UI with accent-colored usernames"
 ```
 
 ---
@@ -5897,7 +5934,4 @@ git commit -m "test: phase 05 e2e — relationships, linked bio, age captions, a
 - [ ] Every username render uses the user's accent color (except the Nav ink monogram).
 - [ ] No `border-radius`, no italics, no Inter, no hard-coded hex outside `tokens.ts` (accent/room values flowing from person data are fine — they originate in `ACCENTS`).
 - [ ] Nothing from Phases 06/08/09 leaked in (no search UI, no share links, no faces).
-
-
-
 
