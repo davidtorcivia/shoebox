@@ -14,6 +14,7 @@ export interface SearchAlbumCard {
 	id: string;
 	title: string;
 	coverItemId: string | null;
+	coverUrl: string | null;
 	itemCount: number;
 }
 

@@ -88,7 +88,13 @@ describe('searchAlbumCards', () => {
 	it('matches live albums by title token and counts items', async () => {
 		const cards = await searchAlbumCards(ctx.db, 'lake');
 		expect(cards).toEqual([
-			{ id: 'a1', title: 'Summer at the lake', coverItemId: null, itemCount: 0 }
+			{
+				id: 'a1',
+				title: 'Summer at the lake',
+				coverItemId: null,
+				coverStorageKey: null,
+				itemCount: 0
+			}
 		]);
 		expect(await searchAlbumCards(ctx.db, 'christmas')).toEqual([]);
 	});

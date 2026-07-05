@@ -4,15 +4,18 @@
 	import { serializeQuery, type SearchQuery } from '$lib/domain/search-query';
 	import Gradient from '$lib/ui/Gradient.svelte';
 	import MasonryGrid from '$lib/ui/MasonryGrid.svelte';
+	import PersonCard from '$lib/ui/PersonCard.svelte';
+	import { ACCENTS, personRoomFor } from '$lib/ui/tokens';
 	import type { ItemDTO } from '$lib/types';
 	import type { PageData } from './$types';
-	import type { SearchResultDTO } from './+page';
+	import type { SearchAlbumCard, SearchPersonCard, SearchResultDTO } from './+page';
 
 	let { data }: { data: PageData } = $props();
 
 	let draft = $state('');
 	let extraItems = $state<SearchResultDTO['items']>([]);
 	let nextCursor = $state<string | null>(null);
+	let liveTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const room = {
 		stops: ['#171412', '#5E6F4D', '#FFD9A8'] as [string, string, string],
@@ -27,6 +30,22 @@
 		draft = data.q;
 		extraItems = [];
 		nextCursor = data.result?.nextCursor ?? null;
+	});
+
+	$effect(() => {
+		const value = draft.trim();
+		if (value === data.q.trim()) return;
+		if (liveTimer) clearTimeout(liveTimer);
+		liveTimer = setTimeout(() => {
+			void goto(value ? resolve(`/search?q=${encodeURIComponent(value)}`) : resolve('/search'), {
+				replaceState: true,
+				noScroll: true,
+				keepFocus: true
+			});
+		}, 240);
+		return () => {
+			if (liveTimer) clearTimeout(liveTimer);
+		};
 	});
 
 	const result = $derived(data.result);
@@ -103,7 +122,12 @@
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
 		const value = draft.trim();
-		void goto(value ? resolve(`/search?q=${encodeURIComponent(value)}`) : resolve('/search'));
+		if (liveTimer) clearTimeout(liveTimer);
+		void goto(value ? resolve(`/search?q=${encodeURIComponent(value)}`) : resolve('/search'), {
+			replaceState: true,
+			noScroll: true,
+			keepFocus: true
+		});
 	}
 
 	function removeChip(chip: Chip) {
@@ -120,6 +144,27 @@
 		const body = (await res.json()) as SearchResultDTO;
 		extraItems = [...extraItems, ...body.items];
 		nextCursor = body.nextCursor;
+	}
+
+	function personCard(person: SearchPersonCard) {
+		return {
+			id: person.id,
+			slug: person.slug,
+			name: person.name,
+			accentColor: person.accentColor,
+			birthdate: null,
+			deathDate: null,
+			avatarItemId: person.avatarItemId,
+			avatarCrop: null,
+			avatarUrl: null,
+			itemCount: 0
+		};
+	}
+
+	function albumFallback(album: SearchAlbumCard) {
+		const accent = ACCENTS[album.id.charCodeAt(0) % ACCENTS.length].hex;
+		const stops = personRoomFor(accent).stops;
+		return `linear-gradient(165deg, ${stops[0]} 0%, ${stops[1]} 55%, ${stops[2]} 135%)`;
 	}
 </script>
 
@@ -141,7 +186,6 @@
 				data-testid="omnibox"
 				bind:value={draft}
 			/>
-			<button class="omnibox-go" type="submit">Search</button>
 		</form>
 
 		{#if chips.length}
@@ -165,14 +209,7 @@
 					<h2>People</h2>
 					<div class="card-row" data-testid="people-row">
 						{#each result.people as person (person.id)}
-							<a
-								class="person-card"
-								href={resolve(`/people/${person.slug}`)}
-								style={`--accent:${person.accentColor}`}
-							>
-								<span class="person-mark">{person.name.slice(0, 1)}</span>
-								<span class="card-name">{person.name}</span>
-							</a>
+							<PersonCard person={personCard(person)} />
 						{/each}
 					</div>
 				</section>
@@ -184,8 +221,15 @@
 					<div class="card-row" data-testid="albums-row">
 						{#each result.albums as album (album.id)}
 							<a class="album-card" href={resolve(`/albums/${album.id}`)}>
-								<span class="card-name">{album.title}</span>
-								<span class="card-count">
+								<div class="album-cover">
+									{#if album.coverUrl}
+										<img src={album.coverUrl} alt={album.title} data-testid="album-cover" />
+									{:else}
+										<div class="album-fill" style:background-image={albumFallback(album)}></div>
+									{/if}
+								</div>
+								<span class="album-title">{album.title}</span>
+								<span class="album-count">
 									{album.itemCount} {album.itemCount === 1 ? 'moment' : 'moments'}
 								</span>
 							</a>
@@ -227,9 +271,6 @@
 	.omnibox {
 		position: relative;
 		z-index: 1;
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 12px;
 		max-width: 1120px;
 		margin: 0 auto;
 	}
@@ -253,7 +294,6 @@
 		opacity: 1;
 	}
 
-	.omnibox-go,
 	.more {
 		min-height: 44px;
 		border: 0;
@@ -265,10 +305,6 @@
 		letter-spacing: 0.16em;
 		padding: 0 20px;
 		text-transform: uppercase;
-	}
-
-	.omnibox-go {
-		min-height: 68px;
 	}
 
 	.chips {
@@ -325,53 +361,45 @@
 
 	.card-row {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
-		gap: 12px;
+		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+		gap: 22px 16px;
 	}
 
-	.person-card,
 	.album-card {
-		display: grid;
-		min-height: 96px;
-		align-content: end;
-		background: color-mix(in srgb, var(--cream) 13%, transparent);
 		color: var(--cream);
-		padding: 14px;
 		text-decoration: none;
 	}
 
-	.person-card {
-		grid-template-columns: 48px minmax(0, 1fr);
-		align-items: end;
-		align-content: stretch;
-		gap: 12px;
+	.album-cover {
+		aspect-ratio: 4 / 3;
+		overflow: hidden;
+		background: color-mix(in srgb, var(--cream) 10%, transparent);
 	}
 
-	.person-mark {
-		display: grid;
-		width: 48px;
-		height: 48px;
-		place-items: center;
-		background: var(--accent);
-		color: var(--ink);
-		font-family: var(--font-serif);
-		font-size: 24px;
-		line-height: 1;
+	.album-cover img,
+	.album-fill {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
 	}
 
-	.card-name {
+	.album-title {
+		display: block;
+		margin-top: 10px;
 		overflow-wrap: anywhere;
 		font-family: var(--font-serif);
 		font-size: 21px;
-		line-height: 1.1;
+		line-height: 1.2;
 	}
 
-	.card-count {
-		margin-top: 8px;
+	.album-count {
+		display: block;
+		margin-top: 4px;
 		font-family: var(--font-sans);
 		font-size: 10px;
 		letter-spacing: 0.16em;
-		opacity: 0.66;
+		opacity: 0.6;
 		text-transform: uppercase;
 	}
 
@@ -407,16 +435,12 @@
 			padding: 24px 16px 76px;
 		}
 
-		.omnibox {
-			grid-template-columns: 1fr;
-		}
-
 		.omnibox-input {
 			font-size: 24px;
 		}
 
 		.card-row {
-			grid-template-columns: 1fr;
+			grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
 		}
 	}
 </style>

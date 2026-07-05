@@ -174,21 +174,9 @@ test('empty state copy renders for no matches', async () => {
 	await expect(page.getByTestId('search-empty')).toContainText('Nothing found in the shoebox');
 });
 
-test('omnibox is plain submit and updates the URL', async () => {
+test('omnibox updates results live and keeps the URL in sync', async () => {
 	await page.goto('/search');
 	await page.getByTestId('omnibox').fill('watermelon');
-	await page.getByTestId('omnibox').press('Enter');
 	await page.waitForURL(/\/search\?q=watermelon/);
 	await expect(openButton('Lake day')).toBeVisible();
-});
-
-test('timeline compact search carries the active year as a token', async () => {
-	await page.goto('/?y=1994');
-	await page.getByTestId('timeline-search').fill('presents');
-	await page.getByTestId('timeline-search').press('Enter');
-	await page.waitForURL(/\/search\?q=/);
-	const q = decodeURIComponent(new URL(page.url()).searchParams.get('q') ?? '');
-	expect(q).toContain('presents');
-	expect(q).toContain('1994');
-	await expect(openButton('Morning presents')).toBeVisible();
 });

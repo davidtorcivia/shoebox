@@ -298,6 +298,7 @@ export interface AlbumCard {
 	id: string;
 	title: string;
 	coverItemId: string | null;
+	coverStorageKey: string | null;
 	itemCount: number;
 }
 
@@ -332,8 +333,10 @@ export async function searchAlbumCards(db: Db, text: string, limit = 8): Promise
 		sql`SELECT a.id AS id,
 		           a.title AS title,
 		           a.cover_item_id AS coverItemId,
+		           f.storage_key AS coverStorageKey,
 		           (SELECT count(*) FROM album_items ai WHERE ai.album_id = a.id) AS itemCount
 		    FROM albums a
+		    LEFT JOIN item_files f ON f.item_id = a.cover_item_id AND f.kind = 'thumb_400'
 		    WHERE a.deleted_at IS NULL AND (${sql.join(likes, sql` OR `)})
 		    ORDER BY a.title
 		    LIMIT ${limit}`

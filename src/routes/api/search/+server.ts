@@ -18,12 +18,18 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	const items = await itemDTOsByIds(locals, exec.itemIds);
 
 	const wantCards = !cursor && parsed.text.trim().length > 0;
-	const [people, albums] = wantCards
+	const [people, albumCards] = wantCards
 		? await Promise.all([
 				searchPeopleCards(locals.db, parsed.text),
 				searchAlbumCards(locals.db, parsed.text)
 			])
 		: [[], []];
+	const albums = await Promise.all(
+		albumCards.map(async ({ coverStorageKey, ...album }) => ({
+			...album,
+			coverUrl: coverStorageKey ? await locals.platform.storage.mediaUrl(coverStorageKey) : null
+		}))
+	);
 
 	const { warnings: _warnings, ...query } = parsed;
 	return json({
