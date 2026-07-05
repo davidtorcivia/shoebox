@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { FIXTURE_JPG, generateFixtures } from '../../e2e/fixtures/generate';
+import { FIXTURE_JPG, FIXTURE_MP4, generateFixtures } from '../../e2e/fixtures/generate';
 import * as schema from '../lib/server/db/schema';
 import { createFsStorage } from '../lib/server/platform/storage-fs';
-import { derivativesHandler } from './derivatives';
+import { derivativesHandler, probeVideo } from './derivatives';
 import type { WorkerContext } from './jobs';
 import { createTestDb, seedItem, seedOwner } from './test-helpers';
 
@@ -33,6 +33,28 @@ async function setupPhoto(): Promise<{ ctx: WorkerContext; itemId: string }> {
 			mime: 'image/jpeg',
 			width: 640,
 			height: 480
+		})
+		.run();
+	return { ctx: { db, storage: createFsStorage(mediaPath), mediaPath }, itemId };
+}
+
+async function setupVideo(): Promise<{ ctx: WorkerContext; itemId: string }> {
+	const db = createTestDb();
+	const owner = seedOwner(db);
+	const itemId = seedItem(db, owner, { type: 'video', width: 99, height: 99, duration: null });
+	const mediaPath = mkdtempSync(join(tmpdir(), 'shoebox-media-'));
+	const key = `media/${itemId}/original.mp4`;
+	await mkdir(join(mediaPath, 'media', itemId), { recursive: true });
+	await copyFile(FIXTURE_MP4, join(mediaPath, key));
+	db.insert(schema.itemFiles)
+		.values({
+			id: 'orig1',
+			itemId,
+			kind: 'original',
+			storageKey: key,
+			mime: 'video/mp4',
+			width: 320,
+			height: 180
 		})
 		.run();
 	return { ctx: { db, storage: createFsStorage(mediaPath), mediaPath }, itemId };
@@ -87,4 +109,40 @@ describe('derivativesHandler for photos', () => {
 		const { ctx } = await setupPhoto();
 		await expect(derivativesHandler({ itemId: 'nope' }, ctx)).rejects.toThrow(/item nope not found/);
 	});
+});
+
+describe('probeVideo', () => {
+	it('reads duration and dimensions from the fixture', async () => {
+		const probe = await probeVideo(FIXTURE_MP4);
+		expect(Math.abs(probe.duration - 2)).toBeLessThan(0.5);
+		expect(probe.width).toBe(320);
+		expect(probe.height).toBe(180);
+		expect(probe.creationTime).toBeNull();
+	}, 10_000);
+});
+
+describe('derivativesHandler for videos', () => {
+	it('writes poster and thumbs and fixes metadata from ffprobe', async () => {
+		const { ctx, itemId } = await setupVideo();
+		await derivativesHandler({ itemId }, ctx);
+
+		const posterAbs = join(ctx.mediaPath, `media/${itemId}/poster.webp`);
+		const posterMeta = await sharp(posterAbs).metadata();
+		expect(posterMeta.format).toBe('webp');
+		expect(posterMeta.width).toBe(320);
+
+		const rows = ctx.db.select().from(schema.itemFiles).where(eq(schema.itemFiles.itemId, itemId)).all();
+		expect(rows.map((row) => row.kind).sort()).toEqual([
+			'original',
+			'poster',
+			'thumb_1600',
+			'thumb_400',
+			'thumb_800'
+		]);
+
+		const item = ctx.db.select().from(schema.items).where(eq(schema.items.id, itemId)).get()!;
+		expect(Math.abs((item.duration ?? 0) - 2)).toBeLessThan(0.5);
+		expect(item.width).toBe(320);
+		expect(item.height).toBe(180);
+	}, 10_000);
 });
