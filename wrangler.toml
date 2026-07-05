@@ -1,0 +1,19 @@
+name = "shoebox"
+main = ".svelte-kit/cloudflare/_worker.js"
+compatibility_date = "2026-07-04"
+
+[assets]
+directory = ".svelte-kit/cloudflare"
+binding = "ASSETS"
+
+[vars]
+PLATFORM = "cloudflare"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "shoebox"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "shoebox-media"

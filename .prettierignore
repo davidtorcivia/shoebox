@@ -1,12 +1,10 @@
+docs/
 .superpowers/
-node_modules/
 .svelte-kit/
 build/
-.wrangler/
-.env
-data/
+static/
+pnpm-lock.yaml
+src/lib/server/db/migrations/
 e2e/.data/
 test-results/
 playwright-report/
-vite.config.ts.timestamp-*
-.DS_Store
