@@ -42,7 +42,7 @@ type ItemDateInput =
 	| { precision: 'day'; day?: string }
 	| { precision: 'month'; year?: number; month?: number }
 	| { precision: 'year'; year?: number }
-	| { precision: 'range'; year?: number; yearEnd?: number }
+	| { precision: 'range'; year?: number; yearEnd?: number; start?: string; end?: string }
 	| { precision: 'unknown' };
 
 export function daysInMonth(year: number, month: number): number {
@@ -90,7 +90,9 @@ export function displayDate(d: ItemDate): string {
 		case 'year':
 			return String(start.year);
 		case 'range':
-			return end ? `Between ${start.year} and ${end.year}` : String(start.year);
+			return end
+				? `Between ${displayRangePart(start, 'start')} and ${displayRangePart(end, 'end')}`
+				: String(start.year);
 	}
 }
 
@@ -158,13 +160,7 @@ export function isValidItemDate(d: ItemDate): boolean {
 				end.day === 31
 			);
 		case 'range':
-			return (
-				end.year > start.year &&
-				start.month === 1 &&
-				start.day === 1 &&
-				end.month === 12 &&
-				end.day === 31
-			);
+			return Date.parse(`${d.dateEnd}T00:00:00.000Z`) > Date.parse(`${d.dateStart}T00:00:00.000Z`);
 	}
 }
 
@@ -193,6 +189,22 @@ export function itemDateFrom(input: ItemDateInput): ItemDate {
 			};
 		}
 		case 'range': {
+			if (input.start || input.end) {
+				if (
+					!input.start ||
+					!input.end ||
+					!isValidIsoDay(input.start) ||
+					!isValidIsoDay(input.end)
+				) {
+					throw new Error('Range precision requires valid start and end dates');
+				}
+				if (
+					Date.parse(`${input.end}T00:00:00.000Z`) <= Date.parse(`${input.start}T00:00:00.000Z`)
+				) {
+					throw new Error('Range precision requires the end date after the start date');
+				}
+				return { dateStart: input.start, dateEnd: input.end, precision: 'range' };
+			}
 			if (!input.year || !input.yearEnd || input.yearEnd <= input.year) {
 				throw new Error('Range precision requires increasing start and end years');
 			}
@@ -211,6 +223,22 @@ function parts(value: string): { year: number; month: number; day: number } | nu
 	if (!ISO_DAY.test(value)) return null;
 	const [year, month, day] = value.split('-').map(Number);
 	return { year, month, day };
+}
+
+function displayRangePart(
+	part: { year: number; month: number; day: number },
+	side: 'start' | 'end'
+): string {
+	if (side === 'start') {
+		if (part.month === 1 && part.day === 1) return String(part.year);
+		if (part.day === 1) return `${MONTHS_LONG[part.month - 1]} ${part.year}`;
+	} else {
+		if (part.month === 12 && part.day === 31) return String(part.year);
+		if (part.day === daysInMonth(part.year, part.month)) {
+			return `${MONTHS_LONG[part.month - 1]} ${part.year}`;
+		}
+	}
+	return `${MONTHS_LONG[part.month - 1]} ${part.day}, ${part.year}`;
 }
 
 function isValidIsoDay(value: string): boolean {

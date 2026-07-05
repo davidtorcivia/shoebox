@@ -26,6 +26,8 @@
 			{ color: '#E5C26F3d', pos: '52% 112%', size: '88% 48%' }
 		]
 	};
+	const mediaAccept =
+		'image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,.heic,.heif,video/mp4,video/webm,video/quicktime,video/x-m4v,.mov,.m4v';
 
 	let files = $state<File[]>([]);
 	let title = $state('');
@@ -33,6 +35,7 @@
 	let tapeLabel = $state('');
 	let date = $state<ItemDate>(itemDateFrom({ precision: 'unknown' }));
 	let selectedPeople = $state<string[]>([]);
+	let personQuery = $state('');
 	let tags = $state('');
 	let progress = $state(0);
 	let currentIndex = $state(0);
@@ -41,8 +44,8 @@
 	let allowDuplicate = $state(false);
 	let results = $state<QueueResult[]>([]);
 
-	const selectedNames = $derived(
-		data.people.filter((person) => selectedPeople.includes(person.id)).map((person) => person.name)
+	const selectedPeopleDetail = $derived(
+		data.people.filter((person) => selectedPeople.includes(person.id))
 	);
 	const queueLabel = $derived(
 		files.length === 0
@@ -51,6 +54,23 @@
 				? files[0].name
 				: `${files.length} files selected`
 	);
+	const selectedCountLabel = $derived(
+		files.length === 0
+			? 'No files selected'
+			: files.length === 1
+				? '1 file selected'
+				: `${files.length} files selected`
+	);
+	const personMatches = $derived.by(() => {
+		const query = personQuery.trim().toLowerCase();
+		return data.people
+			.filter(
+				(person) =>
+					!selectedPeople.includes(person.id) &&
+					(query.length === 0 || person.name.toLowerCase().includes(query))
+			)
+			.slice(0, query.length === 0 ? 8 : 14);
+	});
 
 	function chooseFiles(event: Event): void {
 		const input = event.currentTarget as HTMLInputElement;
@@ -61,10 +81,13 @@
 		message = files.length ? 'Ready.' : '';
 	}
 
-	function togglePerson(id: string): void {
-		selectedPeople = selectedPeople.includes(id)
-			? selectedPeople.filter((personId) => personId !== id)
-			: [...selectedPeople, id];
+	function selectPerson(id: string): void {
+		if (!selectedPeople.includes(id)) selectedPeople = [...selectedPeople, id];
+		personQuery = '';
+	}
+
+	function removePerson(id: string): void {
+		selectedPeople = selectedPeople.filter((personId) => personId !== id);
 	}
 
 	function tagsList(): string[] {
@@ -84,11 +107,12 @@
 		updateResult(index, { status: 'uploading', error: undefined });
 		message = `Uploading ${file.name}`;
 
+		const mime = mimeForFile(file);
 		const sha256 = await sha256File(file);
 		const init = await apiInitUpload({
 			sha256,
 			sizeBytes: file.size,
-			mime: file.type,
+			mime,
 			filename: file.name
 		});
 		if (init.duplicateItemId && !allowDuplicate) {
@@ -101,11 +125,9 @@
 		});
 
 		message = `Processing ${file.name}`;
-		const derived = file.type.startsWith('image/')
-			? await derivePhoto(file)
-			: await deriveVideo(file);
+		const derived = mime.startsWith('image/') ? await derivePhoto(file) : await deriveVideo(file);
 		const meta: UploadMeta = {
-			type: file.type.startsWith('image/') ? 'photo' : 'video',
+			type: mime.startsWith('image/') ? 'photo' : 'video',
 			width: derived.width,
 			height: derived.height,
 			duration: 'duration' in derived ? derived.duration : null,
@@ -129,6 +151,17 @@
 			}
 		});
 		updateResult(index, { status: 'complete', item: complete.item });
+	}
+
+	function mimeForFile(file: File): string {
+		const typed = file.type.toLowerCase();
+		if (typed) return typed;
+		const name = file.name.toLowerCase();
+		if (name.endsWith('.heic')) return 'image/heic';
+		if (name.endsWith('.heif')) return 'image/heif';
+		if (name.endsWith('.mov')) return 'video/quicktime';
+		if (name.endsWith('.m4v')) return 'video/x-m4v';
+		return 'application/octet-stream';
 	}
 
 	async function submit(): Promise<void> {
@@ -164,7 +197,7 @@
 	<section class="page">
 		<header class="head">
 			<span class="label">Upload</span>
-			<span class="count">{files.length || 'No'} selected</span>
+			<span class="count">{selectedCountLabel}</span>
 		</header>
 
 		<form
@@ -175,16 +208,11 @@
 		>
 			<section class="picker">
 				<label class="file-pick">
-					<input
-						type="file"
-						multiple
-						accept="image/jpeg,image/png,image/webp,image/avif,video/mp4,video/webm"
-						onchange={chooseFiles}
-					/>
+					<input type="file" multiple accept={mediaAccept} onchange={chooseFiles} />
 					<span class="choose">Choose media</span>
 					<span class="file-copy">
 						<strong>{queueLabel}</strong>
-						<small>Photos and videos, single or bulk</small>
+						<small>Photos, iPhone media, and videos</small>
 					</span>
 				</label>
 
@@ -203,56 +231,90 @@
 			</section>
 
 			<section class="meta">
-				<div class="field-grid">
-					<label>
-						<span>Title</span>
+				<div class="field-row">
+					<label for="upload-title" class="field-label">Title</label>
+					<div class="field-control">
 						<input
+							id="upload-title"
 							bind:value={title}
 							disabled={files.length > 1}
 							placeholder={files.length > 1 ? 'Bulk uploads keep original titles' : ''}
 						/>
-					</label>
-					<label>
-						<span>Tape label</span>
-						<input bind:value={tapeLabel} />
-					</label>
+					</div>
 				</div>
 
-				<label>
-					<span>Description</span>
-					<textarea bind:value={description}></textarea>
-				</label>
+				<div class="field-row">
+					<label for="upload-tape" class="field-label">Tape label</label>
+					<div class="field-control">
+						<input id="upload-tape" bind:value={tapeLabel} />
+					</div>
+				</div>
+
+				<div class="field-row">
+					<label for="upload-description" class="field-label">Description</label>
+					<div class="field-control">
+						<textarea id="upload-description" bind:value={description}></textarea>
+					</div>
+				</div>
 
 				<DatePicker bind:value={date} />
 
-				<fieldset>
-					<legend>People</legend>
-					<div class="people-picker">
-						{#each data.people as person (person.id)}
-							<button
-								type="button"
-								class:active={selectedPeople.includes(person.id)}
-								style:--person-accent={person.accentColor}
-								onclick={() => togglePerson(person.id)}
-							>
-								<span>{person.name.slice(0, 1)}</span>
-								{person.name}
-							</button>
-						{/each}
+				<div class="field-row people-field" role="group" aria-labelledby="people-field-label">
+					<span id="people-field-label" class="field-label">People</span>
+					<div class="field-control people-control">
+						<input
+							bind:value={personQuery}
+							placeholder="Search people"
+							aria-label="Search people to tag"
+						/>
+						{#if selectedPeopleDetail.length}
+							<div class="selected-people" aria-label="Selected people">
+								{#each selectedPeopleDetail as person (person.id)}
+									<button
+										type="button"
+										style:--person-accent={person.accentColor}
+										onclick={() => removePerson(person.id)}
+										aria-label={`Remove ${person.name}`}
+									>
+										<span>{person.name.slice(0, 1)}</span>
+										{person.name}
+									</button>
+								{/each}
+							</div>
+						{/if}
+						<div class="people-results">
+							{#each personMatches as person (person.id)}
+								<button
+									type="button"
+									style:--person-accent={person.accentColor}
+									onclick={() => selectPerson(person.id)}
+								>
+									<span>{person.name.slice(0, 1)}</span>
+									{person.name}
+								</button>
+							{:else}
+								<p>No matching people.</p>
+							{/each}
+						</div>
 					</div>
-					{#if selectedNames.length}
-						<p class="selected">{selectedNames.join(', ')}</p>
-					{/if}
-				</fieldset>
+				</div>
 
-				<label>
-					<span>Tags</span>
-					<input bind:value={tags} placeholder="lake, birthday, tape 7" />
-				</label>
+				<div class="field-row">
+					<label for="upload-tags" class="field-label">Tags</label>
+					<div class="field-control">
+						<input id="upload-tags" bind:value={tags} placeholder="lake, birthday, tape 7" />
+					</div>
+				</div>
 
-				<label class="check">
-					<input type="checkbox" bind:checked={allowDuplicate} />
-					<span>Keep duplicates</span>
+				<label class="field-row check">
+					<span class="field-label">Duplicates</span>
+					<span class="check-control">
+						<input type="checkbox" bind:checked={allowDuplicate} />
+						<span>
+							<strong>Import exact duplicates</strong>
+							<small>Off skips files already in the archive. On keeps an additional copy.</small>
+						</span>
+					</span>
 				</label>
 
 				<div class="actions">
@@ -294,11 +356,11 @@
 
 	.label,
 	.count,
-	label span,
-	legend,
+	.field-label,
 	.file-copy small,
 	.queue-row em,
-	.selected,
+	.people-results p,
+	.check-control small,
 	.status p {
 		font-family: var(--font-sans);
 		font-size: 11px;
@@ -309,16 +371,18 @@
 	.label,
 	.count,
 	.file-copy small,
-	.selected,
+	.people-results p,
+	.check-control small,
 	.status p {
 		opacity: 0.66;
 	}
 
 	form {
 		display: grid;
-		grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
-		gap: 18px;
+		grid-template-columns: minmax(390px, 500px) minmax(0, 1fr);
+		gap: 28px;
 		align-items: start;
+		max-width: 1680px;
 	}
 
 	.picker,
@@ -327,11 +391,31 @@
 		gap: 14px;
 	}
 
+	.field-row {
+		display: grid;
+		grid-template-columns: 132px minmax(0, 1fr);
+		gap: 14px;
+		align-items: start;
+		min-width: 0;
+		margin: 0;
+		padding: 0;
+		border: 0;
+	}
+
+	.field-label {
+		padding-top: 16px;
+		opacity: 0.78;
+	}
+
+	.field-control {
+		min-width: 0;
+	}
+
 	.file-pick {
 		position: relative;
 		display: grid;
-		grid-template-columns: 180px minmax(0, 1fr);
-		min-height: 86px;
+		grid-template-columns: minmax(190px, 0.82fr) minmax(220px, 1fr);
+		min-height: 112px;
 		overflow: hidden;
 		background: color-mix(in srgb, var(--cream) 12%, transparent);
 		cursor: pointer;
@@ -363,13 +447,13 @@
 		align-content: center;
 		gap: 7px;
 		min-width: 0;
-		padding: 14px 18px;
+		padding: 18px 22px;
 	}
 
 	.file-copy strong {
 		overflow: hidden;
 		font-family: var(--font-serif);
-		font-size: 24px;
+		font-size: clamp(22px, 2.2vw, 34px);
 		font-weight: 520;
 		line-height: 1.05;
 		text-overflow: ellipsis;
@@ -415,22 +499,6 @@
 		color: var(--dawn);
 	}
 
-	.field-grid {
-		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 14px;
-	}
-
-	label,
-	fieldset {
-		display: grid;
-		gap: 7px;
-		min-width: 0;
-		margin: 0;
-		padding: 0;
-		border: 0;
-	}
-
 	input,
 	textarea {
 		width: 100%;
@@ -453,13 +521,20 @@
 		resize: vertical;
 	}
 
-	.people-picker {
+	.people-control {
+		display: grid;
+		gap: 8px;
+	}
+
+	.people-results,
+	.selected-people {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 8px;
 	}
 
-	.people-picker button {
+	.people-results button,
+	.selected-people button {
 		display: inline-flex;
 		align-items: center;
 		gap: 8px;
@@ -470,15 +545,17 @@
 		cursor: pointer;
 		font-family: var(--font-serif);
 		font-size: 16px;
+		line-height: 1.1;
 		padding: 0 12px 0 8px;
 	}
 
-	.people-picker button.active {
+	.selected-people button {
 		background: color-mix(in srgb, var(--person-accent) 72%, transparent);
 		color: var(--ink);
 	}
 
-	.people-picker span {
+	.people-results span,
+	.selected-people span {
 		display: grid;
 		width: 24px;
 		height: 24px;
@@ -491,18 +568,36 @@
 		line-height: 1;
 	}
 
-	.selected {
+	.people-results p {
 		margin: 0;
 	}
 
 	.check {
-		display: flex;
-		min-height: 44px;
-		align-items: center;
-		gap: 10px;
+		cursor: pointer;
 	}
 
-	.check input {
+	.check-control {
+		display: grid;
+		grid-template-columns: 28px minmax(0, 1fr);
+		gap: 10px;
+		align-items: center;
+		min-height: 48px;
+		padding: 9px 12px;
+		background: color-mix(in srgb, var(--cream) 10%, transparent);
+	}
+
+	.check-control > span {
+		display: grid;
+		gap: 3px;
+	}
+
+	.check-control strong {
+		font-family: var(--font-serif);
+		font-size: 17px;
+		font-weight: 520;
+	}
+
+	.check-control input {
 		width: 20px;
 		min-height: 20px;
 		accent-color: #d8b58d;
@@ -513,6 +608,7 @@
 		grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
 		gap: 14px;
 		align-items: end;
+		margin-left: 146px;
 	}
 
 	.primary {
@@ -554,11 +650,25 @@
 		margin: 0;
 	}
 
+	@media (max-width: 1180px) {
+		form {
+			grid-template-columns: 1fr;
+			gap: 22px;
+		}
+	}
+
 	@media (max-width: 860px) {
-		form,
-		.field-grid,
+		.field-row,
 		.actions {
 			grid-template-columns: 1fr;
+		}
+
+		.field-label {
+			padding-top: 0;
+		}
+
+		.actions {
+			margin-left: 0;
 		}
 	}
 

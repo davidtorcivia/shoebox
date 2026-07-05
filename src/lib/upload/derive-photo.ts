@@ -15,7 +15,7 @@ export interface PhotoDerivatives {
 }
 
 export async function derivePhoto(file: File): Promise<PhotoDerivatives> {
-	const bitmap = await createImageBitmap(file);
+	const bitmap = await createBitmap(file);
 	const poster = await renderBitmap(bitmap, bitmap.width);
 	const thumb_400 = await renderBitmap(bitmap, 400);
 	const thumb_800 = await renderBitmap(bitmap, 800);
@@ -33,6 +33,25 @@ export async function derivePhoto(file: File): Promise<PhotoDerivatives> {
 		height: bitmap.height,
 		date
 	};
+}
+
+async function createBitmap(file: File): Promise<ImageBitmap> {
+	try {
+		return await createImageBitmap(file);
+	} catch (err) {
+		if (isHeic(file)) {
+			throw new Error(
+				'This browser could not decode the HEIC image for web thumbnails. The original file is supported, but HEIC conversion needs a browser or server build with HEIC decoding.'
+			);
+		}
+		throw err;
+	}
+}
+
+function isHeic(file: File): boolean {
+	const type = file.type.toLowerCase();
+	const name = file.name.toLowerCase();
+	return type.includes('heic') || type.includes('heif') || /\.(heic|heif)$/.test(name);
 }
 
 async function renderBitmap(bitmap: ImageBitmap, maxWidth: number): Promise<Blob> {

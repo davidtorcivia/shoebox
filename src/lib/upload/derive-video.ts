@@ -17,9 +17,9 @@ export async function deriveVideo(file: File): Promise<VideoDerivatives> {
 		video.preload = 'metadata';
 		video.muted = true;
 		video.src = url;
-		await once(video, 'loadedmetadata');
+		await once(video, 'loadedmetadata', unsupportedVideoMessage(file));
 		video.currentTime = Math.min(0.1, Math.max(video.duration / 2, 0));
-		await once(video, 'seeked');
+		await once(video, 'seeked', 'Video preview frame could not be read.');
 
 		return {
 			poster: await renderVideo(video, video.videoWidth),
@@ -35,6 +35,15 @@ export async function deriveVideo(file: File): Promise<VideoDerivatives> {
 	}
 }
 
+function unsupportedVideoMessage(file: File): string {
+	const type = file.type.toLowerCase();
+	const name = file.name.toLowerCase();
+	if (type.includes('quicktime') || /\.(mov|m4v)$/.test(name)) {
+		return 'This browser could not decode the iPhone video for a poster frame. The original file is supported, but MOV conversion needs browser codec support or server-side conversion.';
+	}
+	return 'This browser could not decode the video for a poster frame.';
+}
+
 async function renderVideo(video: HTMLVideoElement, maxWidth: number): Promise<Blob> {
 	const dims = fitWithin(video.videoWidth, video.videoHeight, maxWidth);
 	const canvas = document.createElement('canvas');
@@ -46,10 +55,10 @@ async function renderVideo(video: HTMLVideoElement, maxWidth: number): Promise<B
 	return await canvasToBlob(canvas);
 }
 
-function once(target: EventTarget, event: string): Promise<void> {
+function once(target: EventTarget, event: string, errorMessage: string): Promise<void> {
 	return new Promise((resolve, reject) => {
 		target.addEventListener(event, () => resolve(), { once: true });
-		target.addEventListener('error', () => reject(new Error(`Video ${event} failed`)), {
+		target.addEventListener('error', () => reject(new Error(errorMessage)), {
 			once: true
 		});
 	});

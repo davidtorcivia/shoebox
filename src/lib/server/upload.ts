@@ -10,11 +10,17 @@ import type { ItemDTO, UploadMeta } from '$lib/types';
 type Db = App.Locals['db'];
 type SessionUser = NonNullable<App.Locals['user']>;
 
-export const CHUNK_SIZE = 8 * 1024 * 1024;
+export const CHUNK_SIZE = 512 * 1024;
 
 export const ALLOWED_MIME: Record<string, { ext: string; type: 'video' | 'photo' }> = {
 	'video/mp4': { ext: 'mp4', type: 'video' },
+	'video/quicktime': { ext: 'mov', type: 'video' },
 	'video/webm': { ext: 'webm', type: 'video' },
+	'video/x-m4v': { ext: 'm4v', type: 'video' },
+	'image/heic': { ext: 'heic', type: 'photo' },
+	'image/heic-sequence': { ext: 'heic', type: 'photo' },
+	'image/heif': { ext: 'heif', type: 'photo' },
+	'image/heif-sequence': { ext: 'heif', type: 'photo' },
 	'image/jpeg': { ext: 'jpg', type: 'photo' },
 	'image/png': { ext: 'png', type: 'photo' },
 	'image/webp': { ext: 'webp', type: 'photo' },

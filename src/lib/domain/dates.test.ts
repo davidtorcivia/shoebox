@@ -84,6 +84,7 @@ describe('isValidItemDate', () => {
 		expect(isValidItemDate(d('1992-02-01', '1992-02-29', 'month'))).toBe(true);
 		expect(isValidItemDate(d('1994-01-01', '1994-12-31', 'year'))).toBe(true);
 		expect(isValidItemDate(d('1992-01-01', '1995-12-31', 'range'))).toBe(true);
+		expect(isValidItemDate(d('1994-06-01', '1994-08-31', 'range'))).toBe(true);
 		expect(isValidItemDate(d(null, null, 'unknown'))).toBe(true);
 	});
 
@@ -92,7 +93,7 @@ describe('isValidItemDate', () => {
 		expect(isValidItemDate(d('1994-06-01', '1994-06-29', 'month'))).toBe(false);
 		expect(isValidItemDate(d('1994-02-01', '1994-03-31', 'month'))).toBe(false);
 		expect(isValidItemDate(d('1994-02-01', '1994-12-31', 'year'))).toBe(false);
-		expect(isValidItemDate(d('1994-01-01', '1994-12-31', 'range'))).toBe(false);
+		expect(isValidItemDate(d('1994-12-31', '1994-01-01', 'range'))).toBe(false);
 		expect(isValidItemDate(d('1994-02-30', '1994-02-30', 'day'))).toBe(false);
 		expect(isValidItemDate(d('junk', 'junk', 'day'))).toBe(false);
 		expect(isValidItemDate(d('1994-06-14', null, 'day'))).toBe(false);
@@ -119,6 +120,11 @@ describe('itemDateFrom', () => {
 	it('range expands both years', () =>
 		expect(itemDateFrom({ precision: 'range', year: 1992, yearEnd: 1995 })).toEqual(
 			d('1992-01-01', '1995-12-31', 'range')
+		));
+
+	it('range accepts exact start and end bounds', () =>
+		expect(itemDateFrom({ precision: 'range', start: '1994-06-01', end: '1994-08-31' })).toEqual(
+			d('1994-06-01', '1994-08-31', 'range')
 		));
 
 	it('unknown is all-null', () =>
