@@ -242,6 +242,12 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
 	plugins: [sveltekit()],
+	ssr: {
+		// Native module: must stay external in the node build, and must never be
+		// inlined into the cloudflare bundle (it is only reached behind the
+		// PLATFORM==='node' branch, see src/lib/server/platform/index.ts).
+		external: ['better-sqlite3']
+	},
 	test: {
 		include: ['src/**/*.test.ts'],
 		exclude: ['src/**/*.workers.test.ts', 'node_modules/**'],
@@ -708,7 +714,7 @@ export const MOTION = { fast: 200, slow: 300 }; // ms
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `pnpm test src/lib/ui/tokens.test.ts`
-Expected: PASS — 10 tests passing.
+Expected: PASS — 11 tests passing.
 
 - [ ] **Step 5: Commit**
 
@@ -1118,6 +1124,7 @@ export const items = sqliteTable(
 		height: integer('height').notNull(),
 		sizeBytes: integer('size_bytes').notNull(),
 		sha256: text('sha256').notNull(),
+		blurhash: text('blurhash'), // client-computed placeholder hash (master amendment 2026-07-04)
 		source: text('source', { enum: ['upload', 'ingest'] }).notNull(),
 		tapeLabel: text('tape_label'),
 		status: text('status', { enum: ['processing', 'needs_review', 'ready'] }).notNull(),
@@ -1130,7 +1137,7 @@ export const items = sqliteTable(
 	(t) => [
 		index('items_sort').on(t.sortDate),
 		index('items_status').on(t.status),
-		uniqueIndex('items_sha').on(t.sha256)
+		index('items_sha').on(t.sha256) // NON-unique (master amendment 2026-07-04): dedupe is app-level; duplicate override stores the same sha twice
 	]
 );
 
@@ -1155,6 +1162,7 @@ export const itemFiles = sqliteTable(
 export const people = sqliteTable('people', {
 	id: text('id').primaryKey(),
 	name: text('name').notNull(),
+	nickname: text('nickname'), // e.g. "Grandma" — hero quote line (master amendment 2026-07-04)
 	birthdate: text('birthdate'), // ISO date
 	deathDate: text('death_date'),
 	birthPlace: text('birth_place'),
@@ -3235,7 +3243,1093 @@ git add src/lib/ui src/routes
 git commit -m "feat: layout shell with nav, gradient rooms, and stub pages"
 ```
 
-<!-- CONTINUED -->
+---
+
+### Task 13: First-run `/setup`, `/login`, `/logout`
+
+**Files:**
+- Create: `src/routes/setup/+page.server.ts`, `src/routes/setup/+page.svelte`, `src/routes/login/+page.server.ts`, `src/routes/login/+page.svelte`, `src/routes/logout/+page.server.ts`
+
+**Interfaces:**
+- Consumes: `hashPassword`/`verifyPassword`/`createSession`/`destroySession`/`setSessionCookie`/`SESSION_COOKIE` (Task 9), `nextAccent` (Task 10), `users` schema (Task 4), `Gradient`/`Button`/`Field` (Task 12), `paletteFor` (Task 2), `locals.db` (Task 11).
+- Produces: owner creation at first run (role `owner`, accent via `nextAccent([])`, auto-signed-in), username/password login, POST-only logout. Validation rules used again by invite redemption (Task 14): username `/^[a-zA-Z0-9_.-]{3,32}$/`, password length ≥ 8.
+
+- [ ] **Step 1: Write `src/routes/setup/+page.server.ts`**
+
+```ts
+import { fail, redirect } from '@sveltejs/kit';
+import { dev } from '$app/environment';
+import { nanoid } from 'nanoid';
+import { createSession, hashPassword, setSessionCookie } from '$lib/server/auth';
+import { users } from '$lib/server/db/schema';
+import { nextAccent } from '$lib/domain/accents';
+import type { Actions } from './$types';
+
+const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,32}$/;
+
+export const actions: Actions = {
+	default: async ({ request, cookies, locals }) => {
+		// hooks.server.ts already redirects here only while no user exists,
+		// but re-check to close the double-submit race.
+		const existing = await locals.db.select({ id: users.id }).from(users).limit(1);
+		if (existing.length > 0) redirect(303, '/login');
+
+		const data = await request.formData();
+		const username = String(data.get('username') ?? '').trim();
+		const password = String(data.get('password') ?? '');
+		if (!USERNAME_RE.test(username)) {
+			return fail(400, {
+				message: 'Username must be 3–32 characters: letters, numbers, dots, dashes, underscores.'
+			});
+		}
+		if (password.length < 8) {
+			return fail(400, { message: 'Password must be at least 8 characters.' });
+		}
+
+		const id = nanoid(12);
+		await locals.db.insert(users).values({
+			id,
+			username,
+			passwordHash: await hashPassword(password),
+			role: 'owner',
+			accentColor: nextAccent([]),
+			personId: null,
+			comfortMode: false,
+			theme: 'system',
+			createdAt: new Date()
+		});
+
+		const { token, expiresAt } = await createSession(locals.db, id);
+		setSessionCookie(cookies, token, expiresAt, !dev);
+		redirect(303, '/');
+	}
+};
+```
+
+- [ ] **Step 2: Write `src/routes/setup/+page.svelte`**
+
+```svelte
+<script lang="ts">
+	import Gradient from '$lib/ui/Gradient.svelte';
+	import Button from '$lib/ui/Button.svelte';
+	import Field from '$lib/ui/Field.svelte';
+	import { paletteFor } from '$lib/ui/tokens';
+	import type { ActionData } from './$types';
+
+	let { form }: { form: ActionData } = $props();
+	const palette = paletteFor(new Date().getFullYear());
+</script>
+
+<svelte:head><title>Set up Shoebox</title></svelte:head>
+
+<Gradient stops={palette.stops} pools={palette.pools} />
+<section class="card">
+	<p class="eyebrow">First run</p>
+	<h1>Set up Shoebox</h1>
+	<p class="sub">Create the owner account for this family archive.</p>
+	{#if form?.message}<p class="error" role="alert">{form.message}</p>{/if}
+	<form method="POST">
+		<Field label="Username" name="username" required autocomplete="username" />
+		<Field label="Password" name="password" type="password" required autocomplete="new-password" />
+		<Button>Create owner</Button>
+	</form>
+</section>
+
+<style>
+	.card {
+		max-width: 26rem;
+		margin: 14vh auto 0;
+		padding: 0 1.5rem;
+	}
+	.eyebrow {
+		font-family: var(--font-sans);
+		text-transform: uppercase;
+		letter-spacing: 0.16em;
+		font-size: 0.72rem;
+		opacity: 0.75;
+	}
+	h1 {
+		font-size: 2.6rem;
+		font-weight: 600;
+		margin: 0.3rem 0 0.5rem;
+	}
+	.sub {
+		margin-bottom: 1.6rem;
+		opacity: 0.85;
+	}
+	.error {
+		font-family: var(--font-sans);
+		font-size: 0.85rem;
+		color: var(--dawn);
+		margin-bottom: 1rem;
+	}
+</style>
+```
+
+- [ ] **Step 3: Write `src/routes/login/+page.server.ts`**
+
+```ts
+import { fail, redirect } from '@sveltejs/kit';
+import { dev } from '$app/environment';
+import { eq } from 'drizzle-orm';
+import { createSession, setSessionCookie, verifyPassword } from '$lib/server/auth';
+import { users } from '$lib/server/db/schema';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = async ({ locals }) => {
+	if (locals.user) redirect(303, '/');
+	return {};
+};
+
+export const actions: Actions = {
+	default: async ({ request, cookies, locals }) => {
+		const data = await request.formData();
+		const username = String(data.get('username') ?? '').trim();
+		const password = String(data.get('password') ?? '');
+		const rows = await locals.db.select().from(users).where(eq(users.username, username)).limit(1);
+		const row = rows[0];
+		if (!row || !(await verifyPassword(password, row.passwordHash))) {
+			return fail(400, { message: 'Wrong username or password.' });
+		}
+		const { token, expiresAt } = await createSession(locals.db, row.id);
+		setSessionCookie(cookies, token, expiresAt, !dev);
+		redirect(303, '/');
+	}
+};
+```
+
+- [ ] **Step 4: Write `src/routes/login/+page.svelte`**
+
+```svelte
+<script lang="ts">
+	import Gradient from '$lib/ui/Gradient.svelte';
+	import Button from '$lib/ui/Button.svelte';
+	import Field from '$lib/ui/Field.svelte';
+	import { paletteFor } from '$lib/ui/tokens';
+	import type { ActionData } from './$types';
+
+	let { form }: { form: ActionData } = $props();
+	const palette = paletteFor(new Date().getFullYear());
+</script>
+
+<svelte:head><title>Sign in — Shoebox</title></svelte:head>
+
+<Gradient stops={palette.stops} pools={palette.pools} />
+<section class="card">
+	<p class="eyebrow">Shoebox</p>
+	<h1>Sign in</h1>
+	{#if form?.message}<p class="error" role="alert">{form.message}</p>{/if}
+	<form method="POST">
+		<Field label="Username" name="username" required autocomplete="username" />
+		<Field
+			label="Password"
+			name="password"
+			type="password"
+			required
+			autocomplete="current-password"
+		/>
+		<Button>Sign in</Button>
+	</form>
+</section>
+
+<style>
+	.card {
+		max-width: 26rem;
+		margin: 14vh auto 0;
+		padding: 0 1.5rem;
+	}
+	.eyebrow {
+		font-family: var(--font-sans);
+		text-transform: uppercase;
+		letter-spacing: 0.22em;
+		font-size: 0.72rem;
+		opacity: 0.75;
+	}
+	h1 {
+		font-size: 2.6rem;
+		font-weight: 600;
+		margin: 0.3rem 0 1.4rem;
+	}
+	.error {
+		font-family: var(--font-sans);
+		font-size: 0.85rem;
+		color: var(--dawn);
+		margin-bottom: 1rem;
+	}
+</style>
+```
+
+- [ ] **Step 5: Write `src/routes/logout/+page.server.ts`**
+
+POST-only (the Nav form). A GET to `/logout` just bounces home.
+
+```ts
+import { redirect } from '@sveltejs/kit';
+import { destroySession, SESSION_COOKIE } from '$lib/server/auth';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = async () => {
+	redirect(303, '/');
+};
+
+export const actions: Actions = {
+	default: async ({ cookies, locals }) => {
+		const token = cookies.get(SESSION_COOKIE);
+		if (token) await destroySession(locals.db, token);
+		cookies.delete(SESSION_COOKIE, { path: '/' });
+		redirect(303, '/login');
+	}
+};
+```
+
+- [ ] **Step 6: Check**
+
+Run: `pnpm check`
+Expected: 0 errors.
+
+- [ ] **Step 7: Visual verification (the shell's first full run)**
+
+Run: `rm -rf data && pnpm dev`, open `http://localhost:5173/`.
+
+Verify, in order:
+1. You are redirected to `/setup`. The page is a **gradient room** (current decade's palette) with visible **film grain**, an uppercase sans "FIRST RUN" eyebrow, a large **serif roman** "Set up Shoebox" heading (no italics), **sharp-cornered** filled inputs (no rounded corners, no borders), and a 44px cream button.
+2. Submit a short password (e.g. `abc`) → inline error "Password must be at least 8 characters." in dawn color.
+3. Create owner `matriarch` / `super-secret-8` → you land on `/` — the timeline shell: giant serif year, and the **Nav**: SHOEBOX wordmark, TIMELINE PEOPLE ALBUMS SEARCH **ARRIVALS** (owner sees it), and the account block — `matriarch` in the first accent color `#FA7B62` with a square monogram "m" on the same accent.
+4. Toggle your OS to light mode: page flips to the pale end of the palette; text flips to ink.
+5. Click Sign out → back on `/login`; sign back in works.
+6. Open `/setup` again → redirected to `/login` (first-run is over).
+
+Stop the dev server.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/routes/setup src/routes/login src/routes/logout
+git commit -m "feat: first-run owner setup, login, and logout"
+```
+
+---
+
+### Task 14: Invites — backend, API, admin page, redemption
+
+**Files:**
+- Create: `src/lib/server/invites.ts`, `src/routes/api/invites/+server.ts`, `src/routes/api/invites/[id]/+server.ts`, `src/routes/admin/invites/+page.server.ts`, `src/routes/admin/invites/+page.svelte`, `src/routes/invite/[token]/+page.server.ts`, `src/routes/invite/[token]/+page.svelte`
+- Test: `src/lib/server/invites.test.ts`
+
+**Interfaces:**
+- Consumes: `invites`/`users` schema (Task 4), `hashPassword`/`createSession`/`setSessionCookie` (Task 9), `requireRole` + `Role` (Task 9), `nextAccent` (Task 10), `openNodeDb(':memory:')` for tests (Task 6), `Gradient`/`Button`/`Field` (Task 12).
+- Produces (`src/lib/server/invites.ts`):
+  - `type InviteRole = Exclude<Role, 'owner'>` — matches the schema's invite role enum.
+  - `type InviteRow = typeof invites.$inferSelect`
+  - `createInvite(db: Db, opts: { role: InviteRole; createdBy: string; expiresAt?: Date | null; maxUses?: number }): Promise<InviteRow>` — `token = nanoid(24)`, `maxUses` defaults 1.
+  - `listInvites(db: Db): Promise<InviteRow[]>`
+  - `revokeInvite(db: Db, id: string): Promise<void>` — hard delete (invites are admin plumbing, not user-facing content, so the soft-delete rule doesn't apply).
+  - `getInviteByToken(db: Db, token: string): Promise<InviteRow | null>`
+  - `type InviteState = 'valid' | 'expired' | 'exhausted' | 'invalid'`; `inviteState(invite: InviteRow | null, now?: Date): InviteState`
+  - `type RedeemResult = { ok: true; user: typeof users.$inferSelect } | { ok: false; reason: 'expired' | 'exhausted' | 'invalid' | 'username_taken' | 'bad_username' | 'bad_password' }`; `redeemInvite(db: Db, token: string, input: { username: string; password: string }): Promise<RedeemResult>` — creates the user with the invite's preset role and the next least-used accent, increments `useCount`.
+- Produces (routes): `GET/POST /api/invites` and `DELETE /api/invites/[id]` (admin, JSON per master Contract 6); `/admin/invites` page (admin) with create form + list + revoke; `/invite/[token]` public redemption page (in `hooks.server.ts` public prefixes since Task 11).
+
+- [ ] **Step 1: Write the failing unit test**
+
+`src/lib/server/invites.test.ts`:
+
+```ts
+import { nanoid } from 'nanoid';
+import { describe, expect, it } from 'vitest';
+import { ACCENTS } from '$lib/ui/tokens';
+import type { Db } from './db';
+import { users } from './db/schema';
+import { openNodeDb } from './platform/db-node';
+import {
+	createInvite,
+	getInviteByToken,
+	inviteState,
+	listInvites,
+	redeemInvite,
+	revokeInvite
+} from './invites';
+
+async function seedAdmin(db: Db): Promise<string> {
+	const id = nanoid(12);
+	await db.insert(users).values({
+		id,
+		username: `admin-${id}`,
+		passwordHash: 'unused',
+		role: 'admin',
+		accentColor: ACCENTS[0].hex,
+		personId: null,
+		comfortMode: false,
+		theme: 'system',
+		createdAt: new Date()
+	});
+	return id;
+}
+
+describe('createInvite / listInvites / revokeInvite', () => {
+	it('creates an invite with a 24-char token, preset role, defaults', async () => {
+		const db = openNodeDb(':memory:');
+		const adminId = await seedAdmin(db);
+		const invite = await createInvite(db, { role: 'user', createdBy: adminId });
+		expect(invite.token).toHaveLength(24);
+		expect(invite.role).toBe('user');
+		expect(invite.maxUses).toBe(1);
+		expect(invite.useCount).toBe(0);
+		expect(invite.expiresAt).toBeNull();
+		expect(await listInvites(db)).toHaveLength(1);
+	});
+
+	it('revoke removes the invite', async () => {
+		const db = openNodeDb(':memory:');
+		const adminId = await seedAdmin(db);
+		const invite = await createInvite(db, { role: 'editor', createdBy: adminId });
+		await revokeInvite(db, invite.id);
+		expect(await listInvites(db)).toHaveLength(0);
+		expect(await getInviteByToken(db, invite.token)).toBeNull();
+	});
+});
+
+describe('inviteState', () => {
+	it('classifies valid/expired/exhausted/invalid', async () => {
+		const db = openNodeDb(':memory:');
+		const adminId = await seedAdmin(db);
+		const fresh = await createInvite(db, { role: 'user', createdBy: adminId });
+		expect(inviteState(fresh)).toBe('valid');
+		expect(inviteState(null)).toBe('invalid');
+		const expired = await createInvite(db, {
+			role: 'user',
+			createdBy: adminId,
+			expiresAt: new Date(Date.now() - 1000)
+		});
+		expect(inviteState(expired)).toBe('expired');
+		expect(inviteState({ ...fresh, useCount: 1 })).toBe('exhausted'); // maxUses 1
+	});
+});
+
+describe('redeemInvite', () => {
+	it('creates a user with the preset role, next accent, and bumps useCount', async () => {
+		const db = openNodeDb(':memory:');
+		const adminId = await seedAdmin(db); // uses ACCENTS[0]
+		const invite = await createInvite(db, { role: 'uploader', createdBy: adminId, maxUses: 2 });
+		const result = await redeemInvite(db, invite.token, {
+			username: 'cousin',
+			password: 'long-enough-pw'
+		});
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.user.role).toBe('uploader');
+		expect(result.user.accentColor).toBe(ACCENTS[1].hex); // least-used after admin took [0]
+		const after = await getInviteByToken(db, invite.token);
+		expect(after!.useCount).toBe(1);
+	});
+
+	it('rejects expired, exhausted, unknown tokens, and bad input', async () => {
+		const db = openNodeDb(':memory:');
+		const adminId = await seedAdmin(db);
+		const expired = await createInvite(db, {
+			role: 'user',
+			createdBy: adminId,
+			expiresAt: new Date(Date.now() - 1000)
+		});
+		expect(
+			await redeemInvite(db, expired.token, { username: 'aunt', password: 'long-enough-pw' })
+		).toEqual({ ok: false, reason: 'expired' });
+		expect(
+			await redeemInvite(db, 'no-such-token-aaaaaaaaaaaa', {
+				username: 'aunt',
+				password: 'long-enough-pw'
+			})
+		).toEqual({ ok: false, reason: 'invalid' });
+		const single = await createInvite(db, { role: 'user', createdBy: adminId });
+		await redeemInvite(db, single.token, { username: 'first', password: 'long-enough-pw' });
+		expect(
+			await redeemInvite(db, single.token, { username: 'second', password: 'long-enough-pw' })
+		).toEqual({ ok: false, reason: 'exhausted' });
+		const open = await createInvite(db, { role: 'user', createdBy: adminId, maxUses: 5 });
+		expect(await redeemInvite(db, open.token, { username: 'x', password: 'long-enough-pw' })).toEqual(
+			{ ok: false, reason: 'bad_username' }
+		);
+		expect(await redeemInvite(db, open.token, { username: 'valid-name', password: 'short' })).toEqual(
+			{ ok: false, reason: 'bad_password' }
+		);
+		expect(
+			await redeemInvite(db, open.token, { username: 'first', password: 'long-enough-pw' })
+		).toEqual({ ok: false, reason: 'username_taken' });
+	});
+});
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `pnpm test src/lib/server/invites.test.ts`
+Expected: FAIL — `Cannot find module './invites'`.
+
+- [ ] **Step 3: Write `src/lib/server/invites.ts`**
+
+```ts
+import { asc, eq } from 'drizzle-orm';
+import { nanoid } from 'nanoid';
+import { nextAccent } from '$lib/domain/accents';
+import { hashPassword } from './auth';
+import type { Db } from './db';
+import { invites, users } from './db/schema';
+import type { Role } from './roles';
+
+export type InviteRole = Exclude<Role, 'owner'>;
+export type InviteRow = typeof invites.$inferSelect;
+
+const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,32}$/;
+
+export async function createInvite(
+	db: Db,
+	opts: { role: InviteRole; createdBy: string; expiresAt?: Date | null; maxUses?: number }
+): Promise<InviteRow> {
+	const row: InviteRow = {
+		id: nanoid(12),
+		token: nanoid(24),
+		role: opts.role,
+		expiresAt: opts.expiresAt ?? null,
+		maxUses: opts.maxUses ?? 1,
+		useCount: 0,
+		createdBy: opts.createdBy
+	};
+	await db.insert(invites).values(row);
+	return row;
+}
+
+export async function listInvites(db: Db): Promise<InviteRow[]> {
+	return db.select().from(invites).orderBy(asc(invites.id));
+}
+
+/** Hard delete — invites are admin plumbing, not user-facing content. */
+export async function revokeInvite(db: Db, id: string): Promise<void> {
+	await db.delete(invites).where(eq(invites.id, id));
+}
+
+export async function getInviteByToken(db: Db, token: string): Promise<InviteRow | null> {
+	const rows = await db.select().from(invites).where(eq(invites.token, token)).limit(1);
+	return rows[0] ?? null;
+}
+
+export type InviteState = 'valid' | 'expired' | 'exhausted' | 'invalid';
+
+export function inviteState(invite: InviteRow | null, now: Date = new Date()): InviteState {
+	if (!invite) return 'invalid';
+	if (invite.expiresAt && invite.expiresAt.getTime() < now.getTime()) return 'expired';
+	if (invite.useCount >= invite.maxUses) return 'exhausted';
+	return 'valid';
+}
+
+export type RedeemResult =
+	| { ok: true; user: typeof users.$inferSelect }
+	| {
+			ok: false;
+			reason: 'expired' | 'exhausted' | 'invalid' | 'username_taken' | 'bad_username' | 'bad_password';
+	  };
+
+export async function redeemInvite(
+	db: Db,
+	token: string,
+	input: { username: string; password: string }
+): Promise<RedeemResult> {
+	const invite = await getInviteByToken(db, token);
+	const state = inviteState(invite);
+	if (state !== 'valid' || !invite) {
+		return { ok: false, reason: state === 'valid' ? 'invalid' : state };
+	}
+	if (!USERNAME_RE.test(input.username)) return { ok: false, reason: 'bad_username' };
+	if (input.password.length < 8) return { ok: false, reason: 'bad_password' };
+	const taken = await db
+		.select({ id: users.id })
+		.from(users)
+		.where(eq(users.username, input.username))
+		.limit(1);
+	if (taken.length > 0) return { ok: false, reason: 'username_taken' };
+
+	const accentRows = await db.select({ accentColor: users.accentColor }).from(users);
+	const user: typeof users.$inferSelect = {
+		id: nanoid(12),
+		username: input.username,
+		passwordHash: await hashPassword(input.password),
+		role: invite.role,
+		accentColor: nextAccent(accentRows.map((r) => r.accentColor)),
+		personId: null,
+		comfortMode: false,
+		theme: 'system',
+		createdAt: new Date()
+	};
+	await db.insert(users).values(user);
+	await db
+		.update(invites)
+		.set({ useCount: invite.useCount + 1 })
+		.where(eq(invites.id, invite.id));
+	return { ok: true, user };
+}
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `pnpm test src/lib/server/invites.test.ts`
+Expected: PASS — 5 tests.
+
+- [ ] **Step 5: Write the JSON API routes (master Contract 6: `/api/invites` GET/POST/DELETE, admin)**
+
+`src/routes/api/invites/+server.ts`:
+
+```ts
+import { json } from '@sveltejs/kit';
+import { createInvite, listInvites, type InviteRole } from '$lib/server/invites';
+import { requireRole } from '$lib/server/roles';
+import type { RequestHandler } from './$types';
+
+const INVITE_ROLES: InviteRole[] = ['admin', 'editor', 'uploader', 'user'];
+
+export const GET: RequestHandler = async ({ locals }) => {
+	requireRole(locals, 'admin');
+	return json({ invites: await listInvites(locals.db) });
+};
+
+export const POST: RequestHandler = async ({ locals, request }) => {
+	const admin = requireRole(locals, 'admin');
+	const body = (await request.json()) as {
+		role?: string;
+		expiresInDays?: number;
+		maxUses?: number;
+	};
+	if (!INVITE_ROLES.includes(body.role as InviteRole)) {
+		return json({ message: 'role must be one of admin|editor|uploader|user' }, { status: 400 });
+	}
+	const maxUses = Number.isInteger(body.maxUses) && body.maxUses! > 0 ? body.maxUses! : 1;
+	const expiresAt =
+		typeof body.expiresInDays === 'number' && body.expiresInDays > 0
+			? new Date(Date.now() + body.expiresInDays * 86_400_000)
+			: null;
+	const invite = await createInvite(locals.db, {
+		role: body.role as InviteRole,
+		createdBy: admin.id,
+		expiresAt,
+		maxUses
+	});
+	return json({ invite }, { status: 201 });
+};
+```
+
+`src/routes/api/invites/[id]/+server.ts`:
+
+```ts
+import { json } from '@sveltejs/kit';
+import { revokeInvite } from '$lib/server/invites';
+import { requireRole } from '$lib/server/roles';
+import type { RequestHandler } from './$types';
+
+export const DELETE: RequestHandler = async ({ locals, params }) => {
+	requireRole(locals, 'admin');
+	await revokeInvite(locals.db, params.id);
+	return json({ ok: true });
+};
+```
+
+- [ ] **Step 6: Write the admin invites page (minimal form + list; full admin UI is phase 08)**
+
+`src/routes/admin/invites/+page.server.ts`:
+
+```ts
+import { fail } from '@sveltejs/kit';
+import { createInvite, listInvites, revokeInvite, type InviteRole } from '$lib/server/invites';
+import { requireRole } from '$lib/server/roles';
+import type { Actions, PageServerLoad } from './$types';
+
+const INVITE_ROLES: InviteRole[] = ['admin', 'editor', 'uploader', 'user'];
+
+export const load: PageServerLoad = async ({ locals, url }) => {
+	requireRole(locals, 'admin');
+	return { invites: await listInvites(locals.db), origin: url.origin };
+};
+
+export const actions: Actions = {
+	create: async ({ locals, request }) => {
+		const admin = requireRole(locals, 'admin');
+		const data = await request.formData();
+		const role = String(data.get('role') ?? '');
+		if (!INVITE_ROLES.includes(role as InviteRole)) {
+			return fail(400, { message: 'Pick a role.' });
+		}
+		const maxUsesRaw = Number.parseInt(String(data.get('maxUses') ?? '1'), 10);
+		const maxUses = Number.isInteger(maxUsesRaw) && maxUsesRaw > 0 ? maxUsesRaw : 1;
+		const daysRaw = Number.parseInt(String(data.get('expiresInDays') ?? ''), 10);
+		const expiresAt =
+			Number.isInteger(daysRaw) && daysRaw > 0
+				? new Date(Date.now() + daysRaw * 86_400_000)
+				: null;
+		await createInvite(locals.db, { role: role as InviteRole, createdBy: admin.id, expiresAt, maxUses });
+		return { created: true };
+	},
+	revoke: async ({ locals, request }) => {
+		requireRole(locals, 'admin');
+		const data = await request.formData();
+		await revokeInvite(locals.db, String(data.get('id') ?? ''));
+		return { revoked: true };
+	}
+};
+```
+
+`src/routes/admin/invites/+page.svelte`:
+
+```svelte
+<script lang="ts">
+	import Button from '$lib/ui/Button.svelte';
+	import type { ActionData, PageData } from './$types';
+
+	let { data, form }: { data: PageData; form: ActionData } = $props();
+</script>
+
+<svelte:head><title>Invites — Shoebox admin</title></svelte:head>
+
+<section class="shell">
+	<p class="eyebrow">Admin</p>
+	<h1>Invites</h1>
+
+	{#if form && 'message' in form && form.message}<p class="error" role="alert">{form.message}</p>{/if}
+
+	<form method="POST" action="?/create" class="create">
+		<div class="control">
+			<label for="role">Role</label>
+			<select id="role" name="role" required>
+				<option value="user">user</option>
+				<option value="uploader">uploader</option>
+				<option value="editor">editor</option>
+				<option value="admin">admin</option>
+			</select>
+		</div>
+		<div class="control">
+			<label for="maxUses">Max uses</label>
+			<input id="maxUses" name="maxUses" type="number" min="1" value="1" />
+		</div>
+		<div class="control">
+			<label for="expiresInDays">Expires in days (blank = never)</label>
+			<input id="expiresInDays" name="expiresInDays" type="number" min="1" />
+		</div>
+		<Button>Create invite</Button>
+	</form>
+
+	<ul class="invites">
+		{#each data.invites as invite (invite.id)}
+			<li>
+				<code data-testid="invite-url">{data.origin}/invite/{invite.token}</code>
+				<span class="meta">
+					{invite.role} · {invite.useCount}/{invite.maxUses} used ·
+					{invite.expiresAt ? `expires ${invite.expiresAt.toISOString().slice(0, 10)}` : 'no expiry'}
+				</span>
+				<form method="POST" action="?/revoke">
+					<input type="hidden" name="id" value={invite.id} />
+					<button type="submit">Revoke</button>
+				</form>
+			</li>
+		{:else}
+			<li class="empty">No invites yet.</li>
+		{/each}
+	</ul>
+</section>
+
+<style>
+	.shell {
+		padding: 8vh 6vw;
+		max-width: 56rem;
+	}
+	.eyebrow {
+		font-family: var(--font-sans);
+		text-transform: uppercase;
+		letter-spacing: 0.16em;
+		font-size: 0.72rem;
+		opacity: 0.75;
+	}
+	h1 {
+		font-size: clamp(2.5rem, 6vw, 4.5rem);
+		font-weight: 600;
+		margin-bottom: 1.6rem;
+	}
+	.error {
+		font-family: var(--font-sans);
+		font-size: 0.85rem;
+		color: var(--dawn);
+		margin-bottom: 1rem;
+	}
+	.create {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 1rem;
+		align-items: flex-end;
+		margin-bottom: 2.2rem;
+	}
+	.control label {
+		display: block;
+		margin-bottom: 0.4rem;
+		font-family: var(--font-sans);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		font-size: 0.72rem;
+		opacity: 0.85;
+	}
+	.control select,
+	.control input {
+		min-height: 44px;
+		padding: 0.5rem 0.7rem;
+		border: 0;
+		background: rgba(255, 245, 232, 0.14);
+		color: inherit;
+		font-family: var(--font-serif);
+		font-size: 1rem;
+	}
+	:global(html.light) .control select,
+	:global(html.light) .control input {
+		background: rgba(23, 20, 18, 0.08);
+	}
+	.invites {
+		list-style: none;
+		display: grid;
+		gap: 0.9rem;
+	}
+	.invites li {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.9rem;
+	}
+	.invites code {
+		font-size: 0.9rem;
+		padding: 0.35rem 0.5rem;
+		background: rgba(255, 245, 232, 0.1);
+		user-select: all;
+	}
+	:global(html.light) .invites code {
+		background: rgba(23, 20, 18, 0.06);
+	}
+	.meta {
+		font-family: var(--font-sans);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		font-size: 0.7rem;
+		opacity: 0.75;
+	}
+	.invites button {
+		min-height: 44px;
+		padding: 0 0.8rem;
+		border: 0;
+		background: transparent;
+		cursor: pointer;
+		font-family: var(--font-sans);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		font-size: 0.7rem;
+		color: var(--dawn);
+	}
+	.empty {
+		opacity: 0.7;
+	}
+</style>
+```
+
+- [ ] **Step 7: Write the redemption page**
+
+`src/routes/invite/[token]/+page.server.ts`:
+
+```ts
+import { fail, redirect } from '@sveltejs/kit';
+import { dev } from '$app/environment';
+import { createSession, setSessionCookie } from '$lib/server/auth';
+import { getInviteByToken, inviteState, redeemInvite } from '$lib/server/invites';
+import type { Actions, PageServerLoad } from './$types';
+
+const REASON_MESSAGES: Record<string, string> = {
+	expired: 'This invite has expired. Ask for a new link.',
+	exhausted: 'This invite has already been used up. Ask for a new link.',
+	invalid: 'This invite link is not valid.',
+	username_taken: 'That username is taken — pick another.',
+	bad_username: 'Username must be 3–32 characters: letters, numbers, dots, dashes, underscores.',
+	bad_password: 'Password must be at least 8 characters.'
+};
+
+export const load: PageServerLoad = async ({ params, locals }) => {
+	if (locals.user) redirect(303, '/');
+	const invite = await getInviteByToken(locals.db, params.token);
+	const state = inviteState(invite);
+	return { state, role: state === 'valid' ? invite!.role : null };
+};
+
+export const actions: Actions = {
+	default: async ({ request, params, cookies, locals }) => {
+		const data = await request.formData();
+		const username = String(data.get('username') ?? '').trim();
+		const password = String(data.get('password') ?? '');
+		const result = await redeemInvite(locals.db, params.token, { username, password });
+		if (!result.ok) {
+			return fail(400, { message: REASON_MESSAGES[result.reason] });
+		}
+		const { token, expiresAt } = await createSession(locals.db, result.user.id);
+		setSessionCookie(cookies, token, expiresAt, !dev);
+		redirect(303, '/');
+	}
+};
+```
+
+`src/routes/invite/[token]/+page.svelte`:
+
+```svelte
+<script lang="ts">
+	import Gradient from '$lib/ui/Gradient.svelte';
+	import Button from '$lib/ui/Button.svelte';
+	import Field from '$lib/ui/Field.svelte';
+	import { paletteFor } from '$lib/ui/tokens';
+	import type { ActionData, PageData } from './$types';
+
+	let { data, form }: { data: PageData; form: ActionData } = $props();
+	const palette = paletteFor(new Date().getFullYear());
+</script>
+
+<svelte:head><title>Join Shoebox</title></svelte:head>
+
+<Gradient stops={palette.stops} pools={palette.pools} />
+<section class="card">
+	{#if data.state === 'valid'}
+		<p class="eyebrow">Invitation</p>
+		<h1>You're invited</h1>
+		<p class="sub">Pick a username and password to join as <strong>{data.role}</strong>.</p>
+		{#if form?.message}<p class="error" role="alert">{form.message}</p>{/if}
+		<form method="POST">
+			<Field label="Username" name="username" required autocomplete="username" />
+			<Field
+				label="Password"
+				name="password"
+				type="password"
+				required
+				autocomplete="new-password"
+			/>
+			<Button>Join Shoebox</Button>
+		</form>
+	{:else if data.state === 'expired'}
+		<h1>Invite expired</h1>
+		<p class="sub">This link has expired. Ask your family admin for a fresh one.</p>
+	{:else if data.state === 'exhausted'}
+		<h1>Invite used up</h1>
+		<p class="sub">This link has reached its use limit. Ask your family admin for a fresh one.</p>
+	{:else}
+		<h1>Not a valid invite</h1>
+		<p class="sub">Check the link, or ask your family admin for a new one.</p>
+	{/if}
+</section>
+
+<style>
+	.card {
+		max-width: 26rem;
+		margin: 14vh auto 0;
+		padding: 0 1.5rem;
+	}
+	.eyebrow {
+		font-family: var(--font-sans);
+		text-transform: uppercase;
+		letter-spacing: 0.16em;
+		font-size: 0.72rem;
+		opacity: 0.75;
+	}
+	h1 {
+		font-size: 2.6rem;
+		font-weight: 600;
+		margin: 0.3rem 0 0.5rem;
+	}
+	.sub {
+		margin-bottom: 1.6rem;
+		opacity: 0.85;
+	}
+	strong {
+		font-weight: 700;
+	}
+	.error {
+		font-family: var(--font-sans);
+		font-size: 0.85rem;
+		color: var(--dawn);
+		margin-bottom: 1rem;
+	}
+</style>
+```
+
+- [ ] **Step 8: Check + manual smoke**
+
+Run: `pnpm check && pnpm test`
+Expected: 0 errors, all green.
+
+Run: `pnpm dev`, sign in as the owner from Task 13, open `http://localhost:5173/admin/invites`.
+Verify: create an invite with role `user` → an invite URL appears in a selectable `<code>` block with role/uses/expiry meta; open the URL in a private window → "You're invited" gradient page; Revoke removes it from the list and the same URL now shows "Not a valid invite". Stop the dev server.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/lib/server/invites.ts src/lib/server/invites.test.ts src/routes/api src/routes/admin src/routes/invite
+git commit -m "feat: invites backend with admin page, json api, and redemption flow"
+```
+
+---
+
+### Task 15: Playwright e2e — the foundation golden path
+
+**Files:**
+- Create: `playwright.config.ts`, `e2e/foundation.spec.ts`
+
+**Interfaces:**
+- Consumes: everything from Tasks 1–14 through the browser. The web server is the **adapter-node production build** run against a throwaway DB in `e2e/.data/` (wiped on every run by the webServer command).
+- Produces: `pnpm test:e2e` green — the phase's exit criterion.
+
+- [ ] **Step 1: Write `playwright.config.ts`**
+
+```ts
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+	testDir: 'e2e',
+	timeout: 60_000,
+	fullyParallel: false,
+	workers: 1,
+	use: {
+		baseURL: 'http://localhost:4173'
+	},
+	webServer: {
+		command:
+			'rm -rf e2e/.data && mkdir -p e2e/.data && pnpm build && DATABASE_PATH=e2e/.data/shoebox.db MEDIA_PATH=e2e/.data/media PORT=4173 ORIGIN=http://localhost:4173 node build',
+		port: 4173,
+		reuseExistingServer: false,
+		timeout: 180_000
+	}
+});
+```
+
+(Tests share one server and one database, so they are ordered `serial` in the spec: setup happens once, later tests reuse the owner account.)
+
+- [ ] **Step 2: Write `e2e/foundation.spec.ts`**
+
+```ts
+import { expect, test } from '@playwright/test';
+
+test.describe.configure({ mode: 'serial' });
+
+const OWNER = { username: 'matriarch', password: 'super-secret-8' };
+
+test('fresh instance redirects everything to /setup', async ({ page }) => {
+	await page.goto('/albums');
+	await expect(page).toHaveURL(/\/setup$/);
+	await expect(page.getByRole('heading', { name: 'Set up Shoebox' })).toBeVisible();
+});
+
+test('owner setup, invite creation, redemption as user, role-gated nav', async ({ browser }) => {
+	// --- owner context: first-run setup ---
+	const ownerCtx = await browser.newContext();
+	const owner = await ownerCtx.newPage();
+	await owner.goto('/setup');
+	await owner.getByLabel('Username').fill(OWNER.username);
+	await owner.getByLabel('Password').fill(OWNER.password);
+	await owner.getByRole('button', { name: 'Create owner' }).click();
+	await owner.waitForURL('/');
+
+	const ownerNav = owner.getByRole('navigation', { name: 'Primary' });
+	await expect(ownerNav.getByRole('link', { name: 'Timeline' })).toBeVisible();
+	await expect(ownerNav.getByRole('link', { name: 'Arrivals' })).toBeVisible(); // owner is editor+
+	await expect(owner.getByText(OWNER.username)).toBeVisible(); // account block
+
+	// /setup is now closed: hooks bounce it to /login, and /login bounces
+	// signed-in users home — so the owner ends up back on /
+	await owner.goto('/setup');
+	await expect(owner).toHaveURL('/');
+
+	// --- owner mints an invite for role 'user' ---
+	await owner.goto('/admin/invites');
+	await owner.getByLabel('Role').selectOption('user');
+	await owner.getByLabel('Max uses').fill('1');
+	await owner.getByRole('button', { name: 'Create invite' }).click();
+	const inviteUrl = await owner.getByTestId('invite-url').first().innerText();
+	expect(inviteUrl).toContain('/invite/');
+
+	// --- second context: redeem the invite ---
+	const guestCtx = await browser.newContext();
+	const guest = await guestCtx.newPage();
+	await guest.goto(inviteUrl);
+	await expect(guest.getByRole('heading', { name: "You're invited" })).toBeVisible();
+	await expect(guest.locator('strong')).toHaveText('user'); // preset role shown
+	await guest.getByLabel('Username').fill('cousin');
+	await guest.getByLabel('Password').fill('another-secret-8');
+	await guest.getByRole('button', { name: 'Join Shoebox' }).click();
+	await guest.waitForURL('/');
+
+	// 'user' role: nav without Arrivals
+	const guestNav = guest.getByRole('navigation', { name: 'Primary' });
+	await expect(guestNav.getByRole('link', { name: 'Timeline' })).toBeVisible();
+	await expect(guestNav.getByRole('link', { name: 'People' })).toBeVisible();
+	await expect(guestNav.getByRole('link', { name: 'Albums' })).toBeVisible();
+	await expect(guestNav.getByRole('link', { name: 'Search' })).toBeVisible();
+	await expect(guestNav.getByRole('link', { name: 'Arrivals' })).toHaveCount(0);
+
+	// server-side gates hold regardless of the nav
+	const adminRes = await guest.goto('/admin/invites');
+	expect(adminRes?.status()).toBe(403);
+	const arrivalsRes = await guest.goto('/arrivals');
+	expect(arrivalsRes?.status()).toBe(403);
+
+	// the invite is single-use: a third visitor sees 'used up'
+	const lateCtx = await browser.newContext();
+	const late = await lateCtx.newPage();
+	await late.goto(inviteUrl);
+	await expect(late.getByRole('heading', { name: 'Invite used up' })).toBeVisible();
+
+	await ownerCtx.close();
+	await guestCtx.close();
+	await lateCtx.close();
+});
+
+test('login and logout round-trip', async ({ page }) => {
+	await page.goto('/');
+	await expect(page).toHaveURL(/\/login$/); // signed out → login gate
+	await page.getByLabel('Username').fill(OWNER.username);
+	await page.getByLabel('Password').fill(OWNER.password);
+	await page.getByRole('button', { name: 'Sign in' }).click();
+	await page.waitForURL('/');
+	await page.getByRole('button', { name: 'Sign out' }).click();
+	await page.waitForURL(/\/login$/);
+	// and the gate is back
+	await page.goto('/people');
+	await expect(page).toHaveURL(/\/login$/);
+});
+```
+
+- [ ] **Step 3: Run the e2e suite**
+
+Run: `pnpm test:e2e`
+Expected: `3 passed`. (First run includes `pnpm build` inside the webServer command — allow ~2 minutes.)
+
+If a locator fails, debug with `pnpm exec playwright test --headed --debug` and fix the page markup or the locator — do not weaken assertions.
+
+- [ ] **Step 4: Full phase gate**
+
+Run: `pnpm check && pnpm lint && pnpm test && pnpm test:workers && pnpm test:e2e && pnpm build && pnpm build:cf`
+Expected: every command green. This is the phase 01 exit bar.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add playwright.config.ts e2e/foundation.spec.ts
+git commit -m "test: foundation e2e - setup, invite redemption, role-gated nav, login round-trip"
+```
+
+---
+
+## Phase completion checklist
+
+- [ ] `pnpm check` — 0 errors (TypeScript strict).
+- [ ] `pnpm lint` — prettier + eslint clean.
+- [ ] `pnpm test` — tokens, theme, migrations, storage-fs contract, queue-sqlite, auth, roles, accents, invites all green.
+- [ ] `pnpm test:workers` — R2 storage contract + D1 drizzle round-trip green in workerd.
+- [ ] `pnpm test:e2e` — setup → invite → redemption → role-gated nav green against the adapter-node build.
+- [ ] `pnpm build` and `pnpm build:cf` both compile.
+- [ ] Visual: gradient rooms with grain, sharp corners everywhere, serif roman headings, uppercase sans chrome, no Inter, no italics, accent-colored account block.
+- [ ] Nothing from later phases leaked in: no upload routes, no item pages, no timeline data UI, no search, no worker process.
+
+
+
 
 
 

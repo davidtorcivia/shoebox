@@ -31,8 +31,8 @@
 
 Resolved ambiguities — these are the binding choices for this phase:
 
-1. **Blurhash storage** — the master schema has no blurhash column and may not be extended. Blurhash strings are persisted in the `settings` table under key `blurhash:<itemId>` (value = JSON-encoded string), batch-fetched with one `IN` query per DTO page.
-2. **`items_sha` unique index vs "allow anyway"** — a second copy of the same bytes cannot share the sha256 value. On duplicate-override, the stored value becomes `<sha256>#dup-<nanoid(6)>`. Dedupe lookups match `sha256 = ? OR sha256 LIKE ? || '#%'`.
+1. **Blurhash storage** — the master's Contract 1 was AMENDED (already committed) to add a nullable `blurhash: text('blurhash')` column on `items`. It is written at item creation (`createItem`, fed by `/api/upload/complete`) and read directly in the DTO mapper (`blurhash: row.blurhash ?? null`). No side-table involved.
+2. **Dedupe enforcement** — the master's Contract 1 was AMENDED (already committed): `items_sha` is a NON-unique index, so duplicate prevention lives in application code only. `findDuplicate` is a plain equality match on `sha256`, still ignoring trashed items; on user-approved override the same true sha256 is simply inserted a second time.
 3. **`uploadId` = the file's sha256 hex** — content-addressed temp area `tmp/<sha256>/…` gives resumability for free: re-running init reports `receivedChunks` and the client only sends missing chunks.
 4. **`/api/upload/complete` vs `POST /api/items`** — `complete` (multipart) assembles chunks, stores derivatives, and creates the item + item_files rows (this phase's browser path). `POST /api/items` (JSON) is the shared creation primitive over already-stored storage keys — both call `createItem()`; phase 07 ingestion reuses it.
 5. **`q` filter** — FTS is phase 06 (forbidden here). Until then `q` does a `LIKE '%q%'` match on title/description; phase 06 replaces the implementation without changing the API shape.
@@ -65,7 +65,7 @@ src/lib/server/testing/memory-platform.ts           # MemoryStorage / MemoryQueu
 src/lib/server/testing/memory-platform.test.ts
 src/lib/server/aggregates.ts                        # recomputeYearCounts + bumpYearCount
 src/lib/server/aggregates.test.ts
-src/lib/server/dedupe.ts                            # findDuplicate, duplicateSha
+src/lib/server/dedupe.ts                            # findDuplicate (application-level sha dedupe)
 src/lib/server/upload.ts                            # init/chunk/assemble/complete upload pipeline + meta validation
 src/lib/server/upload.test.ts
 src/lib/server/items.ts                             # createItem, DTO builder, listItems, update/delete/restore
@@ -956,7 +956,7 @@ export async function bumpYearCount(
   - `initUpload(db, storage, userId, input: InitUploadInput): Promise<InitUploadResult>` where `InitUploadResult = { uploadId, chunkSize, totalChunks, receivedChunks: number[], duplicateItemId: string | null }`
   - `saveChunk(storage, uploadId, index, data: Uint8Array): Promise<{ received: true }>`
   - `readManifest(storage, uploadId): Promise<UploadManifest>`, `chunkKey(uploadId, index)`, `expectedChunkSize(sizeBytes, index, chunkSize)`, `ALLOWED_MIME`
-  - `findDuplicate(db, sha256): Promise<{ itemId: string } | null>`, `duplicateSha(sha256, suffix): string` from `dedupe.ts`
+  - `findDuplicate(db, sha256): Promise<{ itemId: string } | null>` from `dedupe.ts`
 
 **Steps:**
 
@@ -975,7 +975,7 @@ import {
   readManifest,
   saveChunk,
 } from './upload';
-import { findDuplicate, duplicateSha } from './dedupe';
+import { findDuplicate } from './dedupe';
 import { memoryDb, seedUser } from './testing/memory-db';
 import { MemoryStorage } from './testing/memory-platform';
 import { items } from '$lib/server/db/schema';
@@ -1015,9 +1015,9 @@ beforeEach(async () => {
 });
 
 describe('findDuplicate', () => {
-  it('matches exact sha and #dup-suffixed sha, ignores trash', async () => {
+  it('matches the exact sha and ignores trashed items', async () => {
     expect(await findDuplicate(db, SHA)).toBeNull();
-    const id = await insertItemWithSha(duplicateSha(SHA, 'abc123'));
+    const id = await insertItemWithSha(SHA);
     expect(await findDuplicate(db, SHA)).toEqual({ itemId: id });
     await insertItemWithSha(SHA_B, new Date()); // trashed
     expect(await findDuplicate(db, SHA_B)).toBeNull();
@@ -1095,10 +1095,10 @@ describe('saveChunk', () => {
 - [ ] Step 4.4 — Implement `src/lib/server/dedupe.ts` (complete file):
 
 ```ts
-// SHA-256 dedupe. Decision 2: the master's items_sha unique index forbids two
-// rows with the same sha256, so a user-approved duplicate stores
-// '<sha>#dup-<suffix>'. Lookups therefore match both forms; trash is ignored.
-import { and, eq, isNull, like, or } from 'drizzle-orm';
+// SHA-256 dedupe. Decision 2: items_sha is a NON-unique index (master amended);
+// duplicate prevention is application-level only — warn at init, and on a
+// user-approved override the same true sha256 is stored again. Trash is ignored.
+import { and, eq, isNull } from 'drizzle-orm';
 import { items } from '$lib/server/db/schema';
 
 type Db = App.Locals['db'];
@@ -1107,18 +1107,9 @@ export async function findDuplicate(db: Db, sha256: string): Promise<{ itemId: s
   const rows = await db
     .select({ id: items.id })
     .from(items)
-    .where(
-      and(
-        isNull(items.deletedAt),
-        or(eq(items.sha256, sha256), like(items.sha256, `${sha256}#%`)),
-      ),
-    )
+    .where(and(isNull(items.deletedAt), eq(items.sha256, sha256)))
     .limit(1);
   return rows.length ? { itemId: rows[0].id } : null;
-}
-
-export function duplicateSha(sha256: string, suffix: string): string {
-  return `${sha256}#dup-${suffix}`;
 }
 ```
 
@@ -1286,7 +1277,7 @@ export async function saveChunk(
 - Create: `src/lib/server/items.test.ts`, `src/lib/server/items.ts`
 
 **Interfaces:**
-- Consumes: Contract 1 tables (`items`, `itemFiles`, `itemPeople`, `itemTags`, `tags`, `albums`, `albumItems`, `people`, `settings`); `StorageAdapter.mediaUrl` (Contract 2); `JobQueueAdapter.enqueue`; Task 1 date functions; Task 3 `bumpYearCount`; `ROLE_RANK` from `$lib/server/roles` (Contract 3).
+- Consumes: Contract 1 tables (`items` — incl. the amended `blurhash` column, `itemFiles`, `itemPeople`, `itemTags`, `tags`, `albums`, `albumItems`, `people`); `StorageAdapter.mediaUrl` (Contract 2); `JobQueueAdapter.enqueue`; Task 1 date functions; Task 3 `bumpYearCount`; `ROLE_RANK` from `$lib/server/roles` (Contract 3).
 - Produces (consumed by Tasks 6–11, phase 03 timeline, phase 04 player, phase 07 ingestion):
   - `createItem(db, storage, queue, input: CreateItemInput): Promise<ItemDTO>`
   - `getItemDTO(db, storage, id, opts?): Promise<ItemDTO | null>`
@@ -1303,7 +1294,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createItem, getItemDTO, normalizeTagName, type CreateItemInput } from './items';
 import { memoryDb, seedPerson, seedUser } from './testing/memory-db';
 import { MemoryQueue, MemoryStorage } from './testing/memory-platform';
-import { settings, tags, yearCounts } from '$lib/server/db/schema';
+import { items as itemsTable, tags, yearCounts } from '$lib/server/db/schema';
 
 type Db = App.Locals['db'];
 
@@ -1436,12 +1427,11 @@ describe('createItem', () => {
     ).rejects.toMatchObject({ status: 400 });
   });
 
-  it('persists blurhash under settings key blurhash:<id>', async () => {
+  it('persists blurhash on the items row (amended Contract 1 column)', async () => {
     await createItem(db, storage, queue, baseInput());
-    const rows = await db.select().from(settings);
-    expect(rows).toEqual([
-      { key: 'blurhash:itm000000001', value: JSON.stringify('LKO2?U%2Tw=w]~RBVZRi};RPxuwH') },
-    ]);
+    const rows = await db.select().from(itemsTable);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].blurhash).toBe('LKO2?U%2Tw=w]~RBVZRi};RPxuwH');
   });
 });
 
@@ -1477,7 +1467,6 @@ import {
   items,
   itemTags,
   people,
-  settings,
   tags,
 } from '$lib/server/db/schema';
 import {
@@ -1528,8 +1517,6 @@ export interface CreateItemInput {
   tags: string[];
   uploadedBy: string;
 }
-
-const blurhashKey = (itemId: string) => `blurhash:${itemId}`;
 
 export function normalizeTagName(name: string): string {
   return name.trim().toLowerCase();
@@ -1599,6 +1586,7 @@ export async function createItem(
     sha256: input.sha256,
     source: input.source,
     tapeLabel: input.tapeLabel,
+    blurhash: input.blurhash, // amended Contract 1 column (decision 1)
     status,
     uploadedBy: input.uploadedBy,
     createdAt: new Date(),
@@ -1620,14 +1608,6 @@ export async function createItem(
 
   await setItemPeople(db, id, personIds);
   await setItemTags(db, id, input.tags);
-
-  if (input.blurhash) {
-    const value = JSON.stringify(input.blurhash);
-    await db
-      .insert(settings)
-      .values({ key: blurhashKey(id), value })
-      .onConflictDoUpdate({ target: settings.key, set: { value } });
-  }
 
   await bumpYearCount(db, yearOf(input.date), input.type, 1);
 
@@ -1670,12 +1650,6 @@ export async function buildItemDTOs(
     .from(albumItems)
     .innerJoin(albums, eq(albumItems.albumId, albums.id))
     .where(and(inArray(albumItems.itemId, ids), isNull(albums.deletedAt)));
-  const blur = await db
-    .select()
-    .from(settings)
-    .where(inArray(settings.key, ids.map(blurhashKey)));
-  const blurMap = new Map(blur.map((b) => [b.key, JSON.parse(b.value) as string]));
-
   const out: ItemDTO[] = [];
   for (const row of rows) {
     const date: ItemDate = {
@@ -1706,7 +1680,7 @@ export async function buildItemDTOs(
       height: row.height,
       status: row.status,
       urls,
-      blurhash: blurMap.get(blurhashKey(row.id)) ?? null,
+      blurhash: row.blurhash ?? null, // amended Contract 1 column (decision 1)
       // people[].age is wired in phase 05 when ages.ts lands (decision 7).
       people: ppl
         .filter((p) => p.itemId === row.id)
@@ -1744,7 +1718,7 @@ export async function getItemDTO(
 - Modify: `src/lib/server/upload.ts` (append), `src/lib/server/upload.test.ts` (append)
 
 **Interfaces:**
-- Consumes: Task 4 manifest/chunk helpers, Task 5 `createItem`, `fitWithin` (Task 1), `findDuplicate`/`duplicateSha` (Task 4).
+- Consumes: Task 4 manifest/chunk helpers, Task 5 `createItem`, `fitWithin` (Task 1), `findDuplicate` (Task 4).
 - Produces (consumed by the complete route in Task 9):
   - `completeUpload(db, storage, queue, user: SessionUser, input: CompleteUploadInput): Promise<ItemDTO>`
   - `validateUploadMeta(raw: unknown): UploadMeta`
@@ -1848,7 +1822,7 @@ describe('completeUpload', () => {
     ).rejects.toMatchObject({ status: 409 });
   });
 
-  it('409s on duplicate unless allowDuplicate, then stores a #dup sha', async () => {
+  it('409s on duplicate unless allowDuplicate, then stores the same true sha twice', async () => {
     const bytes = new Uint8Array(24).fill(1);
     const { user, uploadId } = await uploadAll(bytes, SHA);
     const first = await completeUpload(db, storage, queue(), user, {
@@ -1868,8 +1842,9 @@ describe('completeUpload', () => {
     const second = await completeUpload(db, storage, queue(), user, {
       uploadId, allowDuplicate: true, meta: meta(), blurhash: null, derivatives: derivatives(),
     });
-    const row = (await db.select().from(itemsTable).where(eq(itemsTable.id, second.id)))[0];
-    expect(row.sha256.startsWith(`${SHA}#dup-`)).toBe(true);
+    // items_sha is non-unique (master amended): both rows carry the true sha
+    const rows = await db.select().from(itemsTable).where(eq(itemsTable.sha256, SHA));
+    expect(rows.map((r) => r.id).sort()).toEqual([first.id, second.id].sort());
   });
 
   it('rejects meta whose type contradicts the uploaded mime', async () => {
@@ -1913,7 +1888,7 @@ describe('validateUploadMeta', () => {
 
 - [ ] Step 6.2 — Run `pnpm vitest run src/lib/server/upload.test.ts`. **Expected: FAIL** — `completeUpload`/`validateUploadMeta` are not exported.
 
-- [ ] Step 6.3 — Append to `src/lib/server/upload.ts`. Add these imports at the top of the file: `import { nanoid } from 'nanoid';`, `import { fitWithin } from '$lib/domain/dims';`, `import { isValidItemDate, type ItemDate } from '$lib/domain/dates';`, `import { duplicateSha } from '$lib/server/dedupe';` (extend the existing dedupe import), `import { createItem, type ItemFileInput } from '$lib/server/items';`, `import type { JobQueueAdapter } from '$lib/server/platform/types';`, `import type { ItemDTO, UploadMeta } from '$lib/types';`. Then append:
+- [ ] Step 6.3 — Append to `src/lib/server/upload.ts`. Add these imports at the top of the file: `import { nanoid } from 'nanoid';`, `import { fitWithin } from '$lib/domain/dims';`, `import { isValidItemDate, type ItemDate } from '$lib/domain/dates';`, `import { createItem, type ItemFileInput } from '$lib/server/items';`, `import type { JobQueueAdapter } from '$lib/server/platform/types';`, `import type { ItemDTO, UploadMeta } from '$lib/types';`. Then append:
 
 ```ts
 type SessionUser = NonNullable<App.Locals['user']>;
@@ -2018,7 +1993,8 @@ export async function completeUpload(
   if (dup && !input.allowDuplicate) {
     throw error(409, `duplicate of item ${dup.itemId}`);
   }
-  const sha = dup ? duplicateSha(manifest.sha256, nanoid(6)) : manifest.sha256;
+  // allowDuplicate override: store the same true sha256 again — items_sha is a
+  // non-unique index and dedupe is application-level only (decision 2).
 
   const kind = ALLOWED_MIME[manifest.mime];
   if (!kind) throw error(400, `unsupported mime: ${manifest.mime}`);
@@ -2070,7 +2046,7 @@ export async function completeUpload(
     width: input.meta.width,
     height: input.meta.height,
     sizeBytes: manifest.sizeBytes,
-    sha256: sha,
+    sha256: manifest.sha256,
     source: 'upload',
     blurhash: input.blurhash,
     files,
@@ -2754,12 +2730,13 @@ beforeEach(() => {
   storage = new MemoryStorage();
 });
 
+let shaSeq = 0; // POST /api/items validates sha256 as 64 hex chars — digits qualify
 function input(id: string, uploadedBy: string, over: Partial<CreateItemInput> = {}): CreateItemInput {
   return {
     id, type: 'photo', title: null, description: null, tapeLabel: null,
     date: { dateStart: '1994-06-14', dateEnd: '1994-06-14', precision: 'day' },
     duration: null, width: 100, height: 100, sizeBytes: 10,
-    sha256: id.padEnd(64, '9'), source: 'upload', blurhash: null,
+    sha256: String(++shaSeq).padStart(64, '0'), source: 'upload', blurhash: null,
     files: [
       { kind: 'original', storageKey: `media/${id}/original.jpg`, mime: 'image/jpeg', width: 100, height: 100 },
       { kind: 'poster', storageKey: `media/${id}/poster.webp`, mime: 'image/webp', width: 100, height: 100 },
@@ -2825,7 +2802,7 @@ import { requireRole } from '$lib/server/roles';
 import { createItem, listItems, type CreateItemInput, type ItemFileInput } from '$lib/server/items';
 
 const FILE_KINDS = new Set(['original', 'poster', 'thumb_400', 'thumb_800', 'thumb_1600', 'sprite']);
-const SHA_RE = /^[0-9a-f]{64}(#dup-[A-Za-z0-9_-]{6})?$/;
+const SHA_RE = /^[0-9a-f]{64}$/;
 
 export const GET: RequestHandler = async ({ locals, url }) => {
   requireRole(locals, 'user'); // share-token access lands in phase 08
