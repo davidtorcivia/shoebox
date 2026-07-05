@@ -1,6 +1,23 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { items as itemsTable, tags, yearCounts } from '$lib/server/db/schema';
-import { createItem, getItemDTO, normalizeTagName, type CreateItemInput } from './items';
+import {
+	albumItems as albumItemsTable,
+	albums as albumsTable,
+	items as itemsTable,
+	tags,
+	yearCounts
+} from '$lib/server/db/schema';
+import {
+	createItem,
+	decodeCursor,
+	deleteItem,
+	encodeCursor,
+	getItemDTO,
+	listItems,
+	normalizeTagName,
+	restoreItem,
+	updateItem,
+	type CreateItemInput
+} from './items';
 import { memoryDb, seedPerson, seedUser } from './testing/memory-db';
 import { MemoryQueue, MemoryStorage } from './testing/memory-platform';
 
@@ -197,3 +214,136 @@ describe('normalizeTagName', () => {
 	});
 });
 
+describe('listItems', () => {
+	async function seedSix() {
+		const mom = await seedPerson(db, { id: 'p_mom', name: 'Mom' });
+		const dad = await seedPerson(db, { id: 'p_dad', name: 'Dad' });
+		const mk = (id: string, over: Partial<CreateItemInput>) =>
+			createItem(
+				db,
+				storage,
+				queue,
+				baseInput({ id, sha256: id.padEnd(64, '0'), title: null, ...over })
+			);
+		await mk('itm_a1', {
+			date: { dateStart: '1988-07-04', dateEnd: '1988-07-04', precision: 'day' },
+			type: 'photo',
+			duration: null,
+			tags: ['fireworks']
+		});
+		await mk('itm_a2', {
+			date: { dateStart: '1994-06-14', dateEnd: '1994-06-14', precision: 'day' },
+			people: [mom.id],
+			title: 'Sprinkler day'
+		});
+		await mk('itm_a3', {
+			date: { dateStart: '1994-06-14', dateEnd: '1994-06-14', precision: 'day' },
+			people: [mom.id, dad.id]
+		});
+		await mk('itm_a4', {
+			date: { dateStart: '1994-12-01', dateEnd: '1994-12-31', precision: 'month' },
+			tags: ['christmas']
+		});
+		await mk('itm_a5', { date: { dateStart: null, dateEnd: null, precision: 'unknown' } });
+		await mk('itm_a6', { date: { dateStart: null, dateEnd: null, precision: 'unknown' } });
+		return { mom, dad };
+	}
+
+	it('orders by sortDate asc, undated last, and paginates with a stable cursor', async () => {
+		await seedSix();
+		const page1 = await listItems(db, storage, { limit: 3 });
+		expect(page1.items.map((item) => item.id)).toEqual(['itm_a1', 'itm_a2', 'itm_a3']);
+		expect(page1.nextCursor).not.toBeNull();
+		const page2 = await listItems(db, storage, { limit: 3, cursor: page1.nextCursor! });
+		expect(page2.items.map((item) => item.id)).toEqual(['itm_a4', 'itm_a5', 'itm_a6']);
+		expect(page2.nextCursor).toBeNull();
+	});
+
+	it('filters by year, month, type, status, people, tags, and q', async () => {
+		const { mom, dad } = await seedSix();
+		expect((await listItems(db, storage, { year: 1994 })).items).toHaveLength(3);
+		expect((await listItems(db, storage, { year: 1994, month: 6 })).items).toHaveLength(2);
+		expect((await listItems(db, storage, { type: 'photo' })).items.map((item) => item.id)).toEqual([
+			'itm_a1'
+		]);
+		expect((await listItems(db, storage, { status: 'needs_review' })).items).toHaveLength(2);
+		expect((await listItems(db, storage, { people: [mom.id] })).items).toHaveLength(2);
+		expect((await listItems(db, storage, { people: [mom.id, dad.id] })).items.map((item) => item.id)).toEqual([
+			'itm_a3'
+		]);
+		expect((await listItems(db, storage, { tags: ['Christmas'] })).items.map((item) => item.id)).toEqual([
+			'itm_a4'
+		]);
+		expect((await listItems(db, storage, { q: 'sprinkler' })).items.map((item) => item.id)).toEqual([
+			'itm_a2'
+		]);
+	});
+
+	it('filters by album membership', async () => {
+		await seedSix();
+		await db
+			.insert(albumsTable)
+			.values({ id: 'alb1', title: 'Summer', createdBy: userId, createdAt: new Date() });
+		await db.insert(albumItemsTable).values({ albumId: 'alb1', itemId: 'itm_a2', position: 0 });
+		expect((await listItems(db, storage, { album: 'alb1' })).items.map((item) => item.id)).toEqual([
+			'itm_a2'
+		]);
+	});
+
+	it('clamps limit to 100', async () => {
+		await seedSix();
+		const res = await listItems(db, storage, { limit: 5000 });
+		expect(res.items).toHaveLength(6);
+	});
+
+	it('cursor survives encode/decode roundtrip including null sortDate', () => {
+		for (const cursor of [
+			{ s: '1994-06-14', id: 'itm_a2' },
+			{ s: null, id: 'itm_a5' }
+		]) {
+			expect(decodeCursor(encodeCursor(cursor))).toEqual(cursor);
+		}
+	});
+});
+
+describe('update/delete/restore', () => {
+	it('updates editable fields, links, status and year counts', async () => {
+		const mom = await seedPerson(db, { name: 'Mom' });
+		await createItem(db, storage, queue, baseInput({ tags: ['old'] }));
+		const user = await seedUser(db, { id: 'u_owner', username: 'owner', role: 'owner' });
+
+		const updated = await updateItem(db, storage, user, 'itm000000001', {
+			title: 'Updated',
+			date: { dateStart: '1995-01-01', dateEnd: '1995-12-31', precision: 'year' },
+			people: [mom.id],
+			tags: ['new']
+		});
+
+		expect(updated.title).toBe('Updated');
+		expect(updated.shortDate).toBe('c. 1995');
+		expect(updated.people.map((person) => person.id)).toEqual([mom.id]);
+		expect(updated.tags.map((tag) => tag.name)).toEqual(['new']);
+		expect(await db.select().from(yearCounts)).toEqual([
+			{ year: 1994, type: 'video', count: 0 },
+			{ year: 1995, type: 'video', count: 1 }
+		]);
+	});
+
+	it('lets uploaders edit only their own items', async () => {
+		await createItem(db, storage, queue, baseInput());
+		const other = await seedUser(db, { id: 'u_other', username: 'other', role: 'uploader' });
+		await expect(updateItem(db, storage, other, 'itm000000001', { title: 'Nope' })).rejects.toMatchObject({
+			status: 403
+		});
+	});
+
+	it('soft deletes and restores with year count changes', async () => {
+		await createItem(db, storage, queue, baseInput());
+		await deleteItem(db, 'itm000000001');
+		expect(await getItemDTO(db, storage, 'itm000000001')).toBeNull();
+		expect(await db.select().from(yearCounts)).toEqual([{ year: 1994, type: 'video', count: 0 }]);
+		const restored = await restoreItem(db, storage, 'itm000000001');
+		expect(restored.id).toBe('itm000000001');
+		expect(await db.select().from(yearCounts)).toEqual([{ year: 1994, type: 'video', count: 1 }]);
+	});
+});
