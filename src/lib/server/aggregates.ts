@@ -1,5 +1,5 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { items, yearCounts } from '$lib/server/db/schema';
+import { itemPeople, items, yearCounts } from '$lib/server/db/schema';
 
 type Db = App.Locals['db'];
 
@@ -44,4 +44,44 @@ export async function bumpYearCount(
 		.update(yearCounts)
 		.set({ count: sql`max(${yearCounts.count} - 1, 0)` })
 		.where(and(eq(yearCounts.year, year), eq(yearCounts.type, type)));
+}
+
+export interface TimelineYear {
+	year: number;
+	count: number;
+	people: number;
+}
+
+export async function timelineYears(
+	db: Db
+): Promise<{ years: TimelineYear[]; earliest: number | null; latest: number | null }> {
+	const countRows = await db
+		.select({ year: yearCounts.year, count: sql<number>`sum(${yearCounts.count})` })
+		.from(yearCounts)
+		.groupBy(yearCounts.year)
+		.orderBy(yearCounts.year);
+
+	if (countRows.length === 0) return { years: [], earliest: null, latest: null };
+
+	const peopleRows = await db
+		.select({
+			year: sql<number>`cast(substr(${items.sortDate}, 1, 4) as integer)`,
+			people: sql<number>`count(distinct ${itemPeople.personId})`
+		})
+		.from(items)
+		.leftJoin(itemPeople, eq(itemPeople.itemId, items.id))
+		.where(and(isNull(items.deletedAt), sql`${items.sortDate} is not null`))
+		.groupBy(sql`substr(${items.sortDate}, 1, 4)`);
+	const peopleByYear = new Map(peopleRows.map((row) => [row.year, row.people]));
+	const years = countRows.map((row) => ({
+		year: row.year,
+		count: row.count,
+		people: peopleByYear.get(row.year) ?? 0
+	}));
+
+	return {
+		years,
+		earliest: years[0]?.year ?? null,
+		latest: years.at(-1)?.year ?? null
+	};
 }
