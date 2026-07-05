@@ -2,17 +2,19 @@
 	import { page } from '$app/state';
 	import { FONT } from '$lib/ui/tokens';
 	import type { Snippet } from 'svelte';
+	import type { LayoutData } from './$types';
 
-	let { children }: { children: Snippet } = $props();
+	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
-	const sections = [
+	const sections = $derived([
 		{ href: '/admin/users', label: 'Users' },
 		{ href: '/admin/invites', label: 'Invites' },
 		{ href: '/admin/shares', label: 'Shares' },
 		{ href: '/admin/trash', label: 'Trash' },
 		{ href: '/admin/settings', label: 'Settings' },
-		{ href: '/admin/jobs', label: 'Jobs' }
-	];
+		{ href: '/admin/jobs', label: 'Jobs' },
+		...(data.features.faces ? [{ href: '/admin/faces', label: 'Faces' }] : [])
+	]);
 </script>
 
 <div class="admin" style={`--serif:${FONT.serif}; --sans:${FONT.sans};`}>

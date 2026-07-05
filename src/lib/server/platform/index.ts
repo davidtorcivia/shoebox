@@ -4,6 +4,7 @@ import type { D1Database, R2Bucket } from '@cloudflare/workers-types';
 import type { RequestEvent } from '@sveltejs/kit';
 import type { Db } from '../db';
 import { openD1Db } from './db-d1';
+import { platformFeatures } from './features';
 import { noopQueue } from './queue-noop';
 import { createR2Storage } from './storage-r2';
 import type { Platform } from './types';
@@ -26,7 +27,7 @@ async function initNodeRuntime(): Promise<{ platform: Platform; db: Db }> {
 				name: 'node',
 				storage: createFsStorage(env.MEDIA_PATH ?? './data/media'),
 				queue: createSqliteQueue(db),
-				features: { ingestion: true, faces: true, serverDerivatives: true }
+				features: platformFeatures('node', env)
 			}
 		};
 	}
@@ -44,7 +45,7 @@ function cfRuntime(event: RequestEvent): { platform: Platform; db: Db } {
 			name: 'cloudflare',
 			storage: createR2Storage(bindings.MEDIA),
 			queue: noopQueue,
-			features: { ingestion: false, faces: false, serverDerivatives: false }
+			features: platformFeatures('cloudflare', {})
 		}
 	};
 }
