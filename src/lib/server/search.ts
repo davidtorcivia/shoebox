@@ -337,3 +337,20 @@ export async function searchAlbumCards(db: Db, text: string, limit = 8): Promise
 		    LIMIT ${limit}`
 	)) as AlbumCard[];
 }
+
+export async function filteredYearCounts(
+	db: Db,
+	f: ItemFilter
+): Promise<{ year: number; count: number }[]> {
+	const built = await buildItemConditions(db, f);
+	if (built.impossible) return [];
+	const where = sql.join(built.conds, sql` AND `);
+	return (await db.all(
+		sql`SELECT CAST(substr(i.sort_date, 1, 4) AS INTEGER) AS year,
+		           COUNT(*) AS count
+		    FROM items i
+		    WHERE ${where} AND i.sort_date IS NOT NULL
+		    GROUP BY year
+		    ORDER BY year`
+	)) as { year: number; count: number }[];
+}
