@@ -20,6 +20,7 @@
 		"test:e2e": "playwright test",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
+		"db:reindex": "tsx scripts/db-reindex.ts",
 		"worker": "tsx src/worker/index.ts"
 	},
 	"dependencies": {
