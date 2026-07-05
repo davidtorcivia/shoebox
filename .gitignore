@@ -6,6 +6,9 @@ build/
 .env
 data/
 e2e/.data/
+e2e/fixtures/clip.mp4
+e2e/fixtures/photo.jpg
+/ingest/
 test-results/
 playwright-report/
 vite.config.ts.timestamp-*
