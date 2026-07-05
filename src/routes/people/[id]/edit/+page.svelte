@@ -3,6 +3,7 @@
 	import AccentSwatches from '$lib/ui/AccentSwatches.svelte';
 	import CropPicker from '$lib/ui/CropPicker.svelte';
 	import Gradient from '$lib/ui/Gradient.svelte';
+	import RelEditor from '$lib/ui/RelEditor.svelte';
 	import { makePortraitCrop } from '$lib/ui/crop';
 	import { personRoomFor } from '$lib/ui/tokens';
 	import type { CropRect } from '$lib/domain/people-dto';
@@ -158,7 +159,10 @@
 				</div>
 			</section>
 
-			<!-- Task 11 appends the relationships editor here -->
+			<section>
+				<div class="label">Family</div>
+				<RelEditor personId={person.id} others={data.others} family={person.family} />
+			</section>
 
 			<div class="actions">
 				<button class="save" data-testid="save-person" onclick={save}>Save</button>
