@@ -130,13 +130,16 @@ export const items = sqliteTable('items', {
   height: integer('height').notNull(),
   sizeBytes: integer('size_bytes').notNull(),
   sha256: text('sha256').notNull(),
+  blurhash: text('blurhash'),                     // client-computed placeholder hash
   source: text('source', { enum: ['upload','ingest'] }).notNull(),
   tapeLabel: text('tape_label'),
   status: text('status', { enum: ['processing','needs_review','ready'] }).notNull(),
   uploadedBy: text('uploaded_by').notNull().references(() => users.id),
   deletedAt: integer('deleted_at', { mode: 'timestamp' }),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-}, (t) => [index('items_sort').on(t.sortDate), index('items_status').on(t.status), uniqueIndex('items_sha').on(t.sha256)]);
+}, (t) => [index('items_sort').on(t.sortDate), index('items_status').on(t.status), index('items_sha').on(t.sha256)]);
+// items_sha is intentionally NON-unique: dedupe is enforced in application code
+// (upload init warns on match; user may override and store a true duplicate).
 
 export const itemFiles = sqliteTable('item_files', {
   id: text('id').primaryKey(),
