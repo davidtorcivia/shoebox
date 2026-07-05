@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { and, eq, ne } from 'drizzle-orm';
-import { SESSION_COOKIE, hashPassword, verifyPassword } from '$lib/server/auth';
+import { eq } from 'drizzle-orm';
+import { SESSION_COOKIE, verifyPassword } from '$lib/server/auth';
 import {
 	albums,
 	comments,
@@ -11,10 +11,8 @@ import {
 	shares,
 	users
 } from '$lib/server/db/schema';
-import { ACCENTS } from '$lib/ui/tokens';
+import { changePassword, changeUsername, updateAppearance } from '$lib/server/profile';
 import type { Actions, PageServerLoad } from './$types';
-
-const THEMES = ['system', 'dark', 'light'] as const;
 
 export const load: PageServerLoad = async ({ locals }) => {
 	if (!locals.user) redirect(302, '/login');
@@ -51,58 +49,41 @@ export const actions: Actions = {
 	account: async ({ locals, request }) => {
 		if (!locals.user) return fail(401, { message: 'Not signed in' });
 		const fd = await request.formData();
-		const username = String(fd.get('username') ?? '').trim();
-		if (username.length < 3 || username.length > 32) {
-			return fail(400, { message: 'Username must be 3-32 characters' });
-		}
-		const clash = (
-			await locals.db
-				.select({ id: users.id })
-				.from(users)
-				.where(and(eq(users.username, username), ne(users.id, locals.user.id)))
-				.limit(1)
-		)[0];
-		if (clash) return fail(400, { message: 'That username is taken' });
-		await locals.db.update(users).set({ username }).where(eq(users.id, locals.user.id));
+		const result = await changeUsername(
+			locals.db,
+			locals.user.id,
+			String(fd.get('current') ?? ''),
+			String(fd.get('username') ?? '')
+		);
+		if (!result.ok) return fail(400, { message: result.error });
 		return { saved: 'account' };
 	},
 
 	password: async ({ locals, request }) => {
 		if (!locals.user) return fail(401, { message: 'Not signed in' });
 		const fd = await request.formData();
-		const current = String(fd.get('current') ?? '');
-		const next = String(fd.get('next') ?? '');
-		if (next.length < 8)
-			return fail(400, { message: 'New password must be at least 8 characters' });
-		const row = (
-			await locals.db.select().from(users).where(eq(users.id, locals.user.id)).limit(1)
-		)[0];
-		if (!row || !(await verifyPassword(current, row.passwordHash))) {
-			return fail(400, { message: 'Current password is incorrect' });
-		}
-		await locals.db
-			.update(users)
-			.set({ passwordHash: await hashPassword(next) })
-			.where(eq(users.id, locals.user.id));
+		const result = await changePassword(
+			locals.db,
+			locals.user.id,
+			String(fd.get('current') ?? ''),
+			String(fd.get('next') ?? '')
+		);
+		if (!result.ok) return fail(400, { message: result.error });
 		return { saved: 'password' };
 	},
 
 	appearance: async ({ locals, request }) => {
 		if (!locals.user) return fail(401, { message: 'Not signed in' });
 		const fd = await request.formData();
-		const accentColor = String(fd.get('accentColor') ?? '');
-		const theme = String(fd.get('theme') ?? 'system');
-		const comfortMode = fd.get('comfortMode') === 'on';
-		if (!ACCENTS.some((accent) => accent.hex === accentColor)) {
-			return fail(400, { message: 'Pick one of the accent swatches' });
+		try {
+			await updateAppearance(locals.db, locals.user.id, {
+				accentColor: String(fd.get('accentColor') ?? ''),
+				theme: String(fd.get('theme') ?? 'system') as 'system' | 'dark' | 'light',
+				comfortMode: fd.get('comfortMode') === 'on'
+			});
+		} catch (err) {
+			return fail(400, { message: err instanceof Error ? err.message : 'Invalid preference' });
 		}
-		if (!THEMES.includes(theme as (typeof THEMES)[number])) {
-			return fail(400, { message: 'Invalid theme' });
-		}
-		await locals.db
-			.update(users)
-			.set({ accentColor, theme: theme as (typeof THEMES)[number], comfortMode })
-			.where(eq(users.id, locals.user.id));
 		return { saved: 'appearance' };
 	},
 

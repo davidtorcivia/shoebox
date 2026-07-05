@@ -14,6 +14,7 @@
 			role="radio"
 			aria-checked={value === accent.hex}
 			aria-label={`Accent ${accent.hex}`}
+			data-accent={accent.hex}
 			data-testid={`accent-${accent.hex.slice(1)}`}
 			onclick={() => (value = accent.hex)}
 		></button>

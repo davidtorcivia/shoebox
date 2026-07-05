@@ -28,6 +28,10 @@
 						<span>Username</span>
 						<input name="username" value={data.profile.username} minlength="3" maxlength="32" />
 					</label>
+					<label class="field">
+						<span>Current password</span>
+						<input name="current" type="password" autocomplete="current-password" required />
+					</label>
 					<button type="submit" data-testid="save-account">Save username</button>
 				</form>
 				<form method="POST" action="?/password">

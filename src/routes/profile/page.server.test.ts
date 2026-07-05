@@ -23,16 +23,29 @@ function evt(user: unknown, fields: Record<string, string>) {
 }
 
 describe('profile actions', () => {
+	it('account requires the current password', async () => {
+		const stored = await hashPassword('old-password-1');
+		const me = sessionUser(await makeUser(db, { username: 'me', passwordHash: stored }));
+		const result = (await actions.account(evt(me, { username: 'renamed', current: 'wrong' }))) as {
+			status?: number;
+		};
+		expect(result.status).toBe(400);
+	});
+
 	it('account rejects a taken username', async () => {
 		await makeUser(db, { username: 'taken' });
-		const me = sessionUser(await makeUser(db, { username: 'me' }));
-		const result = (await actions.account(evt(me, { username: 'taken' }))) as { status?: number };
+		const stored = await hashPassword('old-password-1');
+		const me = sessionUser(await makeUser(db, { username: 'me', passwordHash: stored }));
+		const result = (await actions.account(
+			evt(me, { username: 'taken', current: 'old-password-1' })
+		)) as { status?: number };
 		expect(result.status).toBe(400);
 	});
 
 	it('account renames the user', async () => {
-		const me = sessionUser(await makeUser(db, { username: 'me' }));
-		await actions.account(evt(me, { username: 'renamed' }));
+		const stored = await hashPassword('old-password-1');
+		const me = sessionUser(await makeUser(db, { username: 'me', passwordHash: stored }));
+		await actions.account(evt(me, { username: 'renamed', current: 'old-password-1' }));
 		const row = (await db.select().from(schema.users).where(eq(schema.users.id, me.id)))[0];
 		expect(row.username).toBe('renamed');
 	});
