@@ -162,7 +162,7 @@ Soft-delete everywhere user-facing (30-day trash; admins can empty). All destruc
 - Nav bar: SHOEBOX wordmark, Timeline / People / Albums / Search / **Arrivals** (editors+ only see Arrivals) + account block (name + square monogram in ink).
 - Hero year band: giant active year (~170px desktop), flanked by fading neighbor years; drag, scroll-wheel, arrow keys, tap.
 - **Century rail**: decade segments of ten year-ticks each, spanning (earliest item decade − 1) → (current decade + 1). Density = tick height; empty decades are faint dots but clickable (jump to nearest content); future decade ghosted; century marks (1900, 2000) bold; active decade label bold. No horizontal rule lines.
-- Masonry grid per year, chronological; **month breaks** flow inside the grid as pure typography (small sans eyebrow + big month name in ink, no rules). Every card: mono duration badge (videos, bottom-right), caption row beneath — date left, people/event right, small sans/mono, ink at reduced opacity. Circa items show "c. YYYY".
+- Masonry grid per year, chronological; **month breaks** flow inside the grid as pure typography (small sans eyebrow + big month name in ink, no rules). Every card: mono duration badge (videos, bottom-right), caption row beneath — date left, people/event right, small mono-style caps at reduced ink opacity (exactly as in the locked mockup). Circa items show "c. YYYY".
 - Hover-scrub on video cards via sprite sheets (desktop); thin bottom hairline shows scrub position. Tap = open player.
 - Infinite scroll into adjacent years; the year band docks to a compact top scrubber while scrolling.
 
