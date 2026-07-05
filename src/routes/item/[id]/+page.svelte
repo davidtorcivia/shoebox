@@ -22,6 +22,8 @@
 	let { data }: { data: PageData } = $props();
 	// svelte-ignore state_referenced_locally
 	let item = $state<ItemDTO>(data.item);
+	// svelte-ignore state_referenced_locally
+	let loadedItemId = $state(data.item.id);
 	let player = $state<PlayerHandle | null>(null);
 	let saveState = $state('');
 
@@ -33,6 +35,13 @@
 	const title = $derived(item.title ?? item.displayDate);
 	const mediaSrc = $derived(item.urls.original ?? item.urls.thumb1600 ?? item.urls.poster);
 	const poster = $derived(item.urls.poster || item.urls.thumb800 || item.urls.thumb1600);
+
+	$effect(() => {
+		if (data.item.id === loadedItemId) return;
+		loadedItemId = data.item.id;
+		item = data.item;
+		saveState = '';
+	});
 
 	function itemHref(id: string | null): string | null {
 		if (!id) return null;
