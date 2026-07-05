@@ -2192,7 +2192,1029 @@ git add src/worker/ingest-watcher.ts src/worker/ingest-watcher.test.ts src/worke
 git commit -m "feat: chokidar ingestion watcher with duplicate and _failed routing"
 ```
 
-<!-- CONTINUE -->
+---
+
+### Task 11: `/api/arrivals` — batch apply & approve (Contract 6)
+
+**Files:**
+- Create: `src/lib/server/arrivals.ts` (platform-portable — NO node imports, `await`-style Drizzle only)
+- Create: `src/routes/api/arrivals/+server.ts`
+- Test: `src/lib/server/arrivals.test.ts`
+
+**Interfaces:**
+- Consumes: `Db` type (phase 01), `sortDate`/`ItemDate` (Contract 5), `applyHolidayTags` + `listItems` (phase 02/06, pinned), `reindexItem` (phase 06), `recomputeYearCounts` (phase 02), `requireRole` (Contract 3).
+- Produces (used by Tasks 12, 14):
+
+```ts
+// src/lib/server/arrivals.ts
+export interface ArrivalsApply { date?: ItemDate; people?: string[]; tags?: string[]; albumId?: string; }
+export interface ArrivalsRequest { itemIds: string[]; apply?: ArrivalsApply; approve: boolean; }
+export function applyArrivalsBatch(db: Db, req: ArrivalsRequest): Promise<{ updated: number }>;
+```
+
+Route contract (Contract 6): `GET /api/arrivals` (editor) → `{ items: ItemDTO[] }` of `needs_review` items; `POST /api/arrivals` (editor) body `{ itemIds, apply: { date?, people?, tags?, albumId? }, approve: boolean }`. Per-item fields (`title`, `tapeLabel`) are NOT batch fields — the Arrivals page saves those through the existing `PATCH /api/items/[id]` (phase 02). Approve sets `status='ready'`, reindexes each item, then `recomputeYearCounts` once.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/lib/server/arrivals.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
+import * as schema from './db/schema';
+import { applyArrivalsBatch } from './arrivals';
+import { createTestDb, seedItem, seedOwner } from '../../worker/test-helpers.js';
+
+function setup() {
+  const db = createTestDb();
+  const owner = seedOwner(db);
+  const itemId = seedItem(db, owner, { type: 'video', status: 'needs_review', source: 'ingest' });
+  return { db, owner, itemId };
+}
+
+describe('applyArrivalsBatch', () => {
+  it('applies a day date (with holiday tags), tags, and approves to ready', async () => {
+    const { db, itemId } = setup();
+    const result = await applyArrivalsBatch(db as never, {
+      itemIds: [itemId],
+      apply: {
+        date: { dateStart: '1994-12-25', dateEnd: '1994-12-25', precision: 'day' },
+        tags: ['Tape 04', 'birthday'],
+      },
+      approve: true,
+    });
+    expect(result.updated).toBe(1);
+    const item = db.select().from(schema.items).where(eq(schema.items.id, itemId)).get()!;
+    expect(item.status).toBe('ready');
+    expect(item.dateStart).toBe('1994-12-25');
+    expect(item.datePrecision).toBe('day');
+    expect(item.sortDate).toBe('1994-12-25');
+    const tagNames = db
+      .select({ name: schema.tags.name })
+      .from(schema.itemTags)
+      .innerJoin(schema.tags, eq(schema.itemTags.tagId, schema.tags.id))
+      .where(eq(schema.itemTags.itemId, itemId))
+      .all()
+      .map((t) => t.name)
+      .sort();
+    // input tags normalized (lowercase, trimmed) + holiday auto-tag from the date
+    expect(tagNames).toContain('tape 04');
+    expect(tagNames).toContain('birthday');
+    expect(tagNames).toContain('christmas');
+    // approve refreshed year_counts
+    const yc = db.select().from(schema.yearCounts).where(eq(schema.yearCounts.year, 1994)).all();
+    expect(yc.length).toBeGreaterThan(0);
+  });
+
+  it('attaches people and albums without approving', async () => {
+    const { db, owner, itemId } = setup();
+    db.insert(schema.people)
+      .values({ id: 'p1', name: 'Mom', accentColor: '#FA7B62', createdAt: new Date() })
+      .run();
+    db.insert(schema.albums)
+      .values({ id: 'al1', title: 'Holidays', createdBy: owner, createdAt: new Date() })
+      .run();
+    await applyArrivalsBatch(db as never, {
+      itemIds: [itemId],
+      apply: { people: ['p1'], albumId: 'al1' },
+      approve: false,
+    });
+    const item = db.select().from(schema.items).where(eq(schema.items.id, itemId)).get()!;
+    expect(item.status).toBe('needs_review'); // not approved
+    const ppl = db.select().from(schema.itemPeople).where(eq(schema.itemPeople.itemId, itemId)).all();
+    expect(ppl).toHaveLength(1);
+    expect(ppl[0].personId).toBe('p1');
+    expect(ppl[0].source).toBe('manual');
+    const albumRows = db.select().from(schema.albumItems).where(eq(schema.albumItems.itemId, itemId)).all();
+    expect(albumRows).toHaveLength(1);
+    expect(albumRows[0].position).toBe(0);
+  });
+
+  it('is idempotent for repeated people/tags and skips unknown items', async () => {
+    const { db, itemId } = setup();
+    db.insert(schema.people)
+      .values({ id: 'p1', name: 'Mom', accentColor: '#FA7B62', createdAt: new Date() })
+      .run();
+    const req = { itemIds: [itemId, 'ghost'], apply: { people: ['p1'], tags: ['christmas'] }, approve: false };
+    await applyArrivalsBatch(db as never, req);
+    const result = await applyArrivalsBatch(db as never, req);
+    expect(result.updated).toBe(1); // ghost skipped
+    expect(db.select().from(schema.itemPeople).all()).toHaveLength(1);
+    expect(db.select().from(schema.itemTags).all()).toHaveLength(1);
+  });
+});
+```
+
+(The `db as never` casts bridge the worker test helper's `WorkerDb` to the portable `Db` parameter — same underlying drizzle instance.)
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm vitest run src/lib/server/arrivals.test.ts`
+Expected: FAIL — `Failed to resolve import "./arrivals"`.
+
+- [ ] **Step 3: Write the implementation**
+
+Create `src/lib/server/arrivals.ts`:
+
+```ts
+/**
+ * Arrivals batch apply/approve (Contract 6 POST /api/arrivals).
+ * Platform-portable: runs on node AND cloudflare (the needs_review queue
+ * exists on both platforms — only folder ingestion is Docker-only).
+ * No node:* imports; await-style Drizzle only; no db.transaction (D1-safe).
+ */
+import { and, eq, isNull, max } from 'drizzle-orm';
+import { nanoid } from 'nanoid';
+import type { Db } from './db';
+import * as schema from './db/schema';
+import { sortDate, type ItemDate } from '$lib/domain/dates';
+import { applyHolidayTags } from './items';
+import { reindexItem } from './search';
+import { recomputeYearCounts } from './aggregates';
+
+export interface ArrivalsApply {
+  date?: ItemDate;
+  people?: string[];
+  tags?: string[];
+  albumId?: string;
+}
+
+export interface ArrivalsRequest {
+  itemIds: string[];
+  apply?: ArrivalsApply;
+  approve: boolean;
+}
+
+export async function applyArrivalsBatch(db: Db, req: ArrivalsRequest): Promise<{ updated: number }> {
+  const apply = req.apply ?? {};
+  let updated = 0;
+
+  for (const itemId of req.itemIds) {
+    const [item] = await db
+      .select({ id: schema.items.id })
+      .from(schema.items)
+      .where(and(eq(schema.items.id, itemId), isNull(schema.items.deletedAt)))
+      .limit(1);
+    if (!item) continue;
+
+    if (apply.date && apply.date.precision !== 'unknown') {
+      await db
+        .update(schema.items)
+        .set({
+          dateStart: apply.date.dateStart,
+          dateEnd: apply.date.dateEnd,
+          datePrecision: apply.date.precision,
+          sortDate: sortDate(apply.date),
+        })
+        .where(eq(schema.items.id, itemId));
+      if (apply.date.precision === 'day') await applyHolidayTags(db, itemId);
+    }
+
+    for (const personId of apply.people ?? []) {
+      const [person] = await db.select({ id: schema.people.id }).from(schema.people)
+        .where(eq(schema.people.id, personId)).limit(1);
+      if (!person) continue;
+      await db.insert(schema.itemPeople)
+        .values({ itemId, personId, source: 'manual' })
+        .onConflictDoNothing();
+    }
+
+    for (const raw of apply.tags ?? []) {
+      const name = raw.trim().toLowerCase();
+      if (!name) continue;
+      await db.insert(schema.tags).values({ id: nanoid(12), name, kind: 'topic' }).onConflictDoNothing();
+      const [tag] = await db.select({ id: schema.tags.id }).from(schema.tags)
+        .where(eq(schema.tags.name, name)).limit(1);
+      await db.insert(schema.itemTags).values({ itemId, tagId: tag.id }).onConflictDoNothing();
+    }
+
+    if (apply.albumId) {
+      const [album] = await db.select({ id: schema.albums.id }).from(schema.albums)
+        .where(and(eq(schema.albums.id, apply.albumId), isNull(schema.albums.deletedAt))).limit(1);
+      if (album) {
+        const [row] = await db.select({ m: max(schema.albumItems.position) }).from(schema.albumItems)
+          .where(eq(schema.albumItems.albumId, apply.albumId));
+        await db.insert(schema.albumItems)
+          .values({ albumId: apply.albumId, itemId, position: (row?.m ?? -1) + 1 })
+          .onConflictDoNothing();
+      }
+    }
+
+    if (req.approve) {
+      await db.update(schema.items).set({ status: 'ready' }).where(eq(schema.items.id, itemId));
+    }
+    await reindexItem(db, itemId);
+    updated += 1;
+  }
+
+  if (req.approve && updated > 0) await recomputeYearCounts(db);
+  return { updated };
+}
+```
+
+- [ ] **Step 4: Write the route**
+
+Create `src/routes/api/arrivals/+server.ts`:
+
+```ts
+import { error, json } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import { requireRole } from '$lib/server/roles';
+import { listItems } from '$lib/server/items';
+import { applyArrivalsBatch, type ArrivalsRequest } from '$lib/server/arrivals';
+
+export const GET: RequestHandler = async ({ locals }) => {
+  requireRole(locals, 'editor');
+  const { items } = await listItems(locals.db, locals.platform.storage, {
+    status: 'needs_review',
+    limit: 100,
+  });
+  return json({ items });
+};
+
+export const POST: RequestHandler = async ({ locals, request }) => {
+  requireRole(locals, 'editor');
+  const body = (await request.json()) as Partial<ArrivalsRequest>;
+  if (!Array.isArray(body.itemIds) || body.itemIds.length === 0 || body.itemIds.some((id) => typeof id !== 'string')) {
+    throw error(400, 'itemIds must be a non-empty string array');
+  }
+  if (typeof body.approve !== 'boolean') throw error(400, 'approve must be a boolean');
+  const result = await applyArrivalsBatch(locals.db, {
+    itemIds: body.itemIds,
+    apply: body.apply,
+    approve: body.approve,
+  });
+  return json(result);
+};
+```
+
+- [ ] **Step 5: Run tests + typecheck**
+
+Run: `pnpm vitest run src/lib/server/arrivals.test.ts && pnpm check`
+Expected: PASS (3 tests), 0 type errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/lib/server/arrivals.ts src/lib/server/arrivals.test.ts src/routes/api/arrivals/+server.ts
+git commit -m "feat: /api/arrivals batch apply and approve per Contract 6"
+```
+
+---
+
+### Task 12: Arrivals triage page — keyboard-first UI
+
+**Files:**
+- Create: `src/routes/arrivals/selection.ts`
+- Create: `src/routes/arrivals/+page.server.ts`
+- Create: `src/routes/arrivals/+page.svelte`
+- Test: `src/routes/arrivals/selection.test.ts`
+
+**Interfaces:**
+- Consumes: `requireRole`, `listItems` (pinned), `DatePicker` (`value: ItemDate`, `onchange`), `reducedMotion` store, `MOTION` from `src/lib/ui/tokens.ts`, `/api/arrivals` POST (Task 11), `PATCH /api/items/[id]` (phase 02).
+- Produces: `/arrivals` page (editor+ gated via `requireRole` → 403 for lower roles). Pure helpers:
+
+```ts
+// src/routes/arrivals/selection.ts
+export function moveFocus(count: number, focusIndex: number, delta: number): number; // clamped
+export function rangeSelect(ids: string[], anchorIndex: number, index: number): string[];
+export function parseTagsInput(input: string): string[]; // 'A, b ,,c' → ['a','b','c'] deduped
+```
+
+Spec §11 behaviors: big preview left (poster/thumb), metadata form right (DatePicker, people multi-select, tags input prefilled with the item's hint-chip tags, tape_label, title); keyboard-first — `↑/↓` or `J/K` move focus, `Enter` approve, `A` apply-form-to-selection, `Shift+click` range-select; approved items exit with a 300 ms (`MOTION.slow`) animation gated by `reducedMotion`; ingest-folder hint copy shown only when `platform.features.ingestion` (the queue itself works on both platforms).
+
+- [ ] **Step 1: Write the failing selection tests**
+
+Create `src/routes/arrivals/selection.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { moveFocus, parseTagsInput, rangeSelect } from './selection';
+
+describe('moveFocus', () => {
+  it('moves down/up and clamps at both ends', () => {
+    expect(moveFocus(3, 0, 1)).toBe(1);
+    expect(moveFocus(3, 2, 1)).toBe(2);
+    expect(moveFocus(3, 1, -1)).toBe(0);
+    expect(moveFocus(3, 0, -1)).toBe(0);
+  });
+  it('returns 0 for an empty list', () => {
+    expect(moveFocus(0, 0, 1)).toBe(0);
+  });
+});
+
+describe('rangeSelect', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e'];
+  it('selects the inclusive range in either direction', () => {
+    expect(rangeSelect(ids, 1, 3)).toEqual(['b', 'c', 'd']);
+    expect(rangeSelect(ids, 3, 1)).toEqual(['b', 'c', 'd']);
+    expect(rangeSelect(ids, 2, 2)).toEqual(['c']);
+  });
+});
+
+describe('parseTagsInput', () => {
+  it('splits on commas, trims, lowercases, drops empties, dedupes', () => {
+    expect(parseTagsInput('Christmas, Tape 04 ,, tape 04 ')).toEqual(['christmas', 'tape 04']);
+    expect(parseTagsInput('')).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm vitest run src/routes/arrivals/selection.test.ts`
+Expected: FAIL — `Failed to resolve import "./selection"`.
+
+- [ ] **Step 3: Write the selection helpers**
+
+Create `src/routes/arrivals/selection.ts`:
+
+```ts
+/** Pure keyboard/selection logic for the Arrivals triage queue. */
+
+export function moveFocus(count: number, focusIndex: number, delta: number): number {
+  if (count <= 0) return 0;
+  return Math.min(count - 1, Math.max(0, focusIndex + delta));
+}
+
+export function rangeSelect(ids: string[], anchorIndex: number, index: number): string[] {
+  const lo = Math.min(anchorIndex, index);
+  const hi = Math.max(anchorIndex, index);
+  return ids.slice(lo, hi + 1);
+}
+
+export function parseTagsInput(input: string): string[] {
+  return [...new Set(
+    input
+      .split(',')
+      .map((t) => t.trim().toLowerCase())
+      .filter((t) => t.length > 0),
+  )];
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pnpm vitest run src/routes/arrivals/selection.test.ts`
+Expected: PASS (5 tests).
+
+- [ ] **Step 5: Write the page server load**
+
+Create `src/routes/arrivals/+page.server.ts`:
+
+```ts
+import type { PageServerLoad } from './$types';
+import { requireRole } from '$lib/server/roles';
+import { listItems } from '$lib/server/items';
+import * as schema from '$lib/server/db/schema';
+
+export const load: PageServerLoad = async ({ locals }) => {
+  requireRole(locals, 'editor');
+  const { items } = await listItems(locals.db, locals.platform.storage, {
+    status: 'needs_review',
+    limit: 100,
+  });
+  const people = await locals.db
+    .select({ id: schema.people.id, name: schema.people.name, accentColor: schema.people.accentColor })
+    .from(schema.people)
+    .orderBy(schema.people.name);
+  return { items, people, ingestionEnabled: locals.platform.features.ingestion };
+};
+```
+
+- [ ] **Step 6: Write the page component**
+
+Create `src/routes/arrivals/+page.svelte`:
+
+```svelte
+<script lang="ts">
+  import DatePicker from '$lib/ui/DatePicker.svelte';
+  import { reducedMotion } from '$lib/ui/theme';
+  import { MOTION } from '$lib/ui/tokens';
+  import type { ItemDate } from '$lib/domain/dates';
+  import { moveFocus, parseTagsInput, rangeSelect } from './selection';
+  import type { PageData } from './$types';
+
+  let { data }: { data: PageData } = $props();
+
+  type QueueItem = PageData['items'][number];
+
+  let queue = $state<QueueItem[]>([...data.items]);
+  let focusIndex = $state(0);
+  let anchorIndex = $state<number | null>(null);
+  let selectedIds = $state<string[]>([]);
+  let leavingIds = $state<string[]>([]);
+
+  // form state (mirrors the focused item; Apply pushes it to the selection)
+  let date = $state<ItemDate>({ dateStart: null, dateEnd: null, precision: 'unknown' });
+  let peopleIds = $state<string[]>([]);
+  let tagsText = $state('');
+  let title = $state('');
+  let tapeLabel = $state('');
+  let lastLoadedId = $state<string | null>(null);
+
+  const focused = $derived(queue[focusIndex] ?? null);
+
+  $effect(() => {
+    const item = queue[focusIndex];
+    if (!item || item.id === lastLoadedId) return;
+    lastLoadedId = item.id;
+    date = { ...item.date };
+    peopleIds = item.people.map((p) => p.id);
+    tagsText = item.tags.map((t) => t.name).join(', '); // hint chips == pre-attached tags
+    title = item.title ?? '';
+    tapeLabel = item.tapeLabel ?? '';
+  });
+
+  function targetIds(): string[] {
+    if (selectedIds.length > 0) return selectedIds;
+    return focused ? [focused.id] : [];
+  }
+
+  function buildApply(): Record<string, unknown> {
+    return {
+      date: date.precision === 'unknown' ? undefined : date,
+      people: peopleIds,
+      tags: parseTagsInput(tagsText),
+    };
+  }
+
+  async function postArrivals(itemIds: string[], apply: Record<string, unknown>, approve: boolean): Promise<boolean> {
+    const res = await fetch('/api/arrivals', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ itemIds, apply, approve }),
+    });
+    return res.ok;
+  }
+
+  async function savePerItemFields(itemId: string): Promise<void> {
+    await fetch(`/api/items/${itemId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: title.trim() || null, tapeLabel: tapeLabel.trim() || null }),
+    });
+  }
+
+  function removeFromQueue(ids: string[]): void {
+    const finish = (): void => {
+      queue = queue.filter((i) => !ids.includes(i.id));
+      leavingIds = leavingIds.filter((id) => !ids.includes(id));
+      selectedIds = [];
+      anchorIndex = null;
+      focusIndex = moveFocus(queue.length, focusIndex, 0);
+      lastLoadedId = null; // reload form from the new focus
+    };
+    if ($reducedMotion) {
+      finish();
+    } else {
+      leavingIds = [...leavingIds, ...ids]; // 300ms exit, then drop
+      setTimeout(finish, MOTION.slow);
+    }
+  }
+
+  async function approve(): Promise<void> {
+    const ids = targetIds();
+    if (ids.length === 0) return;
+    if (focused && ids.includes(focused.id)) await savePerItemFields(focused.id);
+    if (await postArrivals(ids, buildApply(), true)) removeFromQueue(ids);
+  }
+
+  async function applyToSelection(): Promise<void> {
+    const ids = targetIds();
+    if (ids.length === 0) return;
+    if (await postArrivals(ids, buildApply(), false)) {
+      const tags = parseTagsInput(tagsText);
+      queue = queue.map((i) =>
+        ids.includes(i.id)
+          ? {
+              ...i,
+              date: date.precision === 'unknown' ? i.date : { ...date },
+              tags: [
+                ...i.tags,
+                ...tags
+                  .filter((name) => !i.tags.some((t) => t.name === name))
+                  .map((name) => ({ id: name, name, kind: 'topic' as const })),
+              ],
+            }
+          : i,
+      );
+    }
+  }
+
+  function onCardClick(event: MouseEvent, index: number): void {
+    if (event.shiftKey && anchorIndex !== null) {
+      selectedIds = rangeSelect(queue.map((i) => i.id), anchorIndex, index);
+    } else {
+      anchorIndex = index;
+      selectedIds = [queue[index].id];
+    }
+    focusIndex = index;
+  }
+
+  function onKeydown(event: KeyboardEvent): void {
+    const target = event.target as HTMLElement;
+    if (target.closest('input, textarea, select, [contenteditable]')) {
+      if (event.key === 'Escape') target.blur();
+      return; // typing in the form — leave keys alone
+    }
+    if (event.key === 'ArrowDown' || event.key === 'j' || event.key === 'J') {
+      event.preventDefault();
+      focusIndex = moveFocus(queue.length, focusIndex, 1);
+    } else if (event.key === 'ArrowUp' || event.key === 'k' || event.key === 'K') {
+      event.preventDefault();
+      focusIndex = moveFocus(queue.length, focusIndex, -1);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      void approve();
+    } else if (event.key === 'a' || event.key === 'A') {
+      event.preventDefault();
+      void applyToSelection();
+    }
+  }
+
+  function togglePerson(id: string): void {
+    peopleIds = peopleIds.includes(id) ? peopleIds.filter((p) => p !== id) : [...peopleIds, id];
+  }
+
+  function previewUrl(item: QueueItem): string | null {
+    return item.urls.thumb800 ?? item.urls.poster ?? item.urls.thumb400 ?? null;
+  }
+</script>
+
+<svelte:window onkeydown={onKeydown} />
+
+<main class="arrivals" aria-label="Arrivals">
+  <header class="head">
+    <h1>Arrivals</h1>
+    <p class="count">{queue.length} awaiting review</p>
+  </header>
+
+  {#if queue.length === 0}
+    <section class="empty">
+      <p>No arrivals. All caught up.</p>
+      {#if data.ingestionEnabled}
+        <p class="hint" data-testid="ingest-hint">
+          Drop files into the ingest folder — <code>/ingest/1994/christmas/clip.mp4</code>
+          arrives as a 1994 item tagged christmas.
+        </p>
+      {/if}
+    </section>
+  {:else}
+    <div class="layout">
+      <ol class="queue" aria-label="Review queue">
+        {#each queue as item, index (item.id)}
+          <li
+            class="row"
+            class:focused={index === focusIndex}
+            class:selected={selectedIds.includes(item.id)}
+            class:leaving={leavingIds.includes(item.id)}
+            data-testid="arrivals-row"
+            data-item-id={item.id}
+          >
+            <button type="button" class="row-button" onclick={(e) => onCardClick(e, index)}>
+              {#if previewUrl(item)}
+                <img src={previewUrl(item)} alt={item.title ?? 'untitled'} width="96" height="54" />
+              {/if}
+              <span class="row-meta">
+                <span class="row-title">{item.title ?? 'Untitled'}</span>
+                <span class="row-date" data-testid="arrivals-date">{item.displayDate}</span>
+                <span class="row-tags">
+                  {#each item.tags as tag (tag.id)}
+                    <span class="chip" data-testid="hint-chip">{tag.name}</span>
+                  {/each}
+                </span>
+              </span>
+            </button>
+          </li>
+        {/each}
+      </ol>
+
+      {#if focused}
+        <section class="preview" data-testid="arrivals-preview" aria-label="Preview">
+          {#if previewUrl(focused)}
+            <img src={previewUrl(focused)} alt={focused.title ?? 'untitled'} />
+          {:else}
+            <p class="processing-note">Preview processing…</p>
+          {/if}
+        </section>
+
+        <form class="meta" aria-label="Metadata" onsubmit={(e) => { e.preventDefault(); void approve(); }}>
+          <label>
+            <span>Title</span>
+            <input type="text" bind:value={title} />
+          </label>
+          <fieldset>
+            <legend>Date</legend>
+            <DatePicker value={date} onchange={(d: ItemDate) => (date = d)} />
+          </fieldset>
+          <fieldset>
+            <legend>People</legend>
+            <div class="people">
+              {#each data.people as person (person.id)}
+                <label class="person">
+                  <input
+                    type="checkbox"
+                    checked={peopleIds.includes(person.id)}
+                    onchange={() => togglePerson(person.id)}
+                  />
+                  <span style={`color: ${person.accentColor}`}>{person.name}</span>
+                </label>
+              {/each}
+            </div>
+          </fieldset>
+          <label>
+            <span>Tags (comma-separated)</span>
+            <input type="text" bind:value={tagsText} />
+          </label>
+          <label>
+            <span>Tape label</span>
+            <input type="text" bind:value={tapeLabel} />
+          </label>
+          <div class="actions">
+            <button type="button" onclick={() => void applyToSelection()}>
+              Apply to selection (A)
+            </button>
+            <button type="submit" data-testid="approve-button">Approve (Enter)</button>
+          </div>
+          <p class="keys">↑/↓ or J/K move · Enter approve · A apply · Shift+click range-select</p>
+          {#if data.ingestionEnabled}
+            <p class="hint" data-testid="ingest-hint">
+              Folders become hints: <code>/ingest/1994/christmas/…</code> → year 1994 + tag christmas.
+            </p>
+          {/if}
+        </form>
+      {/if}
+    </div>
+  {/if}
+</main>
+
+<style>
+  /* Colors come from the app-level CSS custom properties emitted from
+     src/lib/ui/tokens.ts by the layout (phase 01/03) — no hex here.
+     Sharp corners everywhere; no border-radius anywhere in this file. */
+  .arrivals { padding: 2rem; }
+  .head h1 { font-family: var(--font-serif); font-weight: 600; font-size: 2rem; }
+  .count { font-family: var(--font-sans); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8rem; opacity: 0.7; }
+  .layout { display: grid; grid-template-columns: minmax(16rem, 22rem) 1fr minmax(18rem, 24rem); gap: 1.5rem; align-items: start; }
+  .queue { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; max-height: 75vh; overflow-y: auto; }
+  .row-button { display: flex; gap: 0.75rem; width: 100%; min-height: 44px; padding: 0.5rem; background: none; border: none; text-align: left; cursor: pointer; color: inherit; }
+  .row.focused .row-button { outline: 2px solid currentColor; outline-offset: -2px; }
+  .row.selected { background: color-mix(in srgb, currentColor 12%, transparent); }
+  .row.leaving { opacity: 0; transform: translateX(1rem); transition: opacity 300ms ease, transform 300ms ease; }
+  .row img { display: block; object-fit: cover; }
+  .row-meta { display: flex; flex-direction: column; gap: 0.15rem; }
+  .row-title { font-family: var(--font-serif); font-size: 1rem; }
+  .row-date { font-family: var(--font-sans); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.72rem; opacity: 0.75; }
+  .chip { font-family: var(--font-sans); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.7rem; padding: 0.1rem 0.4rem; background: color-mix(in srgb, currentColor 14%, transparent); margin-right: 0.25rem; }
+  .preview img { width: 100%; height: auto; display: block; }
+  .meta { display: flex; flex-direction: column; gap: 1rem; font-family: var(--font-sans); }
+  .meta label span, .meta legend { display: block; text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.75rem; margin-bottom: 0.3rem; }
+  .meta input[type='text'] { width: 100%; min-height: 44px; padding: 0.5rem 0.75rem; border: none; font-size: 1rem; font-family: var(--font-serif); background: color-mix(in srgb, currentColor 10%, transparent); color: inherit; }
+  .meta fieldset { border: none; margin: 0; padding: 0; }
+  .people { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+  .person { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; font-family: var(--font-serif); }
+  .actions { display: flex; gap: 0.75rem; }
+  .actions button { min-height: 44px; padding: 0.5rem 1rem; border: none; cursor: pointer; font-family: var(--font-sans); text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.8rem; }
+  .keys { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.6; }
+  .hint { font-family: var(--font-serif); font-size: 0.9rem; opacity: 0.85; }
+  .hint code { font-family: inherit; }
+  .empty { padding: 3rem 0; font-family: var(--font-serif); }
+  @media (max-width: 64rem) { .layout { grid-template-columns: 1fr; } }
+</style>
+```
+
+Note on the `.leaving` transition: the CSS declares the 300 ms exit, but `removeFromQueue` only adds the class when `$reducedMotion` is false — with reduced motion the row is removed instantly, honoring the global constraint. If phase 01's layout exposes different CSS custom property names than `--font-serif`/`--font-sans`, use the existing names (they are set from `FONT` in `tokens.ts`).
+
+- [ ] **Step 7: Typecheck + run all units**
+
+Run: `pnpm check && pnpm vitest run`
+Expected: 0 type errors; all suites pass.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/routes/arrivals/selection.ts src/routes/arrivals/selection.test.ts src/routes/arrivals/+page.server.ts src/routes/arrivals/+page.svelte
+git commit -m "feat: keyboard-first Arrivals triage page with batch apply and approve"
+```
+
+---
+
+### Task 13: Dev docker-compose stanza (app + worker + shared volumes)
+
+**Files:**
+- Create: `docker-compose.dev.yml`
+
+**Interfaces:**
+- Consumes: Contract 8 env (`DATABASE_PATH`, `MEDIA_PATH`, `INGEST_PATH`), `pnpm worker` (Task 1).
+- Produces: a dev-only compose file demonstrating the app + worker sharing `/data` with `/ingest` bind-mounted. **Production Dockerfiles/compose are phase 10** — this file must never be referenced by deploy docs.
+
+- [ ] **Step 1: Write the compose file**
+
+Create `docker-compose.dev.yml`:
+
+```yaml
+# DEV ONLY — runs the SvelteKit dev server and the worker from the mounted
+# source tree (no images built). Production compose ships in phase 10.
+#   docker compose -f docker-compose.dev.yml up
+# Drop files into ./ingest/<year>/<tag>/ on the host to exercise ingestion.
+services:
+  app:
+    image: node:22-bookworm
+    working_dir: /app
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm dev --host 0.0.0.0 --port 3000"
+    environment:
+      PLATFORM: node
+      DATABASE_PATH: /data/shoebox.db
+      MEDIA_PATH: /data/media
+      INGEST_PATH: /ingest
+      ORIGIN: http://localhost:3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - shoebox-dev-data:/data
+      - ./ingest:/ingest
+
+  worker:
+    image: node:22-bookworm
+    working_dir: /app
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm worker"
+    environment:
+      DATABASE_PATH: /data/shoebox.db
+      MEDIA_PATH: /data/media
+      INGEST_PATH: /ingest
+    volumes:
+      - .:/app
+      - shoebox-dev-data:/data   # same volume as app: shared SQLite + media
+      - ./ingest:/ingest
+    depends_on:
+      - app                      # app runs migrations + first-run setup first
+
+volumes:
+  shoebox-dev-data:
+```
+
+- [ ] **Step 2: Validate the compose file**
+
+Run: `docker compose -f docker-compose.dev.yml config --quiet && echo COMPOSE_OK`
+Expected output: `COMPOSE_OK` (exit 0). (If Docker is unavailable on the dev machine, run `pnpm exec tsx -e "import { readFileSync } from 'node:fs'; import { parse } from 'yaml'; parse(readFileSync('docker-compose.dev.yml','utf8')); console.log('COMPOSE_OK')"` only if the `yaml` package already exists; otherwise defer validation to a machine with Docker — do not add a yaml dependency for this.)
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add docker-compose.dev.yml
+git commit -m "chore: dev docker-compose stanza for app + worker with shared /data and /ingest"
+```
+
+---
+
+### Task 14: Playwright e2e — ingest → Arrivals → approve → timeline, sprite hover-scrub, duplicates
+
+**Files:**
+- Create: `e2e/env.ts`
+- Create: `e2e/global-setup.ts`
+- Create: `e2e/worker-ingestion.spec.ts`
+- Modify: `playwright.config.ts`
+- Modify: `src/lib/ui/MediaCard.svelte` (add `data-testid="scrub-hairline"` to the existing hairline element — one attribute, no behavior change)
+
+**Interfaces:**
+- Consumes: everything above; phase 03's `MediaCard` hover-scrub seam (activates when `urls.sprite` exists — this task VERIFIES that seam end-to-end); phase 01 setup/login pages; `GET /api/items` (Contract 6).
+- Produces: the phase's golden-path e2e. The worker runs as a real spawned `pnpm worker` process against the same `DATABASE_PATH` as the app under test.
+
+- [ ] **Step 1: Write the shared e2e env**
+
+Create `e2e/env.ts`:
+
+```ts
+/** Single source of truth for e2e paths — the app webServer, the spawned
+ *  worker, and the specs must agree on every one of these. */
+import { join } from 'node:path';
+
+export const E2E_DATA_DIR = join(process.cwd(), 'e2e', '.data');
+export const E2E_INGEST_DIR = join(E2E_DATA_DIR, 'ingest');
+
+export const E2E_ENV = {
+  PLATFORM: 'node',
+  DATABASE_PATH: join(E2E_DATA_DIR, 'shoebox.db'),
+  MEDIA_PATH: join(E2E_DATA_DIR, 'media'),
+  INGEST_PATH: E2E_INGEST_DIR,
+  ORIGIN: 'http://localhost:3000',
+} as const;
+```
+
+- [ ] **Step 2: Write the global setup**
+
+Create `e2e/global-setup.ts`:
+
+```ts
+import { mkdirSync, rmSync } from 'node:fs';
+import { E2E_DATA_DIR, E2E_INGEST_DIR } from './env';
+import { generateFixtures } from './fixtures/generate';
+
+export default async function globalSetup(): Promise<void> {
+  rmSync(E2E_DATA_DIR, { recursive: true, force: true }); // fresh db + media every run
+  mkdirSync(E2E_INGEST_DIR, { recursive: true });
+  await generateFixtures();
+}
+```
+
+- [ ] **Step 3: Update `playwright.config.ts`**
+
+Ensure the config contains exactly these `globalSetup`/`webServer` settings (preserve any `projects`/reporter options phases 01–06 added; the `env` spread is the critical change — the app must run against `e2e/.data` so the spawned worker shares its database):
+
+```ts
+import { defineConfig } from '@playwright/test';
+import { E2E_ENV } from './e2e/env';
+
+export default defineConfig({
+  testDir: 'e2e',
+  globalSetup: './e2e/global-setup.ts',
+  timeout: 120_000,
+  use: { baseURL: 'http://localhost:3000' },
+  webServer: {
+    command: 'pnpm build && node build',
+    port: 3000,
+    reuseExistingServer: false,
+    timeout: 240_000,
+    env: { ...E2E_ENV, PORT: '3000' },
+  },
+});
+```
+
+- [ ] **Step 4: Add the hairline testid to MediaCard**
+
+In `src/lib/ui/MediaCard.svelte`, find the hover-scrub hairline element (the thin bottom bar phase 03 renders while sprite-scrubbing — it only exists/activates when `urls.sprite` is set) and add the attribute `data-testid="scrub-hairline"` to it. Change nothing else. Example shape (match the file's actual markup):
+
+```svelte
+<div class="scrub-hairline" data-testid="scrub-hairline" style={`width: ${scrubPct}%`}></div>
+```
+
+- [ ] **Step 5: Write the failing e2e spec**
+
+Create `e2e/worker-ingestion.spec.ts`:
+
+```ts
+import { expect, test, type Page } from '@playwright/test';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { E2E_ENV, E2E_INGEST_DIR } from './env';
+import { FIXTURE_MP4 } from './fixtures/generate';
+
+test.describe.configure({ mode: 'serial' });
+
+const OWNER = { username: 'owner', password: 'correct-horse-battery' };
+
+let worker: ChildProcess;
+
+test.beforeAll(() => {
+  // Real worker process sharing the app's DATABASE_PATH/MEDIA_PATH/INGEST_PATH.
+  worker = spawn('pnpm', ['worker'], {
+    env: { ...process.env, ...E2E_ENV },
+    stdio: 'inherit',
+  });
+});
+
+test.afterAll(async () => {
+  if (worker && worker.exitCode === null) {
+    const exited = new Promise((resolve) => worker.once('exit', resolve));
+    worker.kill('SIGTERM'); // exercises the graceful drain path
+    await exited;
+  }
+});
+
+/** First-run setup creates the owner; later tests just log in. */
+async function signIn(page: Page): Promise<void> {
+  await page.goto('/');
+  if (page.url().includes('/setup')) {
+    await page.getByLabel(/username/i).fill(OWNER.username);
+    await page.getByLabel(/^password/i).fill(OWNER.password);
+    await page.getByRole('button', { name: /create|set up/i }).click();
+  } else if (page.url().includes('/login')) {
+    await page.getByLabel(/username/i).fill(OWNER.username);
+    await page.getByLabel(/^password/i).fill(OWNER.password);
+    await page.getByRole('button', { name: /log in|sign in/i }).click();
+  }
+  await page.waitForURL((url) => !url.pathname.startsWith('/setup') && !url.pathname.startsWith('/login'));
+}
+
+function dropIntoIngest(relPath: string): void {
+  const dest = join(E2E_INGEST_DIR, relPath);
+  mkdirSync(dirname(dest), { recursive: true });
+  cpSync(FIXTURE_MP4, dest);
+}
+
+test('folder drop → Arrivals hints → keyboard approve → timeline 1994 → sprite hover-scrub', async ({ page }) => {
+  await signIn(page);
+
+  dropIntoIngest('1994/christmas/clip.mp4');
+
+  // 1) Appears in Arrivals with year hint 1994 and christmas hint chip.
+  //    (2s awaitWriteFinish + sha256 + probe: poll with reloads.)
+  await expect(async () => {
+    await page.goto('/arrivals');
+    await expect(page.getByTestId('arrivals-row')).toHaveCount(1);
+  }).toPass({ timeout: 60_000 });
+
+  const row = page.getByTestId('arrivals-row');
+  const itemId = await row.getAttribute('data-item-id');
+  expect(itemId).toBeTruthy();
+  await expect(page.getByTestId('arrivals-date')).toContainText('1994'); // year precision hint
+  await expect(page.getByTestId('hint-chip').filter({ hasText: 'christmas' }).first()).toBeVisible();
+  await expect(page.getByTestId('arrivals-preview')).toBeVisible();
+
+  // 2) Keyboard-first approve: click the row once to focus, Enter to approve.
+  await row.locator('button').first().click();
+  await page.locator('body').press('Enter');
+  await expect(page.getByTestId('arrivals-row')).toHaveCount(0, { timeout: 15_000 });
+
+  // 3) Lands on timeline 1994 as ready.
+  await page.goto('/?y=1994');
+  await expect(page.locator(`[data-item-id="${itemId}"]`).first()).toBeVisible({ timeout: 15_000 });
+
+  // 4) Worker produces the sprite; MediaCard's hover-scrub seam activates.
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get('/api/items?year=1994');
+        const body = (await res.json()) as { items: { id: string; urls: { sprite?: string | null } }[] };
+        return body.items.find((i) => i.id === itemId)?.urls.sprite ?? null;
+      },
+      { timeout: 90_000, message: 'sprite derivative never appeared' },
+    )
+    .not.toBeNull();
+
+  await page.goto('/?y=1994');
+  const card = page.locator(`[data-item-id="${itemId}"]`).first();
+  await card.hover();
+  await card.hover({ position: { x: 60, y: 30 } }); // move within the card to trigger scrub
+  await expect(card.locator('[data-testid="scrub-hairline"]')).toBeVisible();
+});
+
+test('dropping identical bytes again lands in _duplicates', async () => {
+  dropIntoIngest('1994/christmas/clip-copy.mp4'); // same sha256 as the approved item
+
+  await expect
+    .poll(
+      () => {
+        const dir = join(E2E_INGEST_DIR, '_duplicates');
+        return existsSync(dir) && readdirSync(dir).some((f) => f.includes('clip-copy'));
+      },
+      { timeout: 60_000, message: 'duplicate never routed to _duplicates' },
+    )
+    .toBe(true);
+});
+```
+
+Note: step 3 of the first test assumes phase 03's timeline cards carry `data-item-id` (the MediaCard link target). If they carry it under a different attribute, adjust the two `[data-item-id=…]` locators to the attribute MediaCard actually renders — do NOT add new markup beyond Task 14 Step 4's testid.
+
+- [ ] **Step 6: Run the e2e to verify it fails before the phase is integrated**
+
+Run: `pnpm exec playwright test e2e/worker-ingestion.spec.ts`
+Expected while any earlier task is unfinished: FAIL (e.g. `/arrivals` 404s or the worker exits). With Tasks 1–13 complete: both tests PASS in ~2–4 minutes (build + encode + sprite generation).
+
+- [ ] **Step 7: Full gate**
+
+Run: `pnpm check && pnpm vitest run && pnpm exec playwright test`
+Expected: 0 type errors, all unit suites pass, all e2e specs (this phase's plus phases 01–06's) pass.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add e2e/env.ts e2e/global-setup.ts e2e/worker-ingestion.spec.ts playwright.config.ts src/lib/ui/MediaCard.svelte
+git commit -m "test: e2e for ingest->arrivals->approve->timeline with sprite hover-scrub and duplicate routing"
+```
+
+---
+
+## Self-review checklist (performed while writing; re-run after execution)
+
+**Spec coverage (§7, §11, §12):**
+- Worker regenerates canonical derivatives + sprite on Docker → Tasks 5–7. ✓
+- chokidar watches `/ingest`, claims on size-stable (2 s) → Task 10. ✓
+- Path conventions `<year>/<tag>` as hints; EXIF/container dates when present; mtime never → Tasks 8–9. ✓
+- `needs_review` + move into managed storage + full derivative treatment → Task 9. ✓
+- Arrivals: keyboard-first triage, batch confirm, approve → ready → Tasks 11–12. ✓
+- Unparseable/corrupt files → `_failed` + surfaced reason (via failed `ingest_scan` jobs rows in Admin → Jobs, phase 08) → Tasks 3, 10. Spec §12 says "original file left untouched in `/ingest/_failed`" — satisfied: the bytes are moved into `_failed` unmodified. ✓
+- Retry with exponential backoff, failed jobs surface in Admin → Task 3 (phase 08 renders them). ✓
+- Hover-scrub via sprite + bottom hairline → Task 7 (sprite) + Task 14 (verification of phase 03's seam). ✓
+
+**Contract conformance:** jobs enum/columns (Contract 1) — only existing columns used; `StorageAdapter.put(key, data, { contentType })` signatures respected; storage keys + sprite geometry exactly Contract 7; `/api/arrivals` request/response exactly Contract 6; env names exactly Contract 8; no schema additions.
+
+**Boundary check:** no faces work (`face_scan` is explicitly excluded from `HANDLED_KINDS` and left for phase 09); no CF/deploy work (compose file is dev-only; production images phase 10). Portable-code rule honored: `src/lib/server/arrivals.ts` and both arrivals routes import no `node:*`/sharp/ffmpeg/better-sqlite3; all node-only code lives in `src/worker/` (+ test helpers used only by tests).
+
+**Ambiguities resolved (documented decisions):**
+1. Convention hints persisted as pre-attached topic tags + `items.title` from filename (+ year hint as year-precision date) — no schema change, Arrivals prefills naturally.
+2. Ingest failures recorded as pre-failed `ingest_scan` jobs rows with payload `{ path, reason }` — no new table; visible in the phase 08 admin jobs list.
+3. Pinned import names from phases 01–06 (see table in the header). If any name differs in the delivered code, add an aliased re-export at the pinned path; never fork behavior.
+4. e2e selectors: MediaCard gains only `data-testid="scrub-hairline"`; timeline cards are located by their existing `data-item-id`.
+
+**Placeholder scan:** the only deferred wiring is the pair of comment blocks in `src/worker/index.ts` created in Task 4 and explicitly removed by Task 7 Step 4 and Task 10 Step 4 — both are tracked steps, not TODOs. No "TBD"/"similar to Task N" anywhere; every code step contains complete code.
+
+**Signature consistency:** `claimJob(db, kinds, now?)` / `runJob(db, job, handlers, ctx)` used identically in Tasks 2–4, 14; `IngestDeps.enqueue(kind, payload)` matches `JobQueueAdapter.enqueue`'s first two parameters (Contract 2) so `main()` can pass `queue.enqueue` through; `applyArrivalsBatch` consumed by both the route (Task 11) and the page's `fetch` body shape (Task 12); `ResolvedDate.precision ⊂ DatePrecision` so it assigns cleanly into `items.datePrecision`.
+
+
 
 
 
