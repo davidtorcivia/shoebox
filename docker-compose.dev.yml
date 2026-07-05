@@ -1,0 +1,39 @@
+# DEV ONLY - runs the SvelteKit dev server and the worker from the mounted
+# source tree. Production images and compose files land in phase 10.
+#   docker compose -f docker-compose.dev.yml up
+# Drop files into ./ingest/<year>/<tag>/ on the host to exercise ingestion.
+services:
+  app:
+    image: node:22-bookworm
+    working_dir: /app
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm dev --host 0.0.0.0 --port 3000"
+    environment:
+      PLATFORM: node
+      DATABASE_PATH: /data/shoebox.db
+      MEDIA_PATH: /data/media
+      INGEST_PATH: /ingest
+      ORIGIN: http://localhost:3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - shoebox-dev-data:/data
+      - ./ingest:/ingest
+
+  worker:
+    image: node:22-bookworm
+    working_dir: /app
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm worker"
+    environment:
+      DATABASE_PATH: /data/shoebox.db
+      MEDIA_PATH: /data/media
+      INGEST_PATH: /ingest
+    volumes:
+      - .:/app
+      - shoebox-dev-data:/data
+      - ./ingest:/ingest
+    depends_on:
+      - app
+
+volumes:
+  shoebox-dev-data:
