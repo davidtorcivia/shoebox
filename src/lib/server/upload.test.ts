@@ -1,17 +1,21 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { items } from '$lib/server/db/schema';
+import { itemFiles, items, items as itemsTable } from '$lib/server/db/schema';
+import type { UploadMeta } from '$lib/types';
 import { findDuplicate } from './dedupe';
 import {
 	CHUNK_SIZE,
 	chunkKey,
+	completeUpload,
 	expectedChunkSize,
 	initUpload,
 	readManifest,
-	saveChunk
+	saveChunk,
+	validateUploadMeta
 } from './upload';
 import { memoryDb, seedUser } from './testing/memory-db';
-import { MemoryStorage } from './testing/memory-platform';
+import { MemoryQueue, MemoryStorage } from './testing/memory-platform';
 
 type Db = App.Locals['db'];
 
@@ -138,3 +142,215 @@ describe('saveChunk', () => {
 	});
 });
 
+describe('completeUpload', () => {
+	const queue = () => new MemoryQueue();
+
+	function meta(over: Partial<UploadMeta> = {}): UploadMeta {
+		return {
+			type: 'video',
+			width: 192,
+			height: 108,
+			duration: 1,
+			title: 'Tiny clip',
+			description: null,
+			tapeLabel: null,
+			date: { dateStart: '1994-01-01', dateEnd: '1994-12-31', precision: 'year' },
+			people: [],
+			tags: [],
+			...over
+		};
+	}
+
+	const webp = (n: number) => ({ data: new Uint8Array(n).fill(7), mime: 'image/webp' });
+
+	function derivatives() {
+		return {
+			poster: webp(40),
+			thumb_400: webp(10),
+			thumb_800: webp(20),
+			thumb_1600: webp(30)
+		};
+	}
+
+	async function uploadAll(bytes: Uint8Array, sha: string) {
+		const user = await seedUser(db, { id: `u_${sha.slice(0, 4)}`, username: `up_${sha.slice(0, 4)}` });
+		const init = await initUpload(db, storage, user.id, {
+			sha256: sha,
+			sizeBytes: bytes.length,
+			mime: 'video/mp4',
+			filename: 'tiny.mp4'
+		});
+		await saveChunk(storage, init.uploadId, 0, bytes);
+		return { user, uploadId: init.uploadId };
+	}
+
+	it('assembles chunks into media/<itemId>/original.<ext> and creates the item', async () => {
+		const bytes = new Uint8Array(24).map((_, i) => i);
+		const { user, uploadId } = await uploadAll(bytes, SHA);
+		const q = queue();
+		const dto = await completeUpload(db, storage, q, user, {
+			uploadId,
+			allowDuplicate: false,
+			meta: meta(),
+			blurhash: 'LKO2?U%2Tw',
+			derivatives: derivatives()
+		});
+
+		expect(dto.status).toBe('ready');
+		expect(dto.urls.original).toBe(`/media/media/${dto.id}/original.mp4`);
+		const stored = await storage.get(`media/${dto.id}/original.mp4`);
+		expect(new Uint8Array(await new Response(stored!.stream).arrayBuffer())).toEqual(bytes);
+		for (const key of ['poster', 'thumb_400', 'thumb_800', 'thumb_1600']) {
+			expect(await storage.head(`media/${dto.id}/${key}.webp`)).not.toBeNull();
+		}
+		const t400 = (await db.select().from(itemFiles).where(eq(itemFiles.itemId, dto.id))).find(
+			(file) => file.kind === 'thumb_400'
+		);
+		expect([t400!.width, t400!.height]).toEqual([192, 108]);
+		expect(await storage.head(`tmp/${uploadId}/manifest.json`)).toBeNull();
+		expect(await storage.head(`tmp/${uploadId}/0`)).toBeNull();
+		expect(q.enqueued.map((job) => job.kind)).toEqual(['derivatives', 'sprite']);
+	});
+
+	it('multi-chunk assembly preserves byte order', async () => {
+		const user = await seedUser(db, { id: 'u_mc', username: 'mc' });
+		const manifest = {
+			sha256: SHA_B,
+			sizeBytes: 10,
+			mime: 'video/mp4',
+			filename: 't.mp4',
+			chunkSize: 4,
+			totalChunks: 3,
+			createdBy: user.id,
+			createdAt: new Date().toISOString()
+		};
+		await storage.put(
+			`tmp/${SHA_B}/manifest.json`,
+			new TextEncoder().encode(JSON.stringify(manifest)),
+			{ contentType: 'application/json' }
+		);
+		await saveChunk(storage, SHA_B, 0, new Uint8Array([0, 1, 2, 3]));
+		await saveChunk(storage, SHA_B, 1, new Uint8Array([4, 5, 6, 7]));
+		await saveChunk(storage, SHA_B, 2, new Uint8Array([8, 9]));
+		const dto = await completeUpload(db, storage, queue(), user, {
+			uploadId: SHA_B,
+			allowDuplicate: false,
+			meta: meta(),
+			blurhash: null,
+			derivatives: derivatives()
+		});
+		const stored = await storage.get(`media/${dto.id}/original.mp4`);
+		expect(new Uint8Array(await new Response(stored!.stream).arrayBuffer())).toEqual(
+			new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+		);
+	});
+
+	it('409s when chunks are missing', async () => {
+		const user = await seedUser(db, { id: 'u_ms', username: 'ms' });
+		await initUpload(db, storage, user.id, {
+			sha256: SHA,
+			sizeBytes: 20,
+			mime: 'video/mp4',
+			filename: 'c.mp4'
+		});
+		await expect(
+			completeUpload(db, storage, queue(), user, {
+				uploadId: SHA,
+				allowDuplicate: false,
+				meta: meta(),
+				blurhash: null,
+				derivatives: derivatives()
+			})
+		).rejects.toMatchObject({ status: 409 });
+	});
+
+	it('409s on duplicate unless allowDuplicate, then stores the same true sha twice', async () => {
+		const bytes = new Uint8Array(24).fill(1);
+		const { user, uploadId } = await uploadAll(bytes, SHA);
+		const first = await completeUpload(db, storage, queue(), user, {
+			uploadId,
+			allowDuplicate: false,
+			meta: meta(),
+			blurhash: null,
+			derivatives: derivatives()
+		});
+		const init2 = await initUpload(db, storage, user.id, {
+			sha256: SHA,
+			sizeBytes: bytes.length,
+			mime: 'video/mp4',
+			filename: 'tiny.mp4'
+		});
+		expect(init2.duplicateItemId).toBe(first.id);
+		await saveChunk(storage, uploadId, 0, bytes);
+		await expect(
+			completeUpload(db, storage, queue(), user, {
+				uploadId,
+				allowDuplicate: false,
+				meta: meta(),
+				blurhash: null,
+				derivatives: derivatives()
+			})
+		).rejects.toMatchObject({ status: 409 });
+		const second = await completeUpload(db, storage, queue(), user, {
+			uploadId,
+			allowDuplicate: true,
+			meta: meta(),
+			blurhash: null,
+			derivatives: derivatives()
+		});
+		const rows = await db.select().from(itemsTable).where(eq(itemsTable.sha256, SHA));
+		expect(rows.map((row) => row.id).sort()).toEqual([first.id, second.id].sort());
+	});
+
+	it('rejects meta whose type contradicts the uploaded mime', async () => {
+		const bytes = new Uint8Array(8).fill(2);
+		const { user, uploadId } = await uploadAll(bytes, SHA);
+		await expect(
+			completeUpload(db, storage, queue(), user, {
+				uploadId,
+				allowDuplicate: false,
+				meta: meta({ type: 'photo' }),
+				blurhash: null,
+				derivatives: derivatives()
+			})
+		).rejects.toMatchObject({ status: 400 });
+	});
+});
+
+describe('validateUploadMeta', () => {
+	const good = {
+		type: 'photo',
+		width: 640,
+		height: 480,
+		duration: null,
+		title: ' Hello ',
+		description: null,
+		tapeLabel: null,
+		date: { dateStart: '1994-06-14', dateEnd: '1994-06-14', precision: 'day' },
+		people: [],
+		tags: ['xmas']
+	};
+
+	it('normalizes strings and passes valid meta', () => {
+		const meta = validateUploadMeta(good);
+		expect(meta.title).toBe('Hello');
+		expect(meta.tags).toEqual(['xmas']);
+	});
+
+	it('rejects invalid payloads with 400', () => {
+		for (const bad of [
+			null,
+			{ ...good, type: 'gif' },
+			{ ...good, width: 0 },
+			{ ...good, height: -5 },
+			{ ...good, duration: -1 },
+			{
+				...good,
+				date: { dateStart: '1994-06-14', dateEnd: '1994-06-15', precision: 'day' }
+			},
+			{ ...good, date: undefined }
+		]) {
+			expect(() => validateUploadMeta(bad)).toThrow();
+		}
+	});
+});

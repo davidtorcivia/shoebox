@@ -1,8 +1,14 @@
 import { error } from '@sveltejs/kit';
+import { nanoid } from 'nanoid';
+import { fitWithin } from '$lib/domain/dims';
+import { isValidItemDate, type ItemDate } from '$lib/domain/dates';
 import { findDuplicate } from '$lib/server/dedupe';
-import type { StorageAdapter } from '$lib/server/platform/types';
+import { createItem, type ItemFileInput } from '$lib/server/items';
+import type { JobQueueAdapter, StorageAdapter } from '$lib/server/platform/types';
+import type { ItemDTO, UploadMeta } from '$lib/types';
 
 type Db = App.Locals['db'];
+type SessionUser = NonNullable<App.Locals['user']>;
 
 export const CHUNK_SIZE = 8 * 1024 * 1024;
 
@@ -164,3 +170,197 @@ export async function saveChunk(
 	return { received: true };
 }
 
+export interface DerivativeBlob {
+	data: Uint8Array;
+	mime: string;
+}
+
+export interface CompleteUploadInput {
+	uploadId: string;
+	allowDuplicate: boolean;
+	meta: UploadMeta;
+	blurhash: string | null;
+	derivatives: Record<'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600', DerivativeBlob>;
+}
+
+export function concatChunks(
+	storage: StorageAdapter,
+	uploadId: string,
+	totalChunks: number
+): ReadableStream<Uint8Array> {
+	let index = 0;
+	let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+
+	return new ReadableStream<Uint8Array>({
+		async pull(controller) {
+			for (;;) {
+				if (!reader) {
+					if (index >= totalChunks) {
+						controller.close();
+						return;
+					}
+					const got = await storage.get(chunkKey(uploadId, index));
+					if (!got) throw new Error(`chunk ${index} disappeared during assembly`);
+					reader = got.stream.getReader();
+					index += 1;
+				}
+
+				const { done, value } = await reader.read();
+				if (done) {
+					reader = null;
+					continue;
+				}
+
+				controller.enqueue(value);
+				return;
+			}
+		}
+	});
+}
+
+export function validateUploadMeta(raw: unknown): UploadMeta {
+	if (typeof raw !== 'object' || raw === null) throw error(400, 'invalid meta');
+
+	const value = raw as Record<string, unknown>;
+	if (value.type !== 'video' && value.type !== 'photo') {
+		throw error(400, 'meta.type must be video|photo');
+	}
+	if (!Number.isInteger(value.width) || (value.width as number) <= 0) {
+		throw error(400, 'meta.width invalid');
+	}
+	if (!Number.isInteger(value.height) || (value.height as number) <= 0) {
+		throw error(400, 'meta.height invalid');
+	}
+
+	const duration = value.duration === null || value.duration === undefined ? null : Number(value.duration);
+	if (duration !== null && !(Number.isFinite(duration) && duration > 0)) {
+		throw error(400, 'meta.duration invalid');
+	}
+
+	const date = value.date as ItemDate | undefined;
+	if (!date || !isValidItemDate(date)) {
+		throw error(400, 'meta.date invalid');
+	}
+
+	return {
+		type: value.type,
+		width: value.width as number,
+		height: value.height as number,
+		duration,
+		title: stringOrNull(value.title),
+		description: stringOrNull(value.description),
+		tapeLabel: stringOrNull(value.tapeLabel),
+		date: { dateStart: date.dateStart, dateEnd: date.dateEnd, precision: date.precision },
+		people: stringArray(value.people),
+		tags: stringArray(value.tags)
+	};
+}
+
+export async function completeUpload(
+	db: Db,
+	storage: StorageAdapter,
+	queue: JobQueueAdapter,
+	user: SessionUser,
+	input: CompleteUploadInput
+): Promise<ItemDTO> {
+	const manifest = await readManifest(storage, input.uploadId);
+
+	const missing: number[] = [];
+	for (let index = 0; index < manifest.totalChunks; index += 1) {
+		const head = await storage.head(chunkKey(input.uploadId, index));
+		if (!head || head.size !== expectedChunkSize(manifest.sizeBytes, index, manifest.chunkSize)) {
+			missing.push(index);
+		}
+	}
+	if (missing.length > 0) throw error(409, `missing chunks: ${missing.join(',')}`);
+
+	const duplicate = await findDuplicate(db, manifest.sha256);
+	if (duplicate && !input.allowDuplicate) {
+		throw error(409, `duplicate of item ${duplicate.itemId}`);
+	}
+
+	const kind = ALLOWED_MIME[manifest.mime];
+	if (!kind) throw error(400, `unsupported mime: ${manifest.mime}`);
+	if (input.meta.type !== kind.type) {
+		throw error(400, `meta.type '${input.meta.type}' does not match uploaded mime '${manifest.mime}'`);
+	}
+
+	const itemId = nanoid(12);
+	const originalKey = `media/${itemId}/original.${kind.ext}`;
+	await storage.put(originalKey, concatChunks(storage, input.uploadId, manifest.totalChunks), {
+		contentType: manifest.mime,
+		sizeHint: manifest.sizeBytes
+	});
+
+	const files: ItemFileInput[] = [
+		{
+			kind: 'original',
+			storageKey: originalKey,
+			mime: manifest.mime,
+			width: input.meta.width,
+			height: input.meta.height
+		}
+	];
+
+	const derivativeSpecs = [
+		{ field: 'poster', maxWidth: null },
+		{ field: 'thumb_400', maxWidth: 400 },
+		{ field: 'thumb_800', maxWidth: 800 },
+		{ field: 'thumb_1600', maxWidth: 1600 }
+	] as const;
+
+	for (const spec of derivativeSpecs) {
+		const derivative = input.derivatives[spec.field];
+		const key = `media/${itemId}/${spec.field}.webp`;
+		await storage.put(key, derivative.data, {
+			contentType: derivative.mime,
+			sizeHint: derivative.data.byteLength
+		});
+		const dims =
+			spec.maxWidth === null
+				? { width: input.meta.width, height: input.meta.height }
+				: fitWithin(input.meta.width, input.meta.height, spec.maxWidth);
+		files.push({
+			kind: spec.field,
+			storageKey: key,
+			mime: derivative.mime,
+			width: dims.width,
+			height: dims.height
+		});
+	}
+
+	const dto = await createItem(db, storage, queue, {
+		id: itemId,
+		type: input.meta.type,
+		title: input.meta.title,
+		description: input.meta.description,
+		tapeLabel: input.meta.tapeLabel,
+		date: input.meta.date,
+		duration: input.meta.duration,
+		width: input.meta.width,
+		height: input.meta.height,
+		sizeBytes: manifest.sizeBytes,
+		sha256: manifest.sha256,
+		source: 'upload',
+		blurhash: input.blurhash,
+		files,
+		people: input.meta.people,
+		tags: input.meta.tags,
+		uploadedBy: user.id
+	});
+
+	for (let index = 0; index < manifest.totalChunks; index += 1) {
+		await storage.delete(chunkKey(input.uploadId, index));
+	}
+	await storage.delete(manifestKey(input.uploadId));
+
+	return dto;
+}
+
+function stringOrNull(value: unknown): string | null {
+	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function stringArray(value: unknown): string[] {
+	return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
