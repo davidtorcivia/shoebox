@@ -1469,6 +1469,730 @@ git add src/worker/derivatives.ts src/worker/sprite.test.ts src/worker/index.ts
 git commit -m "feat: 10x10 scrub sprite sheet handler wired into the worker"
 ```
 
+---
+
+### Task 8: Path conventions parser (`src/worker/conventions.ts`)
+
+**Files:**
+- Create: `src/worker/conventions.ts`
+- Test: `src/worker/conventions.test.ts`
+
+**Interfaces:**
+- Consumes: nothing (pure functions, no I/O).
+- Produces (used by Tasks 9–10):
+
+```ts
+export interface ConventionHints { year?: number; tags: string[]; filename: string; }
+export function parseConventions(relPath: string): ConventionHints;      // relPath is RELATIVE to INGEST_PATH
+export function titleFromFilename(filename: string): string;
+export interface ResolvedDate { dateStart: string | null; dateEnd: string | null; precision: 'day' | 'year' | 'unknown'; }
+export function resolveItemDate(mediaDate: string | null, yearHint?: number): ResolvedDate;
+```
+
+Rules (spec §7): the watcher passes the path **relative to the ingest root**, so the spec's example `/ingest/1994/christmas/clip.mp4` arrives here as `1994/christmas/clip.mp4`. First path segment matching `/^(18|19|20)\d\d$/` → year hint. All remaining directory segments → tag hints (lowercased, whitespace runs → single dash, deduped). File **mtime is NEVER a date source**. Date resolution priority: media-embedded date (EXIF/`creation_time`) → day precision; else year hint → year precision (`YYYY-01-01`…`YYYY-12-31`); else `unknown`.
+
+- [ ] **Step 1: Write the failing test matrix**
+
+Create `src/worker/conventions.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { parseConventions, resolveItemDate, titleFromFilename } from './conventions.js';
+
+describe('parseConventions', () => {
+  const cases: [string, { year?: number; tags: string[]; filename: string }][] = [
+    ['1994/christmas/clip.mp4', { year: 1994, tags: ['christmas'], filename: 'clip.mp4' }],
+    ['clip.mp4', { tags: [], filename: 'clip.mp4' }],
+    ['1994/clip.mp4', { year: 1994, tags: [], filename: 'clip.mp4' }],
+    ['christmas/Family Dinner/clip.mp4', { tags: ['christmas', 'family-dinner'], filename: 'clip.mp4' }],
+    ['1994/Christmas Morning/Tape 04/clip.mp4', { year: 1994, tags: ['christmas-morning', 'tape-04'], filename: 'clip.mp4' }],
+    // year must be the FIRST segment
+    ['summer/1994/clip.mp4', { tags: ['summer', '1994'], filename: 'clip.mp4' }],
+    // a second year-looking segment is just a tag
+    ['1994/1995/clip.mp4', { year: 1994, tags: ['1995'], filename: 'clip.mp4' }],
+    // 18xx/19xx/20xx only
+    ['1850/photos/scan.jpg', { year: 1850, tags: ['photos'], filename: 'scan.jpg' }],
+    ['1799/scan.jpg', { tags: ['1799'], filename: 'scan.jpg' }],
+    ['2150/scan.jpg', { tags: ['2150'], filename: 'scan.jpg' }],
+    // windows separators + duplicate tags collapse
+    ['1994\\christmas\\clip.mp4', { year: 1994, tags: ['christmas'], filename: 'clip.mp4' }],
+    ['1994/christmas/christmas/clip.mp4', { year: 1994, tags: ['christmas'], filename: 'clip.mp4' }],
+  ];
+  for (const [input, expected] of cases) {
+    it(`parses '${input}'`, () => {
+      expect(parseConventions(input)).toEqual(expected);
+    });
+  }
+});
+
+describe('titleFromFilename', () => {
+  it('strips the extension and turns dashes/underscores into spaces', () => {
+    expect(titleFromFilename('christmas-morning_01.mp4')).toBe('christmas morning 01');
+    expect(titleFromFilename('clip.mp4')).toBe('clip');
+    expect(titleFromFilename('IMG 4021.JPG')).toBe('IMG 4021');
+  });
+});
+
+describe('resolveItemDate', () => {
+  it('prefers the media-embedded date at day precision', () => {
+    expect(resolveItemDate('1994-12-25', 1990)).toEqual({ dateStart: '1994-12-25', dateEnd: '1994-12-25', precision: 'day' });
+  });
+  it('falls back to the year hint at year precision', () => {
+    expect(resolveItemDate(null, 1994)).toEqual({ dateStart: '1994-01-01', dateEnd: '1994-12-31', precision: 'year' });
+  });
+  it('is unknown when neither exists (mtime is never used)', () => {
+    expect(resolveItemDate(null)).toEqual({ dateStart: null, dateEnd: null, precision: 'unknown' });
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm vitest run src/worker/conventions.test.ts`
+Expected: FAIL — `Failed to resolve import "./conventions.js"`.
+
+- [ ] **Step 3: Write the implementation**
+
+Create `src/worker/conventions.ts`:
+
+```ts
+/**
+ * Ingest path conventions (spec §7): /ingest/<year>/<tag>/…/file.ext
+ * The watcher passes paths RELATIVE to the ingest root. Pure functions only.
+ * File mtime is NEVER used as a date source anywhere in ingestion.
+ */
+
+export interface ConventionHints {
+  year?: number;
+  tags: string[];
+  filename: string;
+}
+
+const YEAR_RE = /^(18|19|20)\d\d$/;
+
+export function parseConventions(relPath: string): ConventionHints {
+  const segments = relPath.replace(/\\/g, '/').split('/').filter((s) => s.length > 0);
+  const filename = segments.pop() ?? '';
+  const dirs = [...segments];
+  let year: number | undefined;
+  if (dirs.length > 0 && YEAR_RE.test(dirs[0])) {
+    year = Number(dirs.shift());
+  }
+  const tags = [...new Set(
+    dirs
+      .map((d) => d.trim().toLowerCase().replace(/\s+/g, '-'))
+      .filter((t) => t.length > 0),
+  )];
+  return year === undefined ? { tags, filename } : { year, tags, filename };
+}
+
+/** Documented decision 1: ingest pre-fills items.title from the filename. */
+export function titleFromFilename(filename: string): string {
+  return filename.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim();
+}
+
+export interface ResolvedDate {
+  dateStart: string | null;
+  dateEnd: string | null;
+  precision: 'day' | 'year' | 'unknown';
+}
+
+/** EXIF/container date (day) beats year hint (year) beats nothing (unknown). */
+export function resolveItemDate(mediaDate: string | null, yearHint?: number): ResolvedDate {
+  if (mediaDate) return { dateStart: mediaDate, dateEnd: mediaDate, precision: 'day' };
+  if (yearHint !== undefined) {
+    return { dateStart: `${yearHint}-01-01`, dateEnd: `${yearHint}-12-31`, precision: 'year' };
+  }
+  return { dateStart: null, dateEnd: null, precision: 'unknown' };
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pnpm vitest run src/worker/conventions.test.ts`
+Expected: PASS (17 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/worker/conventions.ts src/worker/conventions.test.ts
+git commit -m "feat: ingest path conventions parser with year/tag hints and date resolution"
+```
+
+---
+
+### Task 9: Ingest processing — hashing, item creation, hints-as-tags, holiday tags
+
+**Files:**
+- Create: `src/worker/ingest-watcher.ts` (processing core; chokidar wiring in Task 10)
+- Test: `src/worker/ingest-watcher.test.ts`
+
+**Interfaces:**
+- Consumes: `parseConventions`, `resolveItemDate`, `titleFromFilename` (Task 8); `probeVideo` (Task 5); `logIngestFailure`, `WorkerDb` (Tasks 2–3); `sortDate` (Contract 5); `applyHolidayTags` (phase 06, pinned); `StorageAdapter` (Contract 2); fixtures (Task 1).
+- Produces (used by Tasks 10, 14):
+
+```ts
+export const SUPPORTED_EXTENSIONS: Record<string, 'video' | 'photo'>; // mp4 m4v webm mov | jpg jpeg png webp avif heic
+export interface IngestDeps {
+  db: WorkerDb; storage: StorageAdapter; ingestPath: string; mediaPath: string; ownerId: string;
+  enqueue(kind: 'derivatives' | 'sprite', payload: Record<string, unknown>): Promise<void>;
+}
+export type IngestResult =
+  | { status: 'ingested'; itemId: string }
+  | { status: 'duplicate'; existingItemId: string }
+  | { status: 'failed'; reason: string };
+export function sha256File(filePath: string): Promise<string>;
+export function processIngestFile(deps: IngestDeps, absPath: string): Promise<IngestResult>;
+```
+
+Behavior: sha256 the stable file → if `items.sha256` already exists, move to `INGEST_PATH/_duplicates/` and log. Else create the item (`status='needs_review'`, `source='ingest'`, `uploadedBy=ownerId`, title from filename, hints pre-attached as topic tags — documented decision 1), **rename** (not copy; EXDEV fallback copies+unlinks for cross-device bind mounts) into `MEDIA_PATH/media/<id>/original.<ext>`, insert the `original` item_files row, `applyHolidayTags` when a day-precision date was found, enqueue `derivatives` (+ `sprite` for videos). Unreadable/unsupported → `_failed/` + `logIngestFailure` (Task 10 tests that path).
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `src/worker/ingest-watcher.test.ts`:
+
+```ts
+import { beforeAll, describe, expect, it } from 'vitest';
+import { existsSync, mkdtempSync } from 'node:fs';
+import { copyFile, mkdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { eq } from 'drizzle-orm';
+import { FIXTURE_JPG, FIXTURE_MP4, generateFixtures } from '../../e2e/fixtures/generate.js';
+import * as schema from '../lib/server/db/schema.js';
+import { createFsStorage } from '../lib/server/platform/storage-fs.js';
+import { processIngestFile, sha256File, type IngestDeps } from './ingest-watcher.js';
+import { createTestDb, seedOwner } from './test-helpers.js';
+
+beforeAll(async () => {
+  await generateFixtures();
+});
+
+interface Env { deps: IngestDeps; enqueued: { kind: string; payload: Record<string, unknown> }[]; ingestPath: string; }
+
+function makeEnv(): Env {
+  const db = createTestDb();
+  const ownerId = seedOwner(db);
+  const ingestPath = mkdtempSync(join(tmpdir(), 'shoebox-ingest-'));
+  const mediaPath = mkdtempSync(join(tmpdir(), 'shoebox-media-'));
+  const enqueued: Env['enqueued'] = [];
+  return {
+    enqueued,
+    ingestPath,
+    deps: {
+      db, storage: createFsStorage(mediaPath), ingestPath, mediaPath, ownerId,
+      enqueue: async (kind, payload) => { enqueued.push({ kind, payload }); },
+    },
+  };
+}
+
+async function drop(env: Env, relPath: string, fixture: string): Promise<string> {
+  const abs = join(env.ingestPath, relPath);
+  await mkdir(dirname(abs), { recursive: true });
+  await copyFile(fixture, abs);
+  return abs;
+}
+
+describe('sha256File', () => {
+  it('hashes a file to 64 hex chars, stable across calls', async () => {
+    const env = makeEnv();
+    const abs = await drop(env, 'clip.mp4', FIXTURE_MP4);
+    const a = await sha256File(abs);
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+    expect(await sha256File(abs)).toBe(a);
+  });
+});
+
+describe('processIngestFile (video, year+tag hints)', () => {
+  it('creates a needs_review ingest item with year-precision date, hint tags, moved original, and enqueued jobs', async () => {
+    const env = makeEnv();
+    const abs = await drop(env, '1994/christmas/clip.mp4', FIXTURE_MP4);
+    const result = await processIngestFile(env.deps, abs);
+    expect(result.status).toBe('ingested');
+    const itemId = (result as { itemId: string }).itemId;
+
+    const item = env.deps.db.select().from(schema.items).where(eq(schema.items.id, itemId)).get()!;
+    expect(item.type).toBe('video');
+    expect(item.status).toBe('needs_review');
+    expect(item.source).toBe('ingest');
+    expect(item.uploadedBy).toBe(env.deps.ownerId);
+    expect(item.title).toBe('clip');
+    expect(item.dateStart).toBe('1994-01-01');   // no creation_time in fixture → year hint
+    expect(item.dateEnd).toBe('1994-12-31');
+    expect(item.datePrecision).toBe('year');
+    expect(item.width).toBe(320);
+    expect(item.height).toBe(180);
+    expect(Math.abs((item.duration ?? 0) - 2)).toBeLessThan(0.5);
+
+    // original was MOVED into managed storage under the Contract 7 key
+    expect(existsSync(abs)).toBe(false);
+    expect(existsSync(join(env.deps.mediaPath, `media/${itemId}/original.mp4`))).toBe(true);
+    const orig = env.deps.db.select().from(schema.itemFiles).where(eq(schema.itemFiles.itemId, itemId)).all();
+    expect(orig).toHaveLength(1);
+    expect(orig[0].kind).toBe('original');
+    expect(orig[0].mime).toBe('video/mp4');
+
+    // documented decision 1: hint tags pre-attached as topic tags
+    const tagNames = env.deps.db
+      .select({ name: schema.tags.name, kind: schema.tags.kind })
+      .from(schema.itemTags)
+      .innerJoin(schema.tags, eq(schema.itemTags.tagId, schema.tags.id))
+      .where(eq(schema.itemTags.itemId, itemId))
+      .all();
+    expect(tagNames.map((t) => t.name)).toContain('christmas');
+
+    expect(env.enqueued.map((e) => e.kind).sort()).toEqual(['derivatives', 'sprite']);
+    expect(env.enqueued[0].payload).toEqual({ itemId });
+  });
+});
+
+describe('processIngestFile (photo with EXIF date)', () => {
+  it('uses the EXIF day-precision date over the year hint and applies holiday tags', async () => {
+    const env = makeEnv();
+    // year hint 1990 must LOSE to EXIF 1994-12-25
+    const abs = await drop(env, '1990/photo.jpg', FIXTURE_JPG);
+    const result = await processIngestFile(env.deps, abs);
+    expect(result.status).toBe('ingested');
+    const itemId = (result as { itemId: string }).itemId;
+
+    const item = env.deps.db.select().from(schema.items).where(eq(schema.items.id, itemId)).get()!;
+    expect(item.type).toBe('photo');
+    expect(item.dateStart).toBe('1994-12-25');
+    expect(item.datePrecision).toBe('day');
+    expect(item.sortDate).toBe('1994-12-25');
+    expect(item.width).toBe(640);
+    expect(item.height).toBe(480);
+
+    // applyHolidayTags (phase 06) fires on day precision: christmas
+    const tagNames = env.deps.db
+      .select({ name: schema.tags.name })
+      .from(schema.itemTags)
+      .innerJoin(schema.tags, eq(schema.itemTags.tagId, schema.tags.id))
+      .where(eq(schema.itemTags.itemId, itemId))
+      .all()
+      .map((t) => t.name);
+    expect(tagNames).toContain('christmas');
+
+    // photos enqueue derivatives only — no sprite
+    expect(env.enqueued.map((e) => e.kind)).toEqual(['derivatives']);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm vitest run src/worker/ingest-watcher.test.ts`
+Expected: FAIL — `Failed to resolve import "./ingest-watcher.js"`.
+
+- [ ] **Step 3: Write the implementation (processing core)**
+
+Create `src/worker/ingest-watcher.ts`:
+
+```ts
+/**
+ * Ingestion folder pipeline (Docker only, spec §7):
+ *   stable file under INGEST_PATH
+ *     → sha256 → duplicate?            → INGEST_PATH/_duplicates/ + log
+ *     → unsupported/unreadable?        → INGEST_PATH/_failed/ + failed ingest_scan jobs row
+ *     → else: create needs_review item, MOVE original into MEDIA_PATH (rename;
+ *       EXDEV copy+unlink fallback for cross-device bind mounts), pre-attach
+ *       hint tags + title (documented decision 1), holiday tags on day dates,
+ *       enqueue derivatives (+ sprite for video).
+ * Date sources: EXIF (photos) / container creation_time (videos) / path year
+ * hint. File mtime is NEVER consulted.
+ */
+import { createHash } from 'node:crypto';
+import { createReadStream, existsSync } from 'node:fs';
+import { copyFile, mkdir, rename, stat, unlink } from 'node:fs/promises';
+import { basename, dirname, extname, join, relative, sep } from 'node:path';
+import { fileTypeFromFile } from 'file-type';
+import exifr from 'exifr';
+import sharp from 'sharp';
+import { eq } from 'drizzle-orm';
+import { nanoid } from 'nanoid';
+import * as schema from '../lib/server/db/schema.js';
+import { sortDate } from '../lib/domain/dates.js';
+import { applyHolidayTags } from '../lib/server/items.js';
+import type { StorageAdapter } from '../lib/server/platform/types.js';
+import { parseConventions, resolveItemDate, titleFromFilename } from './conventions.js';
+import { probeVideo } from './derivatives.js';
+import { logIngestFailure, type WorkerDb } from './jobs.js';
+
+export const SUPPORTED_EXTENSIONS: Record<string, 'video' | 'photo'> = {
+  mp4: 'video', m4v: 'video', webm: 'video', mov: 'video',
+  jpg: 'photo', jpeg: 'photo', png: 'photo', webp: 'photo', avif: 'photo', heic: 'photo',
+};
+
+export interface IngestDeps {
+  db: WorkerDb;
+  storage: StorageAdapter;
+  ingestPath: string;
+  mediaPath: string;
+  ownerId: string;
+  enqueue(kind: 'derivatives' | 'sprite', payload: Record<string, unknown>): Promise<void>;
+}
+
+export type IngestResult =
+  | { status: 'ingested'; itemId: string }
+  | { status: 'duplicate'; existingItemId: string }
+  | { status: 'failed'; reason: string };
+
+export function sha256File(filePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha256');
+    createReadStream(filePath)
+      .on('error', reject)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+/** rename() with copy+unlink fallback: /ingest and /data are often different devices. */
+async function moveFile(from: string, to: string): Promise<void> {
+  await mkdir(dirname(to), { recursive: true });
+  try {
+    await rename(from, to);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EXDEV') throw err;
+    await copyFile(from, to);
+    await unlink(from);
+  }
+}
+
+async function moveAside(deps: IngestDeps, absPath: string, bucket: '_duplicates' | '_failed'): Promise<void> {
+  const name = basename(absPath);
+  let target = join(deps.ingestPath, bucket, name);
+  for (let n = 1; existsSync(target); n += 1) {
+    target = join(deps.ingestPath, bucket, `${n}-${name}`);
+  }
+  await moveFile(absPath, target);
+}
+
+/** EXIF DateTimeOriginal/CreateDate → 'YYYY-MM-DD' (photos). */
+async function photoExifDate(absPath: string): Promise<string | null> {
+  try {
+    const exif = (await exifr.parse(absPath, ['DateTimeOriginal', 'CreateDate'])) as
+      | { DateTimeOriginal?: Date; CreateDate?: Date }
+      | undefined;
+    const d = exif?.DateTimeOriginal ?? exif?.CreateDate;
+    if (!(d instanceof Date) || Number.isNaN(d.getTime())) return null;
+    const year = d.getFullYear();
+    if (year <= 1970 || year > 2100) return null;
+    const pad = (x: number): string => String(x).padStart(2, '0');
+    return `${year}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; // EXIF is local time
+  } catch {
+    return null;
+  }
+}
+
+export async function processIngestFile(deps: IngestDeps, absPath: string): Promise<IngestResult> {
+  const relPath = relative(deps.ingestPath, absPath).split(sep).join('/');
+  if (relPath.startsWith('_duplicates/') || relPath.startsWith('_failed/') || relPath.startsWith('..')) {
+    return { status: 'failed', reason: 'outside ingest scope' };
+  }
+
+  const fail = async (reason: string): Promise<IngestResult> => {
+    logIngestFailure(deps.db, relPath, reason);
+    await moveAside(deps, absPath, '_failed');
+    console.error(`[ingest] FAILED ${relPath}: ${reason}`);
+    return { status: 'failed', reason };
+  };
+
+  const ext = extname(absPath).slice(1).toLowerCase();
+  const type = SUPPORTED_EXTENSIONS[ext];
+  if (!type) return fail(`unsupported extension .${ext}`);
+
+  let sniffed: Awaited<ReturnType<typeof fileTypeFromFile>>;
+  try {
+    sniffed = await fileTypeFromFile(absPath);
+  } catch (err) {
+    return fail(`unreadable: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!sniffed) return fail('unrecognized file contents');
+  const contentsMatch = type === 'video' ? sniffed.mime.startsWith('video/') : sniffed.mime.startsWith('image/');
+  if (!contentsMatch) return fail(`contents (${sniffed.mime}) do not match extension .${ext}`);
+
+  const sha256 = await sha256File(absPath);
+  const existing = deps.db
+    .select({ id: schema.items.id })
+    .from(schema.items)
+    .where(eq(schema.items.sha256, sha256))
+    .get();
+  if (existing) {
+    await moveAside(deps, absPath, '_duplicates');
+    console.log(`[ingest] duplicate of item ${existing.id}: ${relPath}`);
+    return { status: 'duplicate', existingItemId: existing.id };
+  }
+
+  const hints = parseConventions(relPath);
+  let width = 0;
+  let height = 0;
+  let duration: number | null = null;
+  let mediaDate: string | null = null;
+  try {
+    if (type === 'video') {
+      const probe = await probeVideo(absPath);
+      width = probe.width;
+      height = probe.height;
+      duration = probe.duration;
+      mediaDate = probe.creationTime;
+    } else {
+      const meta = await sharp(absPath).metadata();
+      width = meta.width ?? 0;
+      height = meta.height ?? 0;
+      if ((meta.orientation ?? 1) >= 5) [width, height] = [height, width];
+      mediaDate = await photoExifDate(absPath);
+    }
+  } catch (err) {
+    return fail(`could not read media: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (width <= 0 || height <= 0) return fail('could not determine dimensions');
+
+  const date = resolveItemDate(mediaDate, hints.year);
+  const id = nanoid(12);
+  const sizeBytes = (await stat(absPath)).size;
+  const storageKey = `media/${id}/original.${ext}`;
+  await moveFile(absPath, join(deps.mediaPath, storageKey));
+
+  deps.db.transaction((tx) => {
+    tx.insert(schema.items)
+      .values({
+        id,
+        type,
+        title: titleFromFilename(hints.filename) || null,
+        dateStart: date.dateStart,
+        dateEnd: date.dateEnd,
+        datePrecision: date.precision,
+        sortDate: sortDate({ dateStart: date.dateStart, dateEnd: date.dateEnd, precision: date.precision }),
+        duration,
+        width,
+        height,
+        sizeBytes,
+        sha256,
+        source: 'ingest',
+        status: 'needs_review',
+        uploadedBy: deps.ownerId,
+        createdAt: new Date(),
+      })
+      .run();
+    tx.insert(schema.itemFiles)
+      .values({ id: nanoid(12), itemId: id, kind: 'original', storageKey, mime: sniffed!.mime, width, height })
+      .run();
+    // Documented decision 1: hint chips ARE tags — pre-attach as topic tags.
+    for (const tagName of hints.tags) {
+      tx.insert(schema.tags).values({ id: nanoid(12), name: tagName, kind: 'topic' }).onConflictDoNothing().run();
+      const tag = tx.select({ id: schema.tags.id }).from(schema.tags).where(eq(schema.tags.name, tagName)).get()!;
+      tx.insert(schema.itemTags).values({ itemId: id, tagId: tag.id }).onConflictDoNothing().run();
+    }
+  });
+
+  if (date.precision === 'day') await applyHolidayTags(deps.db, id);
+  await deps.enqueue('derivatives', { itemId: id });
+  if (type === 'video') await deps.enqueue('sprite', { itemId: id });
+  console.log(`[ingest] created item ${id} from ${relPath}`);
+  return { status: 'ingested', itemId: id };
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `pnpm vitest run src/worker/ingest-watcher.test.ts`
+Expected: PASS (3 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/worker/ingest-watcher.ts src/worker/ingest-watcher.test.ts
+git commit -m "feat: ingest file processing with dedupe-by-sha256 and hints-as-tags"
+```
+
+---
+
+### Task 10: Duplicates, `_failed` routing & the chokidar watcher
+
+**Files:**
+- Modify: `src/worker/ingest-watcher.ts` (append `startIngestWatcher`)
+- Modify: `src/worker/index.ts` (uncomment watcher wiring)
+- Test: `src/worker/ingest-watcher.test.ts` (append)
+
+**Interfaces:**
+- Consumes: Task 9's `processIngestFile`, `IngestDeps`; `chokidar`.
+- Produces (used by `main()` and Task 14):
+
+```ts
+export function startIngestWatcher(
+  deps: IngestDeps,
+  opts?: { stabilityMs?: number },   // default 2000 (spec: awaitWriteFinish 2s); tests use 100
+): { idle(): Promise<void>; close(): Promise<void> };
+```
+
+- [ ] **Step 1: Append the failing tests**
+
+Append to `src/worker/ingest-watcher.test.ts`:
+
+```ts
+import { readdirSync } from 'node:fs';
+import { startIngestWatcher } from './ingest-watcher.js';
+
+describe('processIngestFile (duplicates and failures)', () => {
+  it('moves a re-dropped identical file to _duplicates', async () => {
+    const env = makeEnv();
+    const first = await drop(env, '1994/christmas/clip.mp4', FIXTURE_MP4);
+    await processIngestFile(env.deps, first);
+    const second = await drop(env, '1994/christmas/clip-copy.mp4', FIXTURE_MP4);
+    const result = await processIngestFile(env.deps, second);
+    expect(result.status).toBe('duplicate');
+    expect(existsSync(second)).toBe(false);
+    expect(readdirSync(join(env.ingestPath, '_duplicates'))).toEqual(['clip-copy.mp4']);
+    // no second item created
+    expect(env.deps.db.select().from(schema.items).all()).toHaveLength(1);
+  });
+
+  it('routes unsupported extensions to _failed with a failed ingest_scan jobs row', async () => {
+    const env = makeEnv();
+    const abs = await drop(env, 'notes/readme.txt', FIXTURE_JPG); // any bytes; .txt is unsupported
+    const result = await processIngestFile(env.deps, abs);
+    expect(result.status).toBe('failed');
+    expect(readdirSync(join(env.ingestPath, '_failed'))).toEqual(['readme.txt']);
+    const jobs = env.deps.db.select().from(schema.jobs).all();
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].kind).toBe('ingest_scan');
+    expect(jobs[0].status).toBe('failed');
+    expect(JSON.parse(jobs[0].payload)).toEqual({ path: 'notes/readme.txt', reason: 'unsupported extension .txt' });
+  });
+
+  it('routes extension/content mismatches to _failed', async () => {
+    const env = makeEnv();
+    const abs = await drop(env, '1994/fake.mp4', FIXTURE_JPG); // jpeg bytes named .mp4
+    const result = await processIngestFile(env.deps, abs);
+    expect(result.status).toBe('failed');
+    expect((result as { reason: string }).reason).toContain('do not match');
+    expect(readdirSync(join(env.ingestPath, '_failed'))).toEqual(['fake.mp4']);
+  });
+});
+
+describe('startIngestWatcher', () => {
+  it('picks up files dropped after start, once size is stable', async () => {
+    const env = makeEnv();
+    const watcher = startIngestWatcher(env.deps, { stabilityMs: 100 });
+    try {
+      await drop(env, '1994/christmas/clip.mp4', FIXTURE_MP4);
+      // poll until the item lands (stability window + processing)
+      const deadline = Date.now() + 15_000;
+      for (;;) {
+        await watcher.idle();
+        if (env.deps.db.select().from(schema.items).all().length === 1) break;
+        if (Date.now() > deadline) throw new Error('watcher never ingested the file');
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const item = env.deps.db.select().from(schema.items).all()[0];
+      expect(item.status).toBe('needs_review');
+      expect(item.source).toBe('ingest');
+    } finally {
+      await watcher.close();
+    }
+  });
+
+  it('ignores files inside _duplicates and _failed', async () => {
+    const env = makeEnv();
+    await mkdir(join(env.ingestPath, '_duplicates'), { recursive: true });
+    await drop(env, '_duplicates/old.mp4', FIXTURE_MP4);
+    const watcher = startIngestWatcher(env.deps, { stabilityMs: 100 });
+    try {
+      await new Promise((r) => setTimeout(r, 1500));
+      await watcher.idle();
+      expect(env.deps.db.select().from(schema.items).all()).toHaveLength(0);
+    } finally {
+      await watcher.close();
+    }
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm vitest run src/worker/ingest-watcher.test.ts`
+Expected: FAIL — `startIngestWatcher` is not exported.
+
+- [ ] **Step 3: Append the watcher implementation**
+
+Append to `src/worker/ingest-watcher.ts`:
+
+```ts
+import chokidar from 'chokidar';
+
+/**
+ * chokidar watcher over INGEST_PATH. A file is claimed only after its size is
+ * stable for `stabilityMs` (spec: 2 s) via awaitWriteFinish. Files are
+ * processed strictly sequentially (promise chain) so two drops can never race
+ * on dedupe. `_duplicates/` and `_failed/` are never watched.
+ */
+export function startIngestWatcher(
+  deps: IngestDeps,
+  opts: { stabilityMs?: number } = {},
+): { idle(): Promise<void>; close(): Promise<void> } {
+  const stabilityMs = opts.stabilityMs ?? 2000;
+  let queue: Promise<void> = Promise.resolve();
+  const watcher = chokidar.watch(deps.ingestPath, {
+    ignoreInitial: false, // process any backlog present at startup
+    ignored: (p: string) =>
+      p.includes(`${sep}_duplicates${sep}`) || p.endsWith(`${sep}_duplicates`) ||
+      p.includes(`${sep}_failed${sep}`) || p.endsWith(`${sep}_failed`),
+    awaitWriteFinish: { stabilityThreshold: stabilityMs, pollInterval: Math.min(200, stabilityMs) },
+  });
+  watcher.on('add', (absPath: string) => {
+    queue = queue
+      .then(() => processIngestFile(deps, absPath))
+      .then(
+        () => undefined,
+        (err) => console.error(`[ingest] unexpected error for ${absPath}`, err),
+      );
+  });
+  return {
+    idle: () => queue.then(() => undefined),
+    close: async () => {
+      await watcher.close();
+      await queue;
+    },
+  };
+}
+```
+
+- [ ] **Step 4: Wire the watcher into `src/worker/index.ts`**
+
+In `src/worker/index.ts`: uncomment `import { startIngestWatcher } from './ingest-watcher.js';` and replace the ingest block inside `main()` with:
+
+```ts
+  let watcher: { close(): Promise<void> } | null = null;
+  if (ingestPath) {
+    const ownerId = await waitForOwner(db);
+    console.log(`[worker] ingestion watcher on ${ingestPath}`);
+    watcher = startIngestWatcher({
+      db,
+      storage,
+      ingestPath,
+      mediaPath,
+      ownerId,
+      enqueue: (kind, payload) => queue.enqueue(kind, payload),
+    });
+  }
+```
+
+(Delete the `void queue; void ownerId;` line — both are now used.)
+
+- [ ] **Step 5: Run tests + typecheck**
+
+Run: `pnpm vitest run src/worker/ingest-watcher.test.ts && pnpm check`
+Expected: PASS (8 tests), 0 type errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/worker/ingest-watcher.ts src/worker/ingest-watcher.test.ts src/worker/index.ts
+git commit -m "feat: chokidar ingestion watcher with duplicate and _failed routing"
+```
+
 <!-- CONTINUE -->
+
 
 

@@ -3218,11 +3218,15 @@ export const load: PageServerLoad = async ({ locals }) => {
 </style>
 ```
 
-- [ ] **Step 6: Visual verification**
+- [ ] **Step 6: Verify it compiles (visual check comes with Task 13)**
 
-Run: `pnpm check` — expected 0 errors. Then `pnpm dev`, open `http://localhost:5173/`.
+Run: `pnpm check`
+Expected: 0 errors.
 
-Verify (you'll be bounced to `/setup` which 404s — that's expected until Task 13; instead check the shell on a route the gate lets through by temporarily seeding, or simply defer full visual verification to Task 13 Step 7 and here verify only): open the browser devtools **Network** tab on the 404 page and confirm `fraunces-latin-wght-normal.woff2` and `archivo-latin-wght-normal.woff2` load with 200 from `/fonts/`. Stop the dev server.
+Run: `pnpm build`
+Expected: build succeeds.
+
+(A fresh DB still redirects everything to `/setup`, which 404s until Task 13 — so the full visual verification of the shell, fonts and gradient happens in Task 13 Step 7 once `/setup` exists.)
 
 - [ ] **Step 7: Commit**
 

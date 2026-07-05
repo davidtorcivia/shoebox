@@ -1008,7 +1008,7 @@ export async function reindexItem(db: Db, itemId: string): Promise<void> {
 	if (item.del != null) return;
 
 	const people = (await db.all(
-		sql`SELECT p.name AS v FROM item_people ip JOIN people p ON p.id = ip.person_id WHERE ip.item_id = ${itemId}`
+		sql`SELECT (p.name || CASE WHEN p.nickname IS NOT NULL THEN ' ' || p.nickname ELSE '' END) AS v FROM item_people ip JOIN people p ON p.id = ip.person_id WHERE ip.item_id = ${itemId}`
 	)) as Row[];
 	const tags = (await db.all(
 		sql`SELECT t.name AS v FROM item_tags it JOIN tags t ON t.id = it.tag_id WHERE it.item_id = ${itemId}`

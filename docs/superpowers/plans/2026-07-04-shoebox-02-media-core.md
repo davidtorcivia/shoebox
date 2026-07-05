@@ -2113,8 +2113,9 @@ describe('listItems', () => {
   async function seedSix() {
     const mom = await seedPerson(db, { id: 'p_mom', name: 'Mom' });
     const dad = await seedPerson(db, { id: 'p_dad', name: 'Dad' });
+    // NOTE: title defaults to null here so the q-filter test matches exactly one item.
     const mk = (id: string, over: Parameters<typeof baseInput>[0]) =>
-      createItem(db, storage, queue, baseInput({ id, sha256: id.padEnd(64, '0'), ...over }));
+      createItem(db, storage, queue, baseInput({ id, sha256: id.padEnd(64, '0'), title: null, ...over }));
     await mk('itm_a1', { date: { dateStart: '1988-07-04', dateEnd: '1988-07-04', precision: 'day' }, type: 'photo', duration: null, tags: ['fireworks'] });
     await mk('itm_a2', { date: { dateStart: '1994-06-14', dateEnd: '1994-06-14', precision: 'day' }, people: [mom.id], title: 'Sprinkler day' });
     await mk('itm_a3', { date: { dateStart: '1994-06-14', dateEnd: '1994-06-14', precision: 'day' }, people: [mom.id, dad.id] });
