@@ -174,7 +174,7 @@ describe('face box and item confirmed face APIs', () => {
 				id: 'f1',
 				box: { x: 0.2, y: 0.2, w: 0.3, h: 0.3 },
 				frameTime: null,
-				person: { id: person.id, name: 'Marta', accentColor: '#A8D8EA' }
+				person: { id: person.id, slug: person.slug, name: 'Marta', accentColor: '#A8D8EA' }
 			}
 		]);
 	});

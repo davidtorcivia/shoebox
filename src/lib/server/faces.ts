@@ -25,7 +25,7 @@ export type ConfirmedFace = {
 	id: string;
 	box: FaceBox;
 	frameTime: number | null;
-	person: { id: string; name: string; accentColor: string };
+	person: { id: string; slug: string; name: string; accentColor: string };
 };
 
 type ReindexFn = (db: Db, itemId: string) => Promise<void>;
@@ -229,6 +229,7 @@ export async function confirmedFacesForItem(db: Db, itemId: string): Promise<Con
 			box: faces.box,
 			frameTime: faces.frameTime,
 			personId: people.id,
+			slug: people.slug,
 			name: people.name,
 			accentColor: people.accentColor
 		})
@@ -240,6 +241,6 @@ export async function confirmedFacesForItem(db: Db, itemId: string): Promise<Con
 		id: row.id,
 		box: parseBox(row.box),
 		frameTime: row.frameTime,
-		person: { id: row.personId, name: row.name, accentColor: row.accentColor }
+		person: { id: row.personId, slug: row.slug, name: row.name, accentColor: row.accentColor }
 	}));
 }

@@ -2,6 +2,7 @@ import { error } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import { contextFromParams, neighborsOf } from '$lib/server/neighbors';
 import { items } from '$lib/server/db/schema';
+import { confirmedFacesForItem } from '$lib/server/faces';
 import { requireRole, ROLE_RANK } from '$lib/server/roles';
 import type { ItemDTO } from '$lib/dto';
 import type { PageServerLoad } from './$types';
@@ -25,6 +26,7 @@ export const load: PageServerLoad = async ({ fetch, locals, params, url }) => {
 	const canEdit = ROLE_RANK[me.role] >= ROLE_RANK.editor || item.uploadedBy === me.id;
 	const y = url.searchParams.get('y');
 	const backYear = y && Number.isInteger(Number(y)) ? Number(y) : null;
+	const facesEnabled = locals.platform.features.faces;
 
 	return {
 		item,
@@ -33,6 +35,8 @@ export const load: PageServerLoad = async ({ fetch, locals, params, url }) => {
 		me,
 		canEdit,
 		canShare: ROLE_RANK[me.role] >= ROLE_RANK.editor,
+		facesEnabled,
+		faces: facesEnabled ? await confirmedFacesForItem(locals.db, item.id) : [],
 		backYear,
 		contextQuery: url.searchParams.toString()
 	};

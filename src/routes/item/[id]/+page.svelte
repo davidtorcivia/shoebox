@@ -8,6 +8,7 @@
 	import { GRAIN_URI, playerRoomFor } from '$lib/ui/tokens';
 	import AlbumToggle from '$lib/ui/AlbumToggle.svelte';
 	import Comments from '$lib/ui/Comments.svelte';
+	import FaceBoxes from '$lib/ui/FaceBoxes.svelte';
 	import Lightbox from '$lib/ui/Lightbox.svelte';
 	import MetaForm, { type MetaPatchPayload } from '$lib/ui/MetaForm.svelte';
 	import PeopleRow from '$lib/ui/PeopleRow.svelte';
@@ -30,6 +31,8 @@
 	let player = $state<PlayerHandle | null>(null);
 	let saveState = $state('');
 	let shareOpen = $state(false);
+	// svelte-ignore state_referenced_locally
+	let facesVisible = $state(data.item.type === 'photo' && data.faces.length > 0);
 
 	const year = $derived(yearOf(item.date));
 	const roomYear = $derived(year ?? data.backYear ?? new Date().getFullYear());
@@ -44,6 +47,7 @@
 		loadedItemId = data.item.id;
 		item = data.item;
 		saveState = '';
+		facesVisible = data.item.type === 'photo' && data.faces.length > 0;
 	});
 
 	function navigateTo(id: string | null) {
@@ -123,17 +127,22 @@
 	<div class="room-grid">
 		<div class="stage-column">
 			<div class="stage">
-				{#if item.type === 'video'}
-					<Player
-						bind:this={player}
-						src={mediaSrc}
-						{poster}
-						duration={item.duration}
-						title={item.title ?? item.displayDate}
-					/>
-				{:else}
-					<Lightbox src={mediaSrc} alt={item.title ?? item.displayDate} />
-				{/if}
+				<div class="media-frame">
+					{#if item.type === 'video'}
+						<Player
+							bind:this={player}
+							src={mediaSrc}
+							{poster}
+							duration={item.duration}
+							title={item.title ?? item.displayDate}
+						/>
+					{:else}
+						<Lightbox src={mediaSrc} alt={item.title ?? item.displayDate} />
+					{/if}
+					{#if facesVisible && data.faces.length > 0}
+						<FaceBoxes faces={data.faces} />
+					{/if}
+				</div>
 
 				<button
 					class="edge prev"
@@ -190,6 +199,16 @@
 						open={shareOpen}
 						onClose={() => (shareOpen = false)}
 					/>
+				{/if}
+				{#if data.facesEnabled && data.faces.length > 0}
+					<button
+						class="face-toggle"
+						type="button"
+						aria-pressed={facesVisible}
+						onclick={() => (facesVisible = !facesVisible)}
+					>
+						Faces
+					</button>
 				{/if}
 			</div>
 
@@ -268,6 +287,10 @@
 		position: relative;
 	}
 
+	.media-frame {
+		position: relative;
+	}
+
 	.social {
 		display: grid;
 		gap: 0.85rem;
@@ -341,7 +364,8 @@
 	}
 
 	.download-original,
-	.share-action {
+	.share-action,
+	.face-toggle {
 		min-height: 48px;
 		border: 0;
 		background: none;
@@ -353,6 +377,12 @@
 		line-height: 48px;
 		text-decoration: none;
 		text-transform: uppercase;
+	}
+
+	.face-toggle[aria-pressed='true'] {
+		font-weight: 800;
+		text-decoration: underline;
+		text-underline-offset: 5px;
 	}
 
 	[data-testid='comments-slot'] {

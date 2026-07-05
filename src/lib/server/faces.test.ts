@@ -258,7 +258,7 @@ describe('faces service', () => {
 				id: 'f1',
 				box: { x: 0.1, y: 0.1, w: 0.2, h: 0.2 },
 				frameTime: null,
-				person: { id: person.id, name: 'Marta', accentColor: '#A8D8EA' }
+				person: { id: person.id, slug: person.slug, name: 'Marta', accentColor: '#A8D8EA' }
 			}
 		]);
 	});
