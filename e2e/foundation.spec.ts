@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -77,4 +79,87 @@ test('login and logout round-trip', async ({ page }) => {
 	await page.waitForURL(/\/login$/);
 	await page.goto('/people');
 	await expect(page).toHaveURL(/\/login$/);
+});
+
+test('media upload API golden path, range streaming, dedupe, trash and restore', async ({
+	page
+}) => {
+	await page.goto('/login');
+	await page.getByLabel('Username').fill(OWNER.username);
+	await page.getByLabel('Password').fill(OWNER.password);
+	await page.getByRole('button', { name: 'Sign in' }).click();
+	await page.waitForURL('/');
+
+	const bytes = Uint8Array.from({ length: 24 }, (_, index) => index);
+	const sha256 = createHash('sha256').update(bytes).digest('hex');
+
+	const init = await page.request.post('/api/upload/init', {
+		data: { sha256, sizeBytes: bytes.length, mime: 'video/mp4', filename: 'tiny.mp4' }
+	});
+	expect(init.ok()).toBe(true);
+	const initBody = (await init.json()) as { uploadId: string; duplicateItemId: string | null };
+	expect(initBody).toMatchObject({ uploadId: sha256, duplicateItemId: null });
+
+	const chunk = await page.request.put(`/api/upload/chunk?uploadId=${sha256}&index=0`, {
+		data: Buffer.from(bytes),
+		headers: { 'content-type': 'application/octet-stream' }
+	});
+	expect(chunk.ok()).toBe(true);
+
+	const meta = {
+		type: 'video',
+		width: 192,
+		height: 108,
+		duration: 1,
+		title: 'Tiny clip',
+		description: null,
+		tapeLabel: 'Tape 01',
+		date: { dateStart: '1994-01-01', dateEnd: '1994-12-31', precision: 'year' },
+		people: [],
+		tags: ['sprinkler']
+	};
+	const complete = await page.request.post('/api/upload/complete', {
+		headers: { origin: 'http://localhost:4173' },
+		multipart: {
+			uploadId: sha256,
+			allowDuplicate: 'false',
+			meta: JSON.stringify(meta),
+			blurhash: 'LKO2?U%2Tw',
+			poster: { name: 'poster.webp', mimeType: 'image/webp', buffer: Buffer.from([1, 2, 3]) },
+			thumb_400: { name: 'thumb_400.webp', mimeType: 'image/webp', buffer: Buffer.from([4]) },
+			thumb_800: { name: 'thumb_800.webp', mimeType: 'image/webp', buffer: Buffer.from([5]) },
+			thumb_1600: { name: 'thumb_1600.webp', mimeType: 'image/webp', buffer: Buffer.from([6]) }
+		}
+	});
+	expect(complete.status()).toBe(201);
+	const completeBody = (await complete.json()) as {
+		item: { id: string; urls: { original: string }; displayDate: string; shortDate: string };
+	};
+	expect(completeBody.item).toMatchObject({ displayDate: '1994', shortDate: 'c. 1994' });
+
+	const range = await page.request.get(completeBody.item.urls.original, {
+		headers: { range: 'bytes=2-4' }
+	});
+	expect(range.status()).toBe(206);
+	expect(range.headers()['content-range']).toBe('bytes 2-4/24');
+	expect(new Uint8Array(await range.body())).toEqual(new Uint8Array([2, 3, 4]));
+
+	const timeline = await page.request.get('/api/timeline');
+	expect(timeline.ok()).toBe(true);
+	expect((await timeline.json()).years).toContainEqual({ year: 1994, count: 1 });
+
+	const duplicate = await page.request.post('/api/upload/init', {
+		data: { sha256, sizeBytes: bytes.length, mime: 'video/mp4', filename: 'tiny.mp4' }
+	});
+	expect((await duplicate.json()).duplicateItemId).toBe(completeBody.item.id);
+
+	const deleted = await page.request.delete(`/api/items/${completeBody.item.id}`);
+	expect(deleted.ok()).toBe(true);
+	const missing = await page.request.get(`/api/items/${completeBody.item.id}`);
+	expect(missing.status()).toBe(404);
+
+	const restored = await page.request.post(`/api/items/${completeBody.item.id}`, {
+		data: { action: 'restore' }
+	});
+	expect(restored.ok()).toBe(true);
 });
