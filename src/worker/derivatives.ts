@@ -215,7 +215,36 @@ export const derivativesHandler: JobHandler = async (payload, ctx) => {
 };
 
 export const spriteHandler: JobHandler = async (payload, ctx) => {
-	void payload;
-	void ctx;
-	throw new Error('spriteHandler not implemented yet');
+	const itemId = String(payload.itemId ?? '');
+	const { item, originalKey } = loadItem(ctx.db, itemId);
+	if (item.type !== 'video') return;
+
+	const originalAbs = join(ctx.mediaPath, originalKey);
+	const probe = await probeVideo(originalAbs);
+	if (probe.duration <= 0) throw new Error(`item ${itemId} has zero duration; cannot build sprite`);
+
+	const tmp = await mkdtemp(join(tmpdir(), 'shoebox-sprite-'));
+	try {
+		const tilePng = join(tmp, 'sprite.png');
+		const fps = 100 / probe.duration;
+		await runFfmpeg(
+			(cmd) => cmd.outputOptions(['-frames:v 1', `-vf fps=${fps},scale=160:90,tile=10x10`]),
+			originalAbs,
+			tilePng
+		);
+		const out = await sharp(tilePng).webp({ quality: 70 }).toBuffer({ resolveWithObject: true });
+		const storageKey = `media/${itemId}/sprite.webp`;
+		await ctx.storage.put(storageKey, new Uint8Array(out.data), { contentType: 'image/webp' });
+		replaceItemFiles(ctx.db, itemId, [
+			{
+				kind: 'sprite',
+				storageKey,
+				mime: 'image/webp',
+				width: out.info.width,
+				height: out.info.height
+			}
+		]);
+	} finally {
+		await rm(tmp, { recursive: true, force: true });
+	}
 };

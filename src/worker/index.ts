@@ -4,6 +4,7 @@ import * as schema from '../lib/server/db/schema';
 import { openNodeDb } from '../lib/server/platform/db-node';
 import { createSqliteQueue } from '../lib/server/platform/queue-sqlite';
 import { createFsStorage } from '../lib/server/platform/storage-fs';
+import { derivativesHandler, spriteHandler } from './derivatives';
 import {
 	claimJob,
 	runJob,
@@ -89,7 +90,10 @@ async function main(): Promise<void> {
 	const storage = createFsStorage(mediaPath);
 	const ctx: WorkerContext = { db, storage, mediaPath };
 	const queue = createSqliteQueue(db);
-	const handlers: JobHandlers = {};
+	const handlers: JobHandlers = {
+		derivatives: derivativesHandler,
+		sprite: spriteHandler
+	};
 	const worker = createWorker({ db, ctx, handlers });
 	let watcher = null as IngestWatcher | null;
 
