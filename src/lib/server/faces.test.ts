@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as schema from '$lib/server/db/schema';
 import { makeItem, makePerson, makeTestDb, makeUser, stubStorage } from '$lib/server/testing/db';
 import {
@@ -102,6 +102,38 @@ describe('faces service', () => {
 		]);
 	});
 
+	it('reindexes each affected item when assigning a cluster', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		const person = await makePerson(db);
+		await addReadyItem(db, 'it1', owner.id);
+		await addReadyItem(db, 'it2', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', clusterId: 'c1' });
+		await addFace(db, { id: 'f2', itemId: 'it2', clusterId: 'c1' });
+		const reindex = vi.fn(async (_db: ReturnType<typeof makeTestDb>, _itemId: string) => undefined);
+
+		await assignCluster(db, 'c1', person.id, { reindex });
+
+		expect(reindex.mock.calls.map((call) => call[1]).sort()).toEqual(['it1', 'it2']);
+	});
+
+	it('refuses missing people and missing items during assignment', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		await addReadyItem(db, 'it1', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', clusterId: 'c1' });
+		await expect(assignCluster(db, 'c1', 'missing')).rejects.toMatchObject({ status: 404 });
+
+		await addReadyItem(db, 'deleted-item', owner.id);
+		await addFace(db, { id: 'bad-item', itemId: 'deleted-item', clusterId: 'c2' });
+		await db
+			.update(schema.items)
+			.set({ deletedAt: new Date() })
+			.where(eq(schema.items.id, 'deleted-item'));
+		const person = await makePerson(db);
+		await expect(assignCluster(db, 'c2', person.id)).rejects.toMatchObject({ status: 404 });
+	});
+
 	it('rejects a cluster and clears its cluster id', async () => {
 		const db = makeTestDb();
 		const owner = await makeUser(db);
@@ -114,6 +146,31 @@ describe('faces service', () => {
 		expect(face.status).toBe('rejected');
 		expect(face.clusterId).toBeNull();
 		expect(face.personId).toBeNull();
+	});
+
+	it('reindexes each affected item when rejecting a cluster', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		await addReadyItem(db, 'it1', owner.id);
+		await addReadyItem(db, 'it2', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', clusterId: 'c1' });
+		await addFace(db, { id: 'f2', itemId: 'it2', clusterId: 'c1' });
+		const reindex = vi.fn(async (_db: ReturnType<typeof makeTestDb>, _itemId: string) => undefined);
+
+		await rejectCluster(db, 'c1', { reindex });
+
+		expect(reindex.mock.calls.map((call) => call[1]).sort()).toEqual(['it1', 'it2']);
+	});
+
+	it('keeps rejected faces out of future suggestions', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		await addReadyItem(db, 'it1', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', clusterId: 'c1' });
+
+		await rejectCluster(db, 'c1', { reindex: async () => undefined });
+
+		expect(await listSuggestions(db, stubStorage)).toEqual([]);
 	});
 
 	it('splits selected faces into a new pending cluster', async () => {
@@ -134,21 +191,53 @@ describe('faces service', () => {
 		});
 	});
 
+	it('reindexes each affected item when splitting a cluster', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		await addReadyItem(db, 'it1', owner.id);
+		await addReadyItem(db, 'it2', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', clusterId: 'c1' });
+		await addFace(db, { id: 'f2', itemId: 'it2', clusterId: 'c1' });
+		const reindex = vi.fn(async (_db: ReturnType<typeof makeTestDb>, _itemId: string) => undefined);
+
+		await splitCluster(db, 'c1', ['f1', 'f2'], () => 'c2', { reindex });
+
+		expect(reindex.mock.calls.map((call) => call[1]).sort()).toEqual(['it1', 'it2']);
+	});
+
+	it('refuses empty or mismatched split requests', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		await addReadyItem(db, 'it1', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', clusterId: 'c1' });
+
+		await expect(splitCluster(db, 'c1', [])).rejects.toMatchObject({ status: 400 });
+		await expect(splitCluster(db, 'c1', ['missing'])).rejects.toMatchObject({ status: 404 });
+		await expect(splitCluster(db, 'other', ['f1'])).rejects.toMatchObject({ status: 404 });
+	});
+
 	it('validates and patches face boxes', async () => {
 		const db = makeTestDb();
 		const owner = await makeUser(db);
 		await addReadyItem(db, 'it1', owner.id);
 		await addFace(db, { id: 'f1', itemId: 'it1' });
+		const reindex = vi.fn(async (_db: ReturnType<typeof makeTestDb>, _itemId: string) => undefined);
 
-		await updateFaceBox(db, 'f1', { x: 0.2, y: 0.3, w: 0.4, h: 0.2 });
+		await updateFaceBox(db, 'f1', { x: 0.2, y: 0.3, w: 0.4, h: 0.2 }, { reindex });
 		const face = (await db.select().from(schema.faces).where(eq(schema.faces.id, 'f1')))[0];
 		expect(face.box).toBe('{"x":0.2,"y":0.3,"w":0.4,"h":0.2}');
+		expect(reindex.mock.calls.map((call) => call[1])).toEqual(['it1']);
 
 		await expect(updateFaceBox(db, 'f1', { x: 0.9, y: 0.3, w: 0.4, h: 0.2 })).rejects.toMatchObject(
 			{
 				status: 400
 			}
 		);
+		await expect(
+			updateFaceBox(db, 'missing', { x: 0.2, y: 0.3, w: 0.4, h: 0.2 })
+		).rejects.toMatchObject({
+			status: 404
+		});
 	});
 
 	it('returns confirmed faces for an item with person labels', async () => {

@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import type { Db } from '$lib/server/db';
 import { faces, itemFiles, itemPeople, items, people } from '$lib/server/db/schema';
 import type { StorageAdapter } from '$lib/server/platform/types';
+import { reindexItem } from '$lib/server/search';
 
 export type FaceBox = { x: number; y: number; w: number; h: number };
 
@@ -26,6 +27,9 @@ export type ConfirmedFace = {
 	frameTime: number | null;
 	person: { id: string; name: string; accentColor: string };
 };
+
+type ReindexFn = (db: Db, itemId: string) => Promise<void>;
+type WriteOptions = { reindex?: ReindexFn };
 
 function parseBox(raw: string): FaceBox {
 	const box = JSON.parse(raw) as Partial<FaceBox>;
@@ -50,6 +54,20 @@ function validBox(box: Partial<FaceBox>): box is FaceBox {
 
 function boxJson(box: FaceBox): string {
 	return JSON.stringify({ x: box.x, y: box.y, w: box.w, h: box.h });
+}
+
+async function assertItemsExist(db: Db, itemIds: string[]): Promise<void> {
+	const ids = [...new Set(itemIds)];
+	if (ids.length === 0) return;
+	const found = await db
+		.select({ id: items.id })
+		.from(items)
+		.where(and(inArray(items.id, ids), isNull(items.deletedAt)));
+	if (found.length !== ids.length) error(404, 'item not found');
+}
+
+async function reindexAffected(db: Db, itemIds: string[], reindex: ReindexFn): Promise<void> {
+	for (const itemId of [...new Set(itemIds)]) await reindex(db, itemId);
 }
 
 export async function listSuggestions(db: Db, storage: StorageAdapter): Promise<FaceSuggestion[]> {
@@ -93,7 +111,13 @@ export async function listSuggestions(db: Db, storage: StorageAdapter): Promise<
 	);
 }
 
-export async function assignCluster(db: Db, clusterId: string, personId: string): Promise<void> {
+export async function assignCluster(
+	db: Db,
+	clusterId: string,
+	personId: string,
+	opts: WriteOptions = {}
+): Promise<void> {
+	const reindex = opts.reindex ?? reindexItem;
 	const person = (
 		await db.select({ id: people.id }).from(people).where(eq(people.id, personId)).limit(1)
 	)[0];
@@ -101,6 +125,10 @@ export async function assignCluster(db: Db, clusterId: string, personId: string)
 
 	const rows = await db.select().from(faces).where(eq(faces.clusterId, clusterId));
 	if (rows.length === 0) error(404, 'cluster not found');
+	await assertItemsExist(
+		db,
+		rows.map((row) => row.itemId)
+	);
 
 	await db
 		.update(faces)
@@ -115,37 +143,83 @@ export async function assignCluster(db: Db, clusterId: string, personId: string)
 				set: { faceBox: face.box, source: 'ml' }
 			});
 	}
+	await reindexAffected(
+		db,
+		rows.map((row) => row.itemId),
+		reindex
+	);
 }
 
-export async function rejectCluster(db: Db, clusterId: string): Promise<void> {
+export async function rejectCluster(
+	db: Db,
+	clusterId: string,
+	opts: WriteOptions = {}
+): Promise<void> {
+	const reindex = opts.reindex ?? reindexItem;
+	const rows = await db.select().from(faces).where(eq(faces.clusterId, clusterId));
+	if (rows.length === 0) error(404, 'cluster not found');
+	await assertItemsExist(
+		db,
+		rows.map((row) => row.itemId)
+	);
 	await db
 		.update(faces)
 		.set({ status: 'rejected', clusterId: null, personId: null })
 		.where(eq(faces.clusterId, clusterId));
+	await reindexAffected(
+		db,
+		rows.map((row) => row.itemId),
+		reindex
+	);
 }
 
 export async function splitCluster(
 	db: Db,
 	clusterId: string,
 	faceIds: string[],
-	makeId = () => nanoid(12)
+	makeId = () => nanoid(12),
+	opts: WriteOptions = {}
 ): Promise<string> {
+	const reindex = opts.reindex ?? reindexItem;
 	const ids = [...new Set(faceIds)];
 	if (ids.length === 0) error(400, 'faceIds required');
+	const rows = await db
+		.select()
+		.from(faces)
+		.where(and(eq(faces.clusterId, clusterId), inArray(faces.id, ids)));
+	if (rows.length !== ids.length) error(404, 'face not found');
+	await assertItemsExist(
+		db,
+		rows.map((row) => row.itemId)
+	);
 	const nextClusterId = makeId();
 	await db
 		.update(faces)
 		.set({ clusterId: nextClusterId, status: 'pending', personId: null })
 		.where(and(eq(faces.clusterId, clusterId), inArray(faces.id, ids)));
+	await reindexAffected(
+		db,
+		rows.map((row) => row.itemId),
+		reindex
+	);
 	return nextClusterId;
 }
 
-export async function updateFaceBox(db: Db, faceId: string, box: FaceBox): Promise<void> {
+export async function updateFaceBox(
+	db: Db,
+	faceId: string,
+	box: FaceBox,
+	opts: WriteOptions = {}
+): Promise<void> {
 	if (!validBox(box)) error(400, 'invalid face box');
+	const face = (await db.select().from(faces).where(eq(faces.id, faceId)).limit(1))[0];
+	if (!face) error(404, 'face not found');
+	await assertItemsExist(db, [face.itemId]);
 	await db
 		.update(faces)
 		.set({ box: boxJson(box) })
 		.where(eq(faces.id, faceId));
+	await (opts.reindex ?? reindexItem)(db, face.itemId);
 }
 
 export async function confirmedFacesForItem(db: Db, itemId: string): Promise<ConfirmedFace[]> {

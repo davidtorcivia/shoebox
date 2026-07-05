@@ -485,18 +485,17 @@
 	}
 
 	.avatar-footer {
-		display: flex;
-		align-items: end;
-		gap: 14px;
-		padding-top: 2px;
+		display: grid;
+		gap: 12px;
+		padding-top: 4px;
 	}
 
 	.avatar-buttons {
-		display: flex;
-		flex: none;
-		flex-wrap: wrap;
-		gap: 8px;
-		justify-content: flex-end;
+		display: grid;
+		grid-template-columns: minmax(180px, 220px) 112px;
+		gap: 10px;
+		justify-content: start;
+		max-width: 100%;
 	}
 
 	.field {
@@ -560,12 +559,13 @@
 	}
 
 	.avatar-buttons button {
+		width: 100%;
 		margin-top: 0;
 		white-space: nowrap;
 	}
 
 	.delete-avatar-trigger {
-		padding-inline: 16px;
+		padding-inline: 14px;
 	}
 
 	button:disabled {
@@ -695,12 +695,11 @@
 		}
 
 		.avatar-footer {
-			display: grid;
 			gap: 10px;
 		}
 
 		.avatar-buttons {
-			justify-content: start;
+			grid-template-columns: 1fr;
 		}
 	}
 
