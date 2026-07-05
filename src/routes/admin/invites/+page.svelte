@@ -1,169 +1,158 @@
 <script lang="ts">
-	import Button from '$lib/ui/Button.svelte';
-	import type { ActionData, PageData } from './$types';
+	import { invalidateAll } from '$app/navigation';
+	import type { PageData } from './$types';
 
-	let { data, form }: { data: PageData; form: ActionData } = $props();
+	let { data }: { data: PageData } = $props();
+	let role = $state<'admin' | 'editor' | 'uploader' | 'user'>('user');
+	let expiry = $state<'never' | '7d' | '30d'>('7d');
+	let maxUses = $state(1);
+	let copied = $state('');
+
+	const canMintAdmin = $derived(data.user.role === 'owner');
+
+	async function create(event: SubmitEvent): Promise<void> {
+		event.preventDefault();
+		const expiresInDays = expiry === 'never' ? undefined : expiry === '7d' ? 7 : 30;
+		const res = await fetch('/api/invites', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ role, expiresInDays, maxUses })
+		});
+		if (res.ok) await invalidateAll();
+		else alert('Could not create the invite.');
+	}
+
+	async function revoke(id: string): Promise<void> {
+		await fetch(`/api/invites/${id}`, { method: 'DELETE' });
+		await invalidateAll();
+	}
+
+	async function copy(token: string): Promise<void> {
+		await navigator.clipboard.writeText(new URL(`/invite/${token}`, location.origin).href);
+		copied = token;
+		setTimeout(() => (copied = ''), 1500);
+	}
 </script>
 
-<svelte:head><title>Invites - Shoebox admin</title></svelte:head>
+<h2>Invites</h2>
+<form onsubmit={create}>
+	<label>
+		<span>Role</span>
+		<select bind:value={role}>
+			<option value="user">user</option>
+			<option value="uploader">uploader</option>
+			<option value="editor">editor</option>
+			{#if canMintAdmin}<option value="admin">admin</option>{/if}
+		</select>
+	</label>
+	<label>
+		<span>Expires</span>
+		<select bind:value={expiry}>
+			<option value="7d">In 7 days</option>
+			<option value="30d">In 30 days</option>
+			<option value="never">Never</option>
+		</select>
+	</label>
+	<label>
+		<span>Max uses</span>
+		<input type="number" min="1" max="100" bind:value={maxUses} />
+	</label>
+	<button type="submit">Create invite</button>
+</form>
 
-<section class="shell">
-	<p class="eyebrow">Admin</p>
-	<h1>Invites</h1>
-
-	{#if form && 'message' in form && form.message}<p class="error" role="alert">
-			{form.message}
-		</p>{/if}
-
-	<form method="POST" action="?/create" class="create">
-		<div class="control">
-			<label for="role">Role</label>
-			<select id="role" name="role" required>
-				<option value="user">user</option>
-				<option value="uploader">uploader</option>
-				<option value="editor">editor</option>
-				<option value="admin">admin</option>
-			</select>
-		</div>
-		<div class="control">
-			<label for="maxUses">Max uses</label>
-			<input id="maxUses" name="maxUses" type="number" min="1" value="1" />
-		</div>
-		<div class="control">
-			<label for="expiresInDays">Expires in days (blank = never)</label>
-			<input id="expiresInDays" name="expiresInDays" type="number" min="1" />
-		</div>
-		<Button>Create invite</Button>
-	</form>
-
-	<ul class="invites">
+<table>
+	<thead>
+		<tr>
+			<th>Link</th>
+			<th>Role</th>
+			<th>Usage</th>
+			<th>Expires</th>
+			<th></th>
+		</tr>
+	</thead>
+	<tbody>
 		{#each data.invites as invite (invite.id)}
-			<li>
-				<code data-testid="invite-url">{data.origin}/invite/{invite.token}</code>
-				<span class="meta">
-					{invite.role} · {invite.useCount}/{invite.maxUses} used ·
-					{invite.expiresAt
-						? `expires ${invite.expiresAt.toISOString().slice(0, 10)}`
-						: 'no expiry'}
-				</span>
-				<form method="POST" action="?/revoke">
-					<input type="hidden" name="id" value={invite.id} />
-					<button type="submit">Revoke</button>
-				</form>
-			</li>
-		{:else}
-			<li class="empty">No invites yet.</li>
+			<tr>
+				<td>
+					<button type="button" onclick={() => copy(invite.token)}>
+						{copied === invite.token ? 'Copied' : 'Copy link'}
+					</button>
+				</td>
+				<td>{invite.role}</td>
+				<td>{invite.useCount} / {invite.maxUses}</td>
+				<td>{invite.expiresAt ? new Date(invite.expiresAt).toLocaleDateString() : 'never'}</td>
+				<td><button type="button" onclick={() => revoke(invite.id)}>Revoke</button></td>
+			</tr>
 		{/each}
-	</ul>
-</section>
+	</tbody>
+</table>
 
 <style>
-	.shell {
-		padding: 8vh 6vw;
-		max-width: 56rem;
+	h2 {
+		margin: 0 0 16px;
+		font-family: var(--serif);
+		font-size: 26px;
+		font-weight: 500;
 	}
 
-	.eyebrow {
-		font-family: var(--font-sans);
-		text-transform: uppercase;
-		letter-spacing: 0.16em;
-		font-size: 0.72rem;
-		opacity: 0.75;
-	}
-
-	h1 {
-		font-size: clamp(2.5rem, 6vw, 4.5rem);
-		font-weight: 600;
-		margin-bottom: 1.6rem;
-	}
-
-	.error {
-		font-family: var(--font-sans);
-		font-size: 0.85rem;
-		color: var(--dawn);
-		margin-bottom: 1rem;
-	}
-
-	.create {
+	form {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 1rem;
-		align-items: flex-end;
-		margin-bottom: 2.2rem;
+		align-items: end;
+		margin-bottom: 26px;
+		gap: 14px;
 	}
 
-	.control label {
-		display: block;
-		margin-bottom: 0.4rem;
-		font-family: var(--font-sans);
+	label {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		font-family: var(--sans);
+		font-size: 11px;
+		letter-spacing: 0.14em;
 		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		font-size: 0.72rem;
-		opacity: 0.85;
 	}
 
-	.control select,
-	.control input {
-		min-height: 44px;
-		padding: 0.5rem 0.7rem;
+	select,
+	input,
+	button {
+		min-height: 48px;
+		padding: 0 12px;
 		border: 0;
-		background: rgba(255, 245, 232, 0.14);
+		background: color-mix(in srgb, currentColor 10%, transparent);
 		color: inherit;
-		font-family: var(--font-serif);
-		font-size: 1rem;
-	}
-
-	:global(html.light) .control select,
-	:global(html.light) .control input {
-		background: rgba(23, 20, 18, 0.08);
-	}
-
-	.invites {
-		list-style: none;
-		display: grid;
-		gap: 0.9rem;
-	}
-
-	.invites li {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.9rem;
-	}
-
-	.invites code {
-		font-size: 0.9rem;
-		padding: 0.35rem 0.5rem;
-		background: rgba(255, 245, 232, 0.1);
-		user-select: all;
-	}
-
-	:global(html.light) .invites code {
-		background: rgba(23, 20, 18, 0.06);
-	}
-
-	.meta {
-		font-family: var(--font-sans);
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		font-size: 0.7rem;
-		opacity: 0.75;
-	}
-
-	.invites button {
-		min-height: 44px;
-		padding: 0 0.8rem;
-		border: 0;
-		background: transparent;
 		cursor: pointer;
-		font-family: var(--font-sans);
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		font-size: 0.7rem;
-		color: var(--dawn);
+		font-family: var(--sans);
+		font-size: 14px;
 	}
 
-	.empty {
-		opacity: 0.7;
+	input[type='number'] {
+		width: 90px;
+	}
+
+	table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+
+	th {
+		padding-right: 12px;
+		font-family: var(--sans);
+		font-size: 11px;
+		letter-spacing: 0.14em;
+		opacity: 0.5;
+		text-align: left;
+		text-transform: uppercase;
+	}
+
+	td {
+		padding: 6px 12px 6px 0;
+		font-family: var(--serif);
+		font-size: 16px;
+	}
+
+	:is(select, input, button):focus-visible {
+		outline: 3px solid currentColor;
+		outline-offset: 2px;
 	}
 </style>
