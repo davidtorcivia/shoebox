@@ -122,7 +122,7 @@
 
 	.head {
 		position: relative;
-		z-index: 1;
+		z-index: 20;
 		max-width: 860px;
 		padding: 38px 30px 0;
 	}
