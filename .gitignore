@@ -6,6 +6,8 @@ build-worker/
 .wrangler/
 .env
 data/
+media/
+seed-src/
 e2e/fixtures/
 e2e/.data/
 /ingest/

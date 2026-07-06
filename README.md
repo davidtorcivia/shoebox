@@ -15,6 +15,29 @@ optional Python service detects and clusters faces.
 - Source: https://github.com/davidtorcivia/shoebox
 - Releases: https://github.com/davidtorcivia/shoebox/releases
 
+## Screenshots
+
+<p align="center"><em>The Vance family archive — a demo dataset. Seed your own with <code>node scripts/fetch-seed-images.mjs && pnpm exec tsx scripts/seed-demo.ts</code>.</em></p>
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="docs/screenshots/01-timeline.webp" alt="Timeline" width="100%"/><br/><sub>Year- and decade-banded timeline</sub></td>
+    <td width="50%" align="center"><img src="docs/screenshots/02-item-room.webp" alt="Item room" width="100%"/><br/><sub>Item room: metadata, people, comments</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/03-people.webp" alt="People" width="100%"/><br/><sub>People and relationships</sub></td>
+    <td align="center"><img src="docs/screenshots/04-person.webp" alt="Person" width="100%"/><br/><sub>Person room with ages on film</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/05-albums.webp" alt="Albums" width="100%"/><br/><sub>Albums</sub></td>
+    <td align="center"><img src="docs/screenshots/06-album.webp" alt="Album detail" width="100%"/><br/><sub>Album detail</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/07-search.webp" alt="Search" width="100%"/><br/><sub>Search with filters</sub></td>
+    <td align="center"><img src="docs/screenshots/08-player.webp" alt="Video player" width="100%"/><br/><sub>Video player with shuttle</sub></td>
+  </tr>
+</table>
+
 ## Features
 
 - **Timeline.** Year- and decade-banded grid. Hover a video to scrub its
