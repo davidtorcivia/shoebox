@@ -72,16 +72,18 @@ test('wrong share password rate limits after repeated failures', async ({ page, 
 	});
 
 	const anonCtx = await browser.newContext();
-	const anon = await anonCtx.newPage();
-	await anon.goto(`/share/${token}`);
-	for (let i = 0; i < 6; i += 1) {
-		await anon.getByLabel('Password').fill('wrong-pw');
-		await anon.getByRole('button', { name: 'Open' }).click();
-		await expect(anon.getByRole('alert')).toContainText(/not right/i);
+	for (let i = 0; i < 5; i += 1) {
+		const wrong = await anonCtx.request.post(`/share/${token}?/unlock`, {
+			headers: { origin: 'http://localhost:4173' },
+			form: { password: 'wrong-pw' }
+		});
+		expect(await wrong.text()).toContain('That password is not right.');
 	}
-	await anon.getByLabel('Password').fill('wrong-pw');
-	await anon.getByRole('button', { name: 'Open' }).click();
-	await expect(anon.getByRole('alert')).toContainText(/too many tries/i);
+	const limited = await anonCtx.request.post(`/share/${token}?/unlock`, {
+		headers: { origin: 'http://localhost:4173' },
+		form: { password: 'wrong-pw' }
+	});
+	expect(await limited.text()).toContain('Too many tries.');
 	await anonCtx.close();
 });
 

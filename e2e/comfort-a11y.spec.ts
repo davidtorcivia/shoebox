@@ -83,7 +83,7 @@ for (const scheme of ['dark', 'light'] as const) {
 }
 
 test('comfort mode disables hover scrub and exposes preview stepping', async ({ page }) => {
-	await page.goto('/');
+	await page.goto('/?y=1994');
 	const videoCard = page.locator('[data-type="video"]').first();
 	await expect(videoCard).toBeVisible();
 
