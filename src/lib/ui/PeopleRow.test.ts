@@ -4,8 +4,8 @@ import PeopleRow from './PeopleRow.svelte';
 import type { ItemDTO } from '$lib/dto';
 
 const people: ItemDTO['people'] = [
-	{ id: 'p1', name: 'Marta', accentColor: '#FA7B62', age: 38 },
-	{ id: 'p2', name: 'Eric', accentColor: '#C3272B' }
+	{ id: 'p1', slug: 'marta', name: 'Marta', accentColor: '#FA7B62', age: 38 },
+	{ id: 'p2', slug: 'eric', name: 'Eric', accentColor: '#C3272B' }
 ];
 
 describe('PeopleRow', () => {
@@ -15,7 +15,7 @@ describe('PeopleRow', () => {
 		expect(body).toContain('Marta');
 		expect(body).toContain('Eric');
 		expect(body).toContain('age 38');
-		expect(body).toContain('/people?person=p1');
+		expect(body).toContain('/people/marta');
 	});
 
 	it('does not emit italic, radius, or media-border styling', () => {

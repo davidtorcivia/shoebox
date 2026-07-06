@@ -149,14 +149,14 @@
 					type="button"
 					disabled={!data.neighbors.prevId}
 					aria-label="Previous item"
-					onclick={() => navigateTo(data.neighbors.prevId)}>↑</button
+					onclick={() => navigateTo(data.neighbors.prevId)}>‹</button
 				>
 				<button
 					class="edge next"
 					type="button"
 					disabled={!data.neighbors.nextId}
 					aria-label="Next item"
-					onclick={() => navigateTo(data.neighbors.nextId)}>↓</button
+					onclick={() => navigateTo(data.neighbors.nextId)}>›</button
 				>
 			</div>
 
@@ -180,12 +180,14 @@
 
 			<div class="rail-actions">
 				{#if item.urls.original}
+					<!-- eslint-disable svelte/no-navigation-without-resolve -- storage adapters return media URLs, not app routes -->
 					<a
 						class="download-original"
 						data-testid="download-original"
 						href={item.urls.original}
 						download>Download original</a
 					>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 				{/if}
 				{#if data.canShare}
 					<button
@@ -244,9 +246,17 @@
 		padding: calc(56px + clamp(1rem, 2vw, 2rem)) clamp(1rem, 2vw, 2rem) clamp(1rem, 2vw, 2rem);
 		color: var(--cream);
 		background-image:
-			var(--grain), radial-gradient(80% 60% at 100% 0%, var(--pool) 0%, transparent 60%),
+			var(--grain),
+			linear-gradient(
+				90deg,
+				rgb(23 20 18 / 0.62) 0%,
+				rgb(23 20 18 / 0.16) 46%,
+				rgb(23 20 18 / 0.52) 100%
+			),
+			linear-gradient(180deg, rgb(23 20 18 / 0.24) 0%, rgb(23 20 18 / 0.48) 100%),
+			radial-gradient(80% 60% at 100% 0%, var(--pool) 0%, transparent 60%),
 			linear-gradient(160deg, var(--stop-0) 0%, var(--stop-1) 55%, var(--stop-2) 100%);
-		background-blend-mode: overlay, normal, normal;
+		background-blend-mode: overlay, normal, normal, normal, normal;
 	}
 
 	.topbar {
@@ -315,8 +325,9 @@
 	.edge {
 		position: absolute;
 		top: 42%;
-		width: 44px;
-		height: 44px;
+		z-index: 2;
+		width: 48px;
+		height: 48px;
 		padding: 0;
 		font-family: var(--font-serif);
 		font-size: 2.4rem;
@@ -334,11 +345,11 @@
 	}
 
 	.prev {
-		left: -3.2rem;
+		left: 0.75rem;
 	}
 
 	.next {
-		right: -3.2rem;
+		right: 0.75rem;
 	}
 
 	.rail {

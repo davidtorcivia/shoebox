@@ -177,7 +177,9 @@ describe('createItem', () => {
 
 		expect(dto.tags.map((tag) => tag.name).sort()).toEqual(['christmas', 'sprinkler']);
 		expect(dto.tags.every((tag) => tag.kind === 'topic')).toBe(true);
-		expect(dto.people).toEqual([{ id: mom.id, name: 'Mom', accentColor: '#A8D8EA' }]);
+		expect(dto.people).toEqual([
+			{ id: mom.id, slug: mom.slug, name: 'Mom', accentColor: '#A8D8EA' }
+		]);
 
 		await createItem(
 			db,
@@ -212,9 +214,9 @@ describe('getItemDTO', () => {
 		await createItem(db, storage, queue, baseInput({ id: 'itm_a', sha256: 'a'.repeat(64) }));
 		await createItem(db, storage, queue, baseInput({ id: 'itm_b', sha256: 'b'.repeat(64) }));
 		await deleteItem(db, 'itm_a');
-		expect((await getItemDTOsByIds(db, storage, ['itm_b', 'missing', 'itm_a'])).map((item) => item.id)).toEqual([
-			'itm_b'
-		]);
+		expect(
+			(await getItemDTOsByIds(db, storage, ['itm_b', 'missing', 'itm_a'])).map((item) => item.id)
+		).toEqual(['itm_b']);
 	});
 });
 

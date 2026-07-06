@@ -78,7 +78,9 @@ async function reindexIds(db: Db, rows: Array<{ id: string }>): Promise<void> {
 export async function reindexItemsForPerson(db: Db, personId: string): Promise<void> {
 	await reindexIds(
 		db,
-		(await db.all(sql`SELECT item_id AS id FROM item_people WHERE person_id = ${personId}`)) as Array<{
+		(await db.all(
+			sql`SELECT item_id AS id FROM item_people WHERE person_id = ${personId}`
+		)) as Array<{
 			id: string;
 		}>
 	);
@@ -96,7 +98,9 @@ export async function reindexItemsForTag(db: Db, tagId: string): Promise<void> {
 export async function reindexItemsForAlbum(db: Db, albumId: string): Promise<void> {
 	await reindexIds(
 		db,
-		(await db.all(sql`SELECT item_id AS id FROM album_items WHERE album_id = ${albumId}`)) as Array<{
+		(await db.all(
+			sql`SELECT item_id AS id FROM album_items WHERE album_id = ${albumId}`
+		)) as Array<{
 			id: string;
 		}>
 	);
@@ -160,7 +164,8 @@ export async function buildItemConditions(db: Db, f: ItemFilter): Promise<BuiltC
 
 	if (f.text) {
 		const match = ftsMatchExpr(f.text);
-		if (match) conds.push(sql`i.rowid IN (SELECT rowid FROM search_fts WHERE search_fts MATCH ${match})`);
+		if (match)
+			conds.push(sql`i.rowid IN (SELECT rowid FROM search_fts WHERE search_fts MATCH ${match})`);
 	}
 
 	const resolvedPeople: Array<{ id: string; name: string; birthdate: string | null }> = [];
@@ -354,7 +359,7 @@ export async function filteredYearCounts(
 		sql`SELECT CAST(substr(i.sort_date, 1, 4) AS INTEGER) AS year,
 		           COUNT(*) AS count
 		    FROM items i
-		    WHERE ${where} AND i.sort_date IS NOT NULL
+		    WHERE ${where} AND i.sort_date IS NOT NULL AND CAST(substr(i.sort_date, 1, 4) AS INTEGER) >= 1
 		    GROUP BY year
 		    ORDER BY year`
 	)) as { year: number; count: number }[];

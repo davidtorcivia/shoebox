@@ -201,6 +201,7 @@ export async function buildItemDTOs(
 		.select({
 			itemId: itemPeople.itemId,
 			id: people.id,
+			slug: people.slug,
 			name: people.name,
 			accentColor: people.accentColor
 		})
@@ -255,6 +256,7 @@ export async function buildItemDTOs(
 				.filter((person) => person.itemId === row.id)
 				.map((person) => ({
 					id: person.id,
+					slug: person.slug,
 					name: person.name,
 					accentColor: person.accentColor
 				})),
@@ -584,7 +586,9 @@ export async function applyHolidayTags(db: Db, itemId: string): Promise<string[]
 			tagId = nanoid(12);
 			await db.run(sql`INSERT INTO tags (id, name, kind) VALUES (${tagId}, ${name}, 'holiday')`);
 		}
-		await db.run(sql`INSERT OR IGNORE INTO item_tags (item_id, tag_id) VALUES (${itemId}, ${tagId})`);
+		await db.run(
+			sql`INSERT OR IGNORE INTO item_tags (item_id, tag_id) VALUES (${itemId}, ${tagId})`
+		);
 	}
 
 	return wanted;

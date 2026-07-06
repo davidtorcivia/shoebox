@@ -14,14 +14,21 @@
 	const count = $derived(current?.count ?? 0);
 	const people = $derived(current?.people ?? 0);
 	const neighborYears = $derived([activeYear - 2, activeYear - 1, activeYear + 1, activeYear + 2]);
+	const previousYears = $derived(neighborYears.slice(0, 2).filter((year) => year >= 1));
+	const canPrev = $derived(activeYear > 1);
 	const canNext = $derived(activeYear < now);
 </script>
 
 <section class="year-band" aria-label="Current year">
-	<button type="button" aria-label="Previous year" onclick={() => onStep?.(-1)}>‹</button>
+	<button type="button" aria-label="Previous year" disabled={!canPrev} onclick={() => onStep?.(-1)}
+		>‹</button
+	>
 	<div class="years">
-		<a class="side" href={resolve(`/?y=${neighborYears[0]}`)}>{neighborYears[0]}</a>
-		<a class="near" href={resolve(`/?y=${neighborYears[1]}`)}>{neighborYears[1]}</a>
+		{#each previousYears as year, index (year)}
+			<a class={index === previousYears.length - 1 ? 'near' : 'side'} href={resolve(`/?y=${year}`)}
+				>{year}</a
+			>
+		{/each}
 		<h1>{activeYear}<small>{count} moments · {people} people</small></h1>
 		{#if neighborYears[2] <= now}
 			<a class="near" href={resolve(`/?y=${neighborYears[2]}`)}>{neighborYears[2]}</a>

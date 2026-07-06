@@ -261,13 +261,19 @@
 		min-height: 100vh;
 		overflow: hidden;
 		color: var(--cream);
+		--timeline-chrome: var(--cream);
+		--timeline-muted: color-mix(in srgb, var(--cream) 72%, transparent);
+		--timeline-soft: color-mix(in srgb, var(--cream) 16%, transparent);
+		--timeline-strong: color-mix(in srgb, var(--cream) 90%, transparent);
 	}
 
 	.page {
 		position: relative;
 		min-height: 100vh;
 		padding: 58px 30px 90px;
-		background: linear-gradient(180deg, rgb(23 20 18 / 0.1) 0%, rgb(23 20 18 / 0.68) 100%);
+		background:
+			radial-gradient(80% 64% at 100% 0%, rgb(23 20 18 / 0.14) 0%, transparent 62%),
+			linear-gradient(180deg, rgb(23 20 18 / 0.28) 0%, rgb(23 20 18 / 0.76) 100%);
 		color: var(--cream);
 	}
 

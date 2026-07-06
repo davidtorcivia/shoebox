@@ -22,7 +22,7 @@ const item: ItemDTO = {
 		thumb1600: '/thumb_1600.webp'
 	},
 	blurhash: null,
-	people: [{ id: 'p1', name: 'Dad', accentColor: '#FA7B62' }],
+	people: [{ id: 'p1', slug: 'dad', name: 'Dad', accentColor: '#FA7B62' }],
 	tags: [],
 	albums: [],
 	uploadedBy: 'u1',

@@ -52,18 +52,19 @@ export async function seedUser(
 export async function seedPerson(
 	db: Db,
 	over: Partial<{ id: string; name: string; birthdate: string }> = {}
-): Promise<{ id: string; name: string }> {
+): Promise<{ id: string; slug: string; name: string }> {
 	const id = over.id ?? `p_${nanoid(8)}`;
 	const name = over.name ?? `Person ${id}`;
+	const slug = `person-${id.toLowerCase()}`;
 
 	await db.insert(people).values({
 		id,
 		name,
-		slug: `person-${id.toLowerCase()}`,
+		slug,
 		birthdate: over.birthdate ?? null,
 		accentColor: '#A8D8EA',
 		createdAt: new Date()
 	});
 
-	return { id, name };
+	return { id, slug, name };
 }

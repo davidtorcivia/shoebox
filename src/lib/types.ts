@@ -21,7 +21,7 @@ export interface ItemDTO {
 		sprite?: string;
 	};
 	blurhash: string | null;
-	people: { id: string; name: string; accentColor: string; age?: number }[];
+	people: { id: string; slug: string; name: string; accentColor: string; age?: number }[];
 	tags: { id: string; name: string; kind: 'topic' | 'holiday' }[];
 	albums: { id: string; title: string }[];
 	uploadedBy: string;

@@ -14,7 +14,7 @@
 	const activeYear = $derived(data.activeYear);
 
 	function jump(delta: number) {
-		const year = Math.min(data.now, Math.max(1900, activeYear + delta));
+		const year = Math.min(data.now, Math.max(1, activeYear + delta));
 		void goto(resolve(`/?y=${year}`));
 	}
 </script>

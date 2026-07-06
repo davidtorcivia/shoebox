@@ -23,7 +23,7 @@
 			<span class="empty">Unidentified</span>
 		{:else}
 			{#each people as person (person.id)}
-				<a class="person" href={resolve(`/people?person=${person.id}`)}>
+				<a class="person" href={resolve(`/people/${person.slug}`)}>
 					<span
 						class="avatar"
 						aria-hidden="true"

@@ -8,7 +8,6 @@
 </script>
 
 <div class="month-break">
-	<span>{label}</span>
 	<h2>{month}</h2>
 </div>
 
@@ -17,15 +16,6 @@
 		margin: 0 0 0.875rem;
 		padding-top: 0.625rem;
 		color: var(--timeline-chrome, var(--ink));
-	}
-
-	span {
-		display: block;
-		font-family: var(--font-sans);
-		font-size: 0.62rem;
-		letter-spacing: 0.2em;
-		text-transform: uppercase;
-		color: var(--timeline-muted, rgba(23, 20, 18, 0.62));
 	}
 
 	h2 {

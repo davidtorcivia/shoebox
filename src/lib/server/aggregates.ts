@@ -59,6 +59,7 @@ export async function timelineYears(
 		.select({ year: yearCounts.year, count: sql<number>`sum(${yearCounts.count})` })
 		.from(yearCounts)
 		.groupBy(yearCounts.year)
+		.having(sql`${yearCounts.year} >= 1 AND sum(${yearCounts.count}) > 0`)
 		.orderBy(yearCounts.year);
 
 	if (countRows.length === 0) return { years: [], earliest: null, latest: null };

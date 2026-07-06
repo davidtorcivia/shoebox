@@ -27,10 +27,14 @@ describe('token constants', () => {
 		for (const a of ACCENTS) expect(['ink', 'cream']).toContain(a.on);
 	});
 
-	it('decade palettes run 1940..2020 in order', () => {
+	it('decade palettes run 1900..2020 in order', () => {
 		expect(DECADES.map((d) => d.decade)).toEqual([
-			1940, 1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020
+			1900, 1910, 1920, 1930, 1940, 1950, 1960, 1970, 1980, 1990, 2000, 2010, 2020
 		]);
+	});
+
+	it('keeps decade chrome on light text', () => {
+		expect(DECADES.every((decade) => decade.chromeOn === 'cream')).toBe(true);
 	});
 
 	it('grain is an inline SVG data URI', () => {
@@ -54,24 +58,24 @@ describe('paletteFor', () => {
 		expect(paletteFor(1955).decade).toBe(1950);
 	});
 
-	it('clamps 2020s-and-later to the 2020 palette', () => {
+	it('cycles 2030s-and-later through the curated set', () => {
 		expect(paletteFor(2024).decade).toBe(2020);
-		expect(paletteFor(2031).decade).toBe(2020);
+		expect(paletteFor(2031).decade).toBe(1900);
+		expect(paletteFor(2041).decade).toBe(1910);
 	});
 
-	it('cycles pre-1940 decades backwards through the set', () => {
-		expect(paletteFor(1935)).toBe(DECADES[8]);
-		expect(paletteFor(1925)).toBe(DECADES[7]);
-		expect(paletteFor(1901)).toBe(DECADES[5]);
-		expect(paletteFor(1850)).toBe(DECADES[0]);
+	it('cycles pre-1900 decades backwards through the set', () => {
+		expect(paletteFor(1895)).toBe(DECADES[12]);
+		expect(paletteFor(1885)).toBe(DECADES[11]);
+		expect(paletteFor(1850)).toBe(DECADES[8]);
 	});
 });
 
 describe('playerRoomFor', () => {
-	it('collapses the 1990s palette to the locked deep-end room', () => {
+	it('collapses the 1990s palette to a deep-end room', () => {
 		expect(playerRoomFor(1994)).toEqual({
-			stops: ['#171412', '#9D2B22', '#F35336'],
-			pool: '#FA7B6266'
+			stops: ['#171412', '#8D496E', '#1D1A1D'],
+			pool: '#3F837B66'
 		});
 	});
 

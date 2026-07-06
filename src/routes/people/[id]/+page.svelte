@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import Avatar from '$lib/ui/Avatar.svelte';
 	import CroppedPortrait from '$lib/ui/CroppedPortrait.svelte';
 	import Gradient from '$lib/ui/Gradient.svelte';
@@ -80,13 +81,20 @@
 	<Gradient stops={room.stops} pools={room.pools} />
 	<section class="page">
 		<div class="hero">
-			<div class="portrait" data-testid="person-portrait">
-				{#if person.avatarUrl && person.avatarCrop}
-					<CroppedPortrait url={person.avatarUrl} crop={person.avatarCrop} name={person.name} />
-				{:else}
-					<div class="portrait-fill" style:background={fallbackBackground}>
-						<span>{initial}</span>
-					</div>
+			<div class="portrait-stack">
+				<div class="portrait" data-testid="person-portrait">
+					{#if person.avatarUrl && person.avatarCrop}
+						<CroppedPortrait url={person.avatarUrl} crop={person.avatarCrop} name={person.name} />
+					{:else}
+						<div class="portrait-fill" style:background={fallbackBackground}>
+							<span>{initial}</span>
+						</div>
+					{/if}
+				</div>
+				{#if data.canEdit}
+					<a class="portrait-action" href={resolve(`/people/${person.slug}/edit`)}
+						>Choose portrait</a
+					>
 				{/if}
 			</div>
 			<div class="who">
@@ -121,6 +129,7 @@
 				{:else}
 					{#if person.bio}
 						<div class="bio-text bio-md" data-testid="person-bio">
+							<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown sanitizes output -->
 							{@html renderMarkdown(person.bio)}
 						</div>
 					{:else}
@@ -142,7 +151,7 @@
 						<span class="group-label">{label}</span>
 						<span class="names">
 							{#each members as member (member.id)}
-								<a class="person-link" href={`/people/${member.slug}`}>
+								<a class="person-link" href={resolve(`/people/${member.slug}`)}>
 									<Avatar name={member.name} accentColor={member.accentColor} size={19} />
 									{member.name}
 								</a>
@@ -151,7 +160,11 @@
 					</div>
 				{/each}
 				{#if data.canEdit}
-					<a class="editlink" href={`/people/${person.slug}/edit`} data-testid="edit-person">
+					<a
+						class="editlink"
+						href={resolve(`/people/${person.slug}/edit`)}
+						data-testid="edit-person"
+					>
 						Edit person
 					</a>
 				{/if}
@@ -176,13 +189,19 @@
 		min-height: 100vh;
 		overflow: hidden;
 		color: var(--cream);
+		--timeline-chrome: var(--cream);
+		--timeline-muted: color-mix(in srgb, var(--cream) 72%, transparent);
+		--timeline-soft: color-mix(in srgb, var(--cream) 16%, transparent);
+		--timeline-strong: color-mix(in srgb, var(--cream) 90%, transparent);
 	}
 
 	.page {
 		position: relative;
 		min-height: 100vh;
 		overflow: hidden;
-		background: linear-gradient(180deg, rgb(23 20 18 / 0.05) 0%, rgb(23 20 18 / 0.58) 100%);
+		background:
+			radial-gradient(90% 70% at 100% 0%, rgb(23 20 18 / 0.08) 0%, transparent 64%),
+			linear-gradient(180deg, rgb(23 20 18 / 0.2) 0%, rgb(23 20 18 / 0.72) 100%);
 		color: var(--cream);
 	}
 
@@ -195,11 +214,25 @@
 		padding: 38px 30px 0;
 	}
 
+	.portrait-stack {
+		display: grid;
+		flex: none;
+		gap: 10px;
+	}
+
 	.portrait {
 		width: 168px;
 		height: 210px;
-		flex: none;
 		overflow: hidden;
+	}
+
+	.portrait-action {
+		color: color-mix(in srgb, var(--cream) 68%, transparent);
+		font-family: var(--font-sans);
+		font-size: 10px;
+		letter-spacing: 0.18em;
+		text-decoration: none;
+		text-transform: uppercase;
 	}
 
 	.portrait-fill {

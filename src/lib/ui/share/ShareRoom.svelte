@@ -10,10 +10,12 @@
 	style={`background: linear-gradient(165deg, ${stops[0]}, ${stops[1]} 55%, ${stops[2]}); --ink:${INK}; --cream:${CREAM}; --serif:${FONT.serif}; --sans:${FONT.sans};`}
 >
 	<div class="grain" style={`background-image:url("${GRAIN_URI}")`}></div>
+	<header class="share-top">
+		<div class="wordmark" data-testid="share-wordmark">Shoebox</div>
+	</header>
 	<div class="content">
 		{@render children()}
 	</div>
-	<footer class="wordmark" data-testid="share-wordmark">SHOEBOX</footer>
 </div>
 
 <style>
@@ -32,6 +34,15 @@
 		pointer-events: none;
 	}
 
+	.share-top {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		min-height: 56px;
+		align-items: center;
+		padding: 0 28px;
+	}
+
 	.content {
 		position: relative;
 		width: min(1200px, 100%);
@@ -41,14 +52,12 @@
 	}
 
 	.wordmark {
-		position: relative;
-		padding: 32px 0 16px;
 		color: var(--cream);
 		font-family: var(--sans);
 		font-size: 12px;
-		letter-spacing: 0.3em;
-		opacity: var(--chrome-opacity, 0.5);
-		text-align: center;
+		font-weight: 800;
+		letter-spacing: 0.26em;
+		opacity: 0.92;
 		text-transform: uppercase;
 	}
 </style>

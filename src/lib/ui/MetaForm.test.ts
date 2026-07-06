@@ -24,8 +24,8 @@ const item: ItemDTO = {
 	},
 	blurhash: null,
 	people: [
-		{ id: 'p_mom', name: 'Mom', accentColor: '#FA7B62' },
-		{ id: 'p_dad', name: 'Dad', accentColor: '#C3272B' }
+		{ id: 'p_mom', slug: 'mom', name: 'Mom', accentColor: '#FA7B62' },
+		{ id: 'p_dad', slug: 'dad', name: 'Dad', accentColor: '#C3272B' }
 	],
 	tags: [{ id: 't1', name: 'Summer', kind: 'topic' }],
 	albums: [],

@@ -25,6 +25,9 @@
 {#if data.state === 'password'}
 	<main class="room" style={`${room}; ${themeVars}`}>
 		<div class="grain" style={`background-image:url("${GRAIN_URI}")`}></div>
+		<header class="share-top">
+			<div class="wordmark" data-testid="share-wordmark">Shoebox</div>
+		</header>
 		<section class="gate">
 			<p class="eyebrow">A shared memory from Shoebox</p>
 			<h1>This memory is protected</h1>
@@ -35,17 +38,18 @@
 				<button type="submit">Open</button>
 			</form>
 		</section>
-		<footer class="wordmark">SHOEBOX</footer>
 	</main>
 {:else if data.state === 'expired'}
 	<main class="room" style={`${room}; ${themeVars}`}>
 		<div class="grain" style={`background-image:url("${GRAIN_URI}")`}></div>
+		<header class="share-top">
+			<div class="wordmark" data-testid="share-wordmark">Shoebox</div>
+		</header>
 		<section class="gate">
 			<p class="eyebrow">A shared memory from Shoebox</p>
 			<h1>This share link has expired</h1>
 			<p class="sub">Ask whoever sent it for a fresh link.</p>
 		</section>
-		<footer class="wordmark">SHOEBOX</footer>
 	</main>
 {:else if data.share.targetType === 'album'}
 	<ShareRoom stops={paletteFor(albumYear).stops}>
@@ -66,20 +70,17 @@
 		/>
 	{/if}
 {:else}
+	<div class="item-wordmark" data-testid="share-wordmark">Shoebox</div>
 	<ShareViewer items={data.items} index={0} allowDownload={data.share.allowDownload} single />
-	<footer class="item-wordmark" data-testid="share-wordmark">SHOEBOX</footer>
 {/if}
 
 <style>
 	.room {
 		position: relative;
-		display: flex;
 		min-height: 100vh;
-		align-items: center;
-		justify-content: center;
 		padding: 24px;
 		overflow: hidden;
-		color: var(--ink);
+		color: var(--cream);
 	}
 
 	.grain {
@@ -94,6 +95,15 @@
 		position: relative;
 		z-index: 1;
 		width: min(440px, 100%);
+		margin: min(18vh, 10rem) auto 0;
+	}
+
+	.share-top {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		min-height: 56px;
+		align-items: center;
 	}
 
 	.eyebrow,
@@ -109,8 +119,14 @@
 	button,
 	.wordmark {
 		font-size: 12px;
-		letter-spacing: 0.14em;
+		letter-spacing: 0.26em;
 		text-transform: uppercase;
+	}
+
+	.wordmark {
+		font-weight: 800;
+		opacity: 0.92;
+		color: var(--cream);
 	}
 
 	.eyebrow {
@@ -154,17 +170,20 @@
 
 	.item-wordmark {
 		position: fixed;
-		right: 0;
-		bottom: 0;
+		top: 0;
 		left: 0;
-		padding: 12px 0;
+		z-index: 50;
+		display: flex;
+		min-height: 56px;
+		align-items: center;
+		padding: 0 28px;
 		color: var(--cream);
 		font-family: var(--sans);
 		font-size: 12px;
-		letter-spacing: 0.3em;
-		opacity: var(--chrome-opacity, 0.5);
+		font-weight: 800;
+		letter-spacing: 0.26em;
+		opacity: 0.92;
 		pointer-events: none;
-		text-align: center;
 		text-transform: uppercase;
 	}
 
@@ -198,7 +217,7 @@
 	}
 
 	input:focus-visible {
-		outline: 3px solid var(--ink);
+		outline: 3px solid var(--cream);
 		outline-offset: 2px;
 	}
 

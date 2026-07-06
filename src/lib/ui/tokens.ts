@@ -33,118 +33,118 @@ export type DecadePalette = {
 export const DECADES: DecadePalette[] = [
 	{
 		decade: 1900,
-		stops: ['#16202A', '#7E6E5A', '#D9C7A2'],
+		stops: ['#1B2326', '#8E6F4D', '#E6D0A6'],
 		pools: [
-			{ color: '#B88F5C66', pos: '14% -8%', size: '78% 58%' },
-			{ color: '#284C5F55', pos: '96% 18%', size: '70% 54%' }
+			{ color: '#E6D0A666', pos: '88% 18%', size: '76% 58%' },
+			{ color: '#5A6A6650', pos: '4% 92%', size: '68% 50%' }
 		],
 		chromeOn: 'cream'
 	},
 	{
 		decade: 1910,
-		stops: ['#243322', '#87603F', '#E4C77F'],
+		stops: ['#20281D', '#5F6D43', '#D6A24F'],
 		pools: [
-			{ color: '#D0A04466', pos: '78% -8%', size: '76% 58%' },
-			{ color: '#633A3D55', pos: '2% 92%', size: '68% 50%' }
+			{ color: '#A447355A', pos: '8% -6%', size: '74% 56%' },
+			{ color: '#D6A24F66', pos: '96% 82%', size: '70% 48%' }
 		],
-		chromeOn: 'ink'
+		chromeOn: 'cream'
 	},
 	{
 		decade: 1920,
-		stops: ['#101A24', '#1F6F78', '#F4C15D'],
+		stops: ['#0B1620', '#006E78', '#F2BE49'],
 		pools: [
-			{ color: '#F4C15D66', pos: '92% 8%', size: '74% 54%' },
-			{ color: '#C94B4B4f', pos: '5% 82%', size: '68% 52%' }
+			{ color: '#F2BE4977', pos: '88% 12%', size: '74% 56%' },
+			{ color: '#B7435A58', pos: '4% 86%', size: '70% 52%' }
 		],
 		chromeOn: 'cream'
 	},
 	{
 		decade: 1930,
-		stops: ['#202323', '#7B715E', '#C9B07D'],
+		stops: ['#2B2920', '#7B765C', '#CDB985'],
 		pools: [
-			{ color: '#B9483F50', pos: '16% 0%', size: '76% 56%' },
-			{ color: '#78908A44', pos: '92% 80%', size: '70% 48%' }
+			{ color: '#8AA09A4F', pos: '92% 8%', size: '74% 54%' },
+			{ color: '#B6533F50', pos: '10% 90%', size: '66% 48%' }
 		],
 		chromeOn: 'cream'
 	},
 	{
 		decade: 1940,
-		stops: ['#1E2424', '#596D63', '#C5A36F'],
+		stops: ['#151C26', '#4D5F50', '#C3473D'],
 		pools: [
-			{ color: '#3C4E5266', pos: '8% -10%', size: '82% 60%' },
-			{ color: '#C07A4D4c', pos: '92% 90%', size: '70% 46%' }
+			{ color: '#D6BA7A5C', pos: '88% 18%', size: '76% 58%' },
+			{ color: '#2A4B6858', pos: '4% 92%', size: '70% 48%' }
 		],
 		chromeOn: 'cream'
 	},
 	{
 		decade: 1950,
-		stops: ['#224E64', '#A8D8EA', '#F7D774'],
+		stops: ['#073143', '#167C8D', '#D86F72'],
 		pools: [
-			{ color: '#F7D77477', pos: '82% 30%', size: '72% 58%' },
-			{ color: '#E46D6D55', pos: '0% 88%', size: '64% 48%' }
+			{ color: '#F6C85B55', pos: '90% 16%', size: '72% 56%' },
+			{ color: '#91D7D05A', pos: '6% 88%', size: '68% 50%' }
 		],
-		chromeOn: 'ink'
+		chromeOn: 'cream'
 	},
 	{
 		decade: 1960,
-		stops: ['#2B2D64', '#E7563D', '#FFD700'],
+		stops: ['#160B43', '#A51768', '#E74C2E'],
 		pools: [
-			{ color: '#FFD70077', pos: '84% 8%', size: '76% 52%' },
-			{ color: '#35A77D55', pos: '4% 92%', size: '70% 48%' }
+			{ color: '#FFE60055', pos: '88% 12%', size: '74% 54%' },
+			{ color: '#16A37B5A', pos: '6% 92%', size: '70% 48%' }
 		],
-		chromeOn: 'ink'
+		chromeOn: 'cream'
 	},
 	{
 		decade: 1970,
-		stops: ['#362014', '#B45F2A', '#E2B857'],
+		stops: ['#20100A', '#6A3D17', '#A66A22'],
 		pools: [
-			{ color: '#6B6E2368', pos: '85% 10%', size: '72% 54%' },
-			{ color: '#D3826E5c', pos: '0% 88%', size: '66% 48%' }
+			{ color: '#C04E2E5F', pos: '8% 90%', size: '68% 48%' },
+			{ color: '#7C7A2F66', pos: '92% 8%', size: '74% 56%' }
 		],
-		chromeOn: 'ink'
+		chromeOn: 'cream'
 	},
 	{
 		decade: 1980,
-		stops: ['#090A1F', '#2447B8', '#D02F8A'],
+		stops: ['#08061B', '#5525D9', '#FF2BA6'],
 		pools: [
-			{ color: '#00B7C777', pos: '86% 8%', size: '78% 58%' },
-			{ color: '#D02F8A66', pos: '4% 90%', size: '70% 50%' }
+			{ color: '#00D2FF78', pos: '92% 10%', size: '78% 58%' },
+			{ color: '#FFB0005C', pos: '6% 90%', size: '70% 50%' }
 		],
 		chromeOn: 'cream'
 	},
 	{
 		decade: 1990,
-		stops: ['#222126', '#6E9FA8', '#F0C36E'],
+		stops: ['#1D1A1D', '#3F837B', '#C7B45A'],
 		pools: [
-			{ color: '#9D4C7A66', pos: '10% -8%', size: '82% 60%' },
-			{ color: '#A6C36F55', pos: '94% 84%', size: '72% 48%' }
+			{ color: '#8D496E5C', pos: '8% -6%', size: '80% 58%' },
+			{ color: '#6D7E3555', pos: '96% 86%', size: '72% 48%' }
 		],
 		chromeOn: 'cream'
 	},
 	{
 		decade: 2000,
-		stops: ['#111827', '#1F3A8A', '#A8B8C4'],
+		stops: ['#06121F', '#00639A', '#5C53B8'],
 		pools: [
-			{ color: '#71C7EC5c', pos: '84% 6%', size: '78% 56%' },
-			{ color: '#C3272B4f', pos: '8% 92%', size: '70% 48%' }
+			{ color: '#75E8FF66', pos: '86% 10%', size: '76% 56%' },
+			{ color: '#B6FF5A4D', pos: '6% 90%', size: '70% 48%' }
 		],
 		chromeOn: 'cream'
 	},
 	{
 		decade: 2010,
-		stops: ['#171412', '#5E6F4D', '#D8CFC0'],
+		stops: ['#1C1520', '#D7504F', '#F4C9B8'],
 		pools: [
-			{ color: '#8EB89755', pos: '82% 18%', size: '74% 56%' },
-			{ color: '#E6A75A44', pos: '4% 92%', size: '66% 48%' }
+			{ color: '#65C6BD58', pos: '92% 14%', size: '74% 56%' },
+			{ color: '#F5D96B4F', pos: '8% 90%', size: '66% 48%' }
 		],
 		chromeOn: 'cream'
 	},
 	{
 		decade: 2020,
-		stops: ['#09111F', '#243C8F', '#D7D7E0'],
+		stops: ['#0E1018', '#6147A8', '#F3A5B8'],
 		pools: [
-			{ color: '#4D7CFE66', pos: '18% -8%', size: '82% 60%' },
-			{ color: '#FA7B6250', pos: '98% 84%', size: '70% 50%' }
+			{ color: '#7DE1C366', pos: '90% 10%', size: '76% 56%' },
+			{ color: '#F05A4E50', pos: '6% 92%', size: '70% 50%' }
 		],
 		chromeOn: 'cream'
 	}

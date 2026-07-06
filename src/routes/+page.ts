@@ -15,7 +15,7 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	const requested = Number(url.searchParams.get('y'));
 	const fallback = timeline.latest ?? 2000;
 	const activeYear =
-		Number.isInteger(requested) && requested >= 1900 && requested <= now
+		Number.isInteger(requested) && requested >= 1 && requested <= now
 			? requested
 			: Math.min(fallback, now);
 	const itemsRes = await fetch(`/api/items?year=${activeYear}&limit=100`);
