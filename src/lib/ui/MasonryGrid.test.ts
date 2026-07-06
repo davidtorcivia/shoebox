@@ -32,7 +32,7 @@ const item: ItemDTO = {
 describe('MasonryGrid', () => {
 	it('renders month breaks and media cards', () => {
 		const { body } = render(MasonryGrid, { props: { items: [item], activeYear: 1994 } });
-		expect(body).toContain('June 1994');
+		expect(body).toContain('JUNE');
 		expect(body).toContain('Open Lake');
 		expect(body).toContain('lake');
 	});

@@ -7,10 +7,11 @@
 	interface Props {
 		items: ItemDTO[];
 		activeYear: number;
+		motionDirection?: number;
 		captionRightFor?: ((item: ItemDTO) => string | null) | null;
 	}
 
-	let { items, activeYear, captionRightFor = null }: Props = $props();
+	let { items, activeYear, motionDirection = 0, captionRightFor = null }: Props = $props();
 	let width = $state(1120);
 	const entries = $derived(buildGridEntries(items));
 	const columns = $derived(columnCount(width));
@@ -18,16 +19,21 @@
 	const layout = $derived(layoutMasonry(entries, columns, columnWidth, 12));
 </script>
 
-<section class="masonry" aria-label="Timeline media" bind:clientWidth={width}>
+<section
+	class="masonry"
+	data-direction={motionDirection}
+	aria-label="Timeline media"
+	bind:clientWidth={width}
+>
 	{#if entries.length === 0}
 		<p class="empty">No moments yet for this year.</p>
 	{:else}
 		<div class="canvas" style={`height: ${layout.height}px`}>
-			{#each layout.entries as positioned (positioned.id)}
+			{#each layout.entries as positioned, index (positioned.id)}
 				<div
 					class="cell"
 					class:month={positioned.entry.kind === 'month'}
-					style={`transform: translate(${positioned.x}px, ${positioned.y}px); width: ${positioned.width}px; height: ${positioned.height}px`}
+					style={`--delay: ${Math.min(index, 10) * 34}ms; transform: translate(${positioned.x}px, ${positioned.y}px); width: ${positioned.width}px; height: ${positioned.height}px`}
 				>
 					{#if positioned.entry.kind === 'month'}
 						<MonthBreak label={positioned.entry.label} />
@@ -58,13 +64,23 @@
 	}
 
 	.cell {
+		--cell-offset: 1.75rem;
+
 		position: absolute;
 		top: 0;
 		left: 0;
+		animation: cell-arrive 540ms cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation-delay: var(--delay);
+		will-change: opacity, translate, filter;
 	}
 
 	.month {
 		color: var(--timeline-chrome, var(--ink));
+		animation-duration: 420ms;
+	}
+
+	.masonry[data-direction='-1'] .cell {
+		--cell-offset: -1.75rem;
 	}
 
 	.empty {
@@ -82,6 +98,26 @@
 	@media (max-width: 760px) {
 		.masonry {
 			padding: 1rem 0.75rem 7rem;
+		}
+	}
+
+	@keyframes cell-arrive {
+		from {
+			opacity: 0;
+			filter: blur(8px);
+			translate: var(--cell-offset) 0;
+		}
+
+		to {
+			opacity: 1;
+			filter: blur(0);
+			translate: 0 0;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.cell {
+			animation: none;
 		}
 	}
 </style>

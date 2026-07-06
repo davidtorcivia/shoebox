@@ -11,7 +11,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 		limit: 100
 	});
 	const people = await locals.db
-		.select({ id: schema.people.id, name: schema.people.name, accentColor: schema.people.accentColor })
+		.select({
+			id: schema.people.id,
+			name: schema.people.name,
+			accentColor: schema.people.accentColor
+		})
 		.from(schema.people)
 		.orderBy(schema.people.name);
 	const albums = await locals.db
@@ -20,5 +24,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 		.where(isNull(schema.albums.deletedAt))
 		.orderBy(schema.albums.title);
 
-	return { items, people, albums, ingestionEnabled: locals.platform.features.ingestion };
+	return {
+		items,
+		people,
+		albums,
+		ingestionEnabled: locals.platform.features.ingestion,
+		canCreatePeople: true
+	};
 };

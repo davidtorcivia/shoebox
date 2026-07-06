@@ -39,6 +39,12 @@
 	let leavingIds = $state<string[]>([]);
 	let date = $state<ItemDate>({ dateStart: null, dateEnd: null, precision: 'unknown' });
 	let peopleIds = $state<string[]>([]);
+	let personQuery = $state('');
+	// svelte-ignore state_referenced_locally
+	let peopleOptions = $state(data.people);
+	let creatingPerson = $state(false);
+	let newPersonName = $state('');
+	let personError = $state('');
 	let tagsText = $state('');
 	let title = $state('');
 	let tapeLabel = $state('');
@@ -52,6 +58,18 @@
 	);
 	const focused = $derived(queue[focusIndex] ?? null);
 	const selectedCount = $derived(selectedIds.length || (focused ? 1 : 0));
+	const selectedPeopleDetail = $derived(
+		peopleOptions.filter((person) => peopleIds.includes(person.id))
+	);
+	const personMatches = $derived.by(() => {
+		const query = personQuery.trim().toLowerCase();
+		if (query.length === 0) return [];
+		return peopleOptions
+			.filter(
+				(person) => !peopleIds.includes(person.id) && person.name.toLowerCase().includes(query)
+			)
+			.slice(0, 14);
+	});
 
 	$effect(() => {
 		const item = queue[focusIndex];
@@ -59,6 +77,8 @@
 		lastLoadedId = item.id;
 		date = { ...item.date };
 		peopleIds = item.people.map((person) => person.id);
+		personQuery = '';
+		creatingPerson = false;
 		tagsText = item.tags.map((tag) => tag.name).join(', ');
 		title = item.title ?? '';
 		tapeLabel = item.tapeLabel ?? '';
@@ -178,10 +198,33 @@
 		}
 	}
 
-	function togglePerson(id: string): void {
-		peopleIds = peopleIds.includes(id)
-			? peopleIds.filter((personId) => personId !== id)
-			: [...peopleIds, id];
+	function selectPerson(id: string): void {
+		if (!peopleIds.includes(id)) peopleIds = [...peopleIds, id];
+		personQuery = '';
+	}
+
+	function removePerson(id: string): void {
+		peopleIds = peopleIds.filter((personId) => personId !== id);
+	}
+
+	async function createPerson(): Promise<void> {
+		const name = newPersonName.trim();
+		if (!name) return;
+		personError = '';
+		const res = await fetch('/api/people', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ name })
+		});
+		if (!res.ok) {
+			personError = 'Could not add person.';
+			return;
+		}
+		const { person } = await res.json();
+		peopleOptions = [...peopleOptions, person].sort((a, b) => a.name.localeCompare(b.name));
+		selectPerson(person.id);
+		newPersonName = '';
+		creatingPerson = false;
 	}
 
 	function previewUrl(item: QueueItem): string {
@@ -272,21 +315,70 @@
 
 						<DatePicker bind:value={date} />
 
-						<fieldset>
-							<legend>People</legend>
-							<div class="people">
-								{#each data.people as person (person.id)}
-									<label class="person">
-										<input
-											type="checkbox"
-											checked={peopleIds.includes(person.id)}
-											onchange={() => togglePerson(person.id)}
-										/>
-										<span style:color={person.accentColor}>{person.name}</span>
-									</label>
-								{/each}
+						<div class="people-field" role="group" aria-labelledby="arrivals-people-label">
+							<div class="people-label-row">
+								<span id="arrivals-people-label">People</span>
+								{#if data.canCreatePeople}
+									<button
+										type="button"
+										class="inline-action"
+										onclick={() => (creatingPerson = !creatingPerson)}
+									>
+										Add person
+									</button>
+								{/if}
 							</div>
-						</fieldset>
+							<input
+								bind:value={personQuery}
+								placeholder="Search people"
+								aria-label="Search people to tag"
+							/>
+							{#if selectedPeopleDetail.length}
+								<div class="selected-people" aria-label="Selected people">
+									{#each selectedPeopleDetail as person (person.id)}
+										<button
+											type="button"
+											class="selected-person"
+											style:--person-accent={person.accentColor}
+											onclick={() => removePerson(person.id)}
+											aria-label={`Remove ${person.name}`}
+										>
+											<span>{person.name.slice(0, 1)}</span>
+											{person.name}
+											<em>Remove</em>
+										</button>
+									{/each}
+								</div>
+							{/if}
+							{#if personQuery.trim()}
+								<div class="people-results">
+									{#each personMatches as person (person.id)}
+										<button
+											type="button"
+											style:--person-accent={person.accentColor}
+											onclick={() => selectPerson(person.id)}
+										>
+											<span>{person.name.slice(0, 1)}</span>
+											{person.name}
+										</button>
+									{:else}
+										<p>No matching people.</p>
+									{/each}
+								</div>
+							{/if}
+							{#if creatingPerson}
+								<div class="create-person">
+									<input
+										bind:value={newPersonName}
+										placeholder="New person name"
+										aria-label="New person name"
+									/>
+									<button type="button" onclick={() => void createPerson()}>Add</button>
+									<button type="button" onclick={() => (creatingPerson = false)}>Cancel</button>
+								</div>
+								{#if personError}<p class="person-error">{personError}</p>{/if}
+							{/if}
+						</div>
 
 						<label>
 							<span>Tags</span>
@@ -362,7 +454,7 @@
 	.count,
 	.row-date,
 	.meta label > span,
-	.meta legend,
+	.people-label-row > span,
 	.ingest {
 		font-family: var(--font-sans);
 		font-size: 11px;
@@ -387,8 +479,8 @@
 
 	.layout {
 		display: grid;
-		grid-template-columns: minmax(230px, 292px) minmax(320px, 1fr) minmax(280px, 340px);
-		gap: 16px;
+		grid-template-columns: minmax(230px, 292px) minmax(360px, 1fr) minmax(360px, 430px);
+		gap: 18px;
 		align-items: start;
 	}
 
@@ -501,9 +593,11 @@
 	.meta {
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
-		padding: 14px;
-		background: color-mix(in srgb, var(--ink) 22%, transparent);
+		gap: 14px;
+		padding: 18px;
+		background:
+			linear-gradient(180deg, color-mix(in srgb, var(--cream) 8%, transparent), transparent 72%),
+			color-mix(in srgb, var(--ink) 26%, transparent);
 	}
 
 	.meta-head h2 {
@@ -514,16 +608,17 @@
 	}
 
 	.meta label > span,
-	.meta legend {
+	.people-label-row > span {
 		display: block;
 		margin-bottom: 7px;
 		opacity: 0.76;
 	}
 
-	.meta input[type='text'],
-	.meta select {
+	.meta input:not([type='checkbox']),
+	.meta select,
+	.people-field > input {
 		width: 100%;
-		min-height: 40px;
+		min-height: 44px;
 		border: 0;
 		background: color-mix(in srgb, var(--cream) 13%, transparent);
 		color: var(--cream);
@@ -533,58 +628,148 @@
 		padding: 7px 9px;
 	}
 
-	.meta fieldset {
-		margin: 0;
-		padding: 0;
-		border: 0;
-	}
-
-	.meta :global(fieldset) {
-		margin: 0;
-		padding: 0;
-		border: 0;
-	}
-
 	.meta :global(legend),
-	.meta :global(label > span) {
+	.meta :global(label > span),
+	.meta :global(.date-label) {
 		margin-bottom: 7px;
 		font-size: 11px;
 		letter-spacing: 0.18em;
 		opacity: 0.76;
 	}
 
-	.meta :global(.row) {
+	.meta :global(.date-field) {
+		grid-template-columns: 1fr;
 		gap: 8px;
-		grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+	}
+
+	.meta :global(.date-label) {
+		padding: 0;
+	}
+
+	.meta :global(.controls),
+	.meta :global(.range-row) {
+		grid-template-columns: 1fr;
+		gap: 10px;
 	}
 
 	.meta :global(input:not([type='checkbox'])),
-	.meta :global(select) {
-		min-height: 40px;
+	.meta :global(select),
+	.meta :global(.year-box button) {
+		min-height: 44px;
 		color: inherit;
 		font-size: 16px;
 		padding: 7px 9px;
 	}
 
-	.people {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
-		gap: 4px 10px;
+	.meta :global(.year-box) {
+		grid-template-columns: 44px minmax(72px, 1fr) 44px;
 	}
 
-	.person {
+	.people-field {
+		display: grid;
+		gap: 8px;
+	}
+
+	.people-label-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+	}
+
+	.inline-action {
+		border: 0;
+		background: transparent;
+		color: var(--dawn);
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+	}
+
+	.selected-people,
+	.people-results {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.selected-person,
+	.people-results button {
 		display: inline-flex;
 		align-items: center;
 		gap: 8px;
-		min-height: 36px;
+		min-height: 34px;
+		border: 0;
+		background: color-mix(in srgb, var(--cream) 13%, transparent);
+		color: var(--cream);
+		cursor: pointer;
 		font-family: var(--font-serif);
 		font-size: 15px;
+		line-height: 1;
+		padding: 7px 9px;
 	}
 
-	.person input {
-		inline-size: 18px;
-		block-size: 18px;
-		accent-color: var(--dawn);
+	.selected-person {
+		background:
+			linear-gradient(
+				90deg,
+				color-mix(in srgb, var(--person-accent) 30%, transparent),
+				transparent
+			),
+			color-mix(in srgb, var(--cream) 11%, transparent);
+	}
+
+	.selected-person span,
+	.people-results button span {
+		display: inline-grid;
+		width: 22px;
+		height: 22px;
+		place-items: center;
+		background: var(--person-accent);
+		color: var(--ink);
+		font-family: var(--font-sans);
+		font-size: 11px;
+		font-weight: 800;
+		text-transform: uppercase;
+	}
+
+	.selected-person em {
+		font-family: var(--font-sans);
+		font-size: 9px;
+		font-style: normal;
+		letter-spacing: 0.14em;
+		opacity: 0.62;
+		text-transform: uppercase;
+	}
+
+	.people-results p,
+	.person-error {
+		margin: 0;
+		font-family: var(--font-serif);
+		font-size: 15px;
+		opacity: 0.72;
+	}
+
+	.create-person {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto auto;
+		gap: 6px;
+	}
+
+	.create-person button {
+		min-height: 44px;
+		border: 0;
+		background: color-mix(in srgb, var(--cream) 15%, transparent);
+		color: var(--cream);
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
 	}
 
 	.actions {
@@ -628,40 +813,6 @@
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
 		opacity: 0.68;
-	}
-
-	:global(html.light) .page {
-		background:
-			linear-gradient(
-				180deg,
-				color-mix(in srgb, var(--cream) 26%, transparent) 0%,
-				color-mix(in srgb, var(--cream) 78%, transparent) 100%
-			),
-			linear-gradient(110deg, color-mix(in srgb, var(--ink) 6%, transparent), transparent 44%);
-		color: var(--ink);
-	}
-
-	:global(html.light) .row,
-	:global(html.light) .preview,
-	:global(html.light) .meta input[type='text'],
-	:global(html.light) .meta select,
-	:global(html.light) .secondary {
-		background: color-mix(in srgb, var(--ink) 9%, transparent);
-		color: var(--ink);
-		color-scheme: light;
-	}
-
-	:global(html.light) .meta {
-		background: color-mix(in srgb, var(--cream) 58%, transparent);
-	}
-
-	:global(html.light) .primary {
-		background: var(--ink);
-		color: var(--cream);
-	}
-
-	:global(html.light) .row.focused .row-button {
-		outline-color: var(--ink);
 	}
 
 	@media (max-width: 1080px) {
