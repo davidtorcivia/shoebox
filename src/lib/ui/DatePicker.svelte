@@ -28,8 +28,14 @@
 	let rangeEndDay = $state(value.dateEnd ?? '');
 	let rangeEndYear = $state(value.dateEnd?.slice(0, 4) ?? '');
 	let rangeEndMonth = $state(value.dateEnd?.slice(5, 7) ?? '12');
+	let lastPrecision = $state<DatePrecision>('unknown');
 
 	$effect(() => {
+		if (precision !== lastPrecision) {
+			prepopulatePrecision(precision);
+			lastPrecision = precision;
+		}
+
 		try {
 			if (precision === 'day') value = itemDateFrom({ precision, day });
 			else if (precision === 'month') {
@@ -94,6 +100,24 @@
 	function stepYear(current: string, delta: number): string {
 		const base = Number(current) || new Date().getFullYear();
 		return String(Math.max(1, base + delta));
+	}
+
+	function prepopulatePrecision(nextPrecision: DatePrecision): void {
+		const now = new Date();
+		const currentYear = String(now.getFullYear());
+		const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+
+		if (nextPrecision === 'month') {
+			if (!year) year = currentYear;
+			if (!month) month = currentMonth;
+		} else if (nextPrecision === 'year') {
+			if (!year) year = currentYear;
+		} else if (nextPrecision === 'range') {
+			if (!rangeStartYear) rangeStartYear = currentYear;
+			if (!rangeEndYear) rangeEndYear = currentYear;
+			if (!rangeStartMonth) rangeStartMonth = currentMonth;
+			if (!rangeEndMonth) rangeEndMonth = currentMonth;
+		}
 	}
 </script>
 

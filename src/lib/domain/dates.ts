@@ -86,13 +86,11 @@ export function displayDate(d: ItemDate): string {
 		case 'day':
 			return `${MONTHS_LONG[start.month - 1]} ${start.day}, ${start.year}`;
 		case 'month':
-			return `${MONTHS_LONG[start.month - 1]} ${start.year}`;
+			return `c. ${MONTHS_LONG[start.month - 1]} ${start.year}`;
 		case 'year':
-			return String(start.year);
+			return `c. ${start.year}`;
 		case 'range':
-			return end
-				? `Between ${displayRangePart(start, 'start')} and ${displayRangePart(end, 'end')}`
-				: String(start.year);
+			return end ? displayRange(start, end) : `c. ${start.year}`;
 	}
 }
 
@@ -111,15 +109,11 @@ export function shortDate(d: ItemDate): string {
 		case 'day':
 			return `${MONTHS_SHORT[start.month - 1]} ${start.day}`;
 		case 'month':
-			return MONTHS_SHORT[start.month - 1];
+			return `c. ${MONTHS_SHORT[start.month - 1]}`;
 		case 'year':
 			return `c. ${start.year}`;
-		case 'range': {
-			if (!end) return `c. ${start.year}`;
-			const sameCentury = Math.floor(start.year / 100) === Math.floor(end.year / 100);
-			const endYear = sameCentury ? String(end.year).slice(2) : String(end.year);
-			return `c. ${start.year}–${endYear}`;
-		}
+		case 'range':
+			return end ? shortRange(start, end) : `c. ${start.year}`;
 	}
 }
 
@@ -239,6 +233,68 @@ function displayRangePart(
 		}
 	}
 	return `${MONTHS_LONG[part.month - 1]} ${part.day}, ${part.year}`;
+}
+
+function displayRange(
+	start: { year: number; month: number; day: number },
+	end: { year: number; month: number; day: number }
+): string {
+	if (start.year === end.year) {
+		if (isWholeYear(start, end)) return `c. ${start.year}`;
+		if (isMonthBoundary(start, 'start') && isMonthBoundary(end, 'end')) {
+			if (start.month === end.month) return `c. ${MONTHS_LONG[start.month - 1]} ${start.year}`;
+			return `c. ${MONTHS_LONG[start.month - 1]}–${MONTHS_LONG[end.month - 1]} ${start.year}`;
+		}
+		return `c. ${displaySameYearRangePart(start)}–${displaySameYearRangePart(end)}, ${start.year}`;
+	}
+
+	if (isYearStart(start) && isYearEnd(end)) return `c. ${start.year}–${end.year}`;
+	return `c. ${displayRangePart(start, 'start')}–${displayRangePart(end, 'end')}`;
+}
+
+function shortRange(
+	start: { year: number; month: number; day: number },
+	end: { year: number; month: number; day: number }
+): string {
+	if (start.year === end.year) {
+		if (isWholeYear(start, end)) return `c. ${start.year}`;
+		if (isMonthBoundary(start, 'start') && isMonthBoundary(end, 'end')) {
+			if (start.month === end.month) return `c. ${MONTHS_SHORT[start.month - 1]}`;
+			return `c. ${MONTHS_SHORT[start.month - 1]}–${MONTHS_SHORT[end.month - 1]}`;
+		}
+		return `c. ${MONTHS_SHORT[start.month - 1]} ${start.day}–${MONTHS_SHORT[end.month - 1]} ${end.day}`;
+	}
+
+	const sameCentury = Math.floor(start.year / 100) === Math.floor(end.year / 100);
+	const endYear = sameCentury ? String(end.year).slice(2) : String(end.year);
+	return `c. ${start.year}–${endYear}`;
+}
+
+function isWholeYear(
+	start: { year: number; month: number; day: number },
+	end: { year: number; month: number; day: number }
+): boolean {
+	return isYearStart(start) && isYearEnd(end);
+}
+
+function isYearStart(part: { month: number; day: number }): boolean {
+	return part.month === 1 && part.day === 1;
+}
+
+function isYearEnd(part: { month: number; day: number }): boolean {
+	return part.month === 12 && part.day === 31;
+}
+
+function isMonthBoundary(
+	part: { year: number; month: number; day: number },
+	side: 'start' | 'end'
+): boolean {
+	if (side === 'start') return part.day === 1;
+	return part.day === daysInMonth(part.year, part.month);
+}
+
+function displaySameYearRangePart(part: { month: number; day: number }): string {
+	return `${MONTHS_LONG[part.month - 1]} ${part.day}`;
 }
 
 function isValidIsoDay(value: string): boolean {

@@ -105,7 +105,7 @@ describe('createItem', () => {
 			title: 'Backyard sprinkler',
 			description: null,
 			date: { dateStart: '1994-01-01', dateEnd: '1994-12-31', precision: 'year' },
-			displayDate: '1994',
+			displayDate: 'c. 1994',
 			shortDate: 'c. 1994',
 			duration: 12.4,
 			width: 1440,

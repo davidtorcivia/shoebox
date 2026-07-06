@@ -41,12 +41,17 @@ describe('sortDate', () => {
 describe('displayDate', () => {
 	it('day', () => expect(displayDate(d('1994-06-14', '1994-06-14', 'day'))).toBe('June 14, 1994'));
 
-	it('month', () => expect(displayDate(d('1994-06-01', '1994-06-30', 'month'))).toBe('June 1994'));
+	it('month -> circa', () =>
+		expect(displayDate(d('1994-06-01', '1994-06-30', 'month'))).toBe('c. June 1994'));
 
-	it('year', () => expect(displayDate(d('1994-01-01', '1994-12-31', 'year'))).toBe('1994'));
+	it('year -> circa', () =>
+		expect(displayDate(d('1994-01-01', '1994-12-31', 'year'))).toBe('c. 1994'));
 
-	it('range', () =>
-		expect(displayDate(d('1992-01-01', '1995-12-31', 'range'))).toBe('Between 1992 and 1995'));
+	it('range across full years -> circa span', () =>
+		expect(displayDate(d('1992-01-01', '1995-12-31', 'range'))).toBe('c. 1992–1995'));
+
+	it('range across months in one year -> circa month span', () =>
+		expect(displayDate(d('1994-06-01', '1994-08-31', 'range'))).toBe('c. June–August 1994'));
 
 	it('unknown', () => expect(displayDate(d(null, null, 'unknown'))).toBe('Undated'));
 });
@@ -54,7 +59,8 @@ describe('displayDate', () => {
 describe('shortDate', () => {
 	it('day', () => expect(shortDate(d('1994-06-14', '1994-06-14', 'day'))).toBe('Jun 14'));
 
-	it('month', () => expect(shortDate(d('1994-06-01', '1994-06-30', 'month'))).toBe('Jun'));
+	it('month -> circa', () =>
+		expect(shortDate(d('1994-06-01', '1994-06-30', 'month'))).toBe('c. Jun'));
 
 	it('year -> circa', () =>
 		expect(shortDate(d('1994-01-01', '1994-12-31', 'year'))).toBe('c. 1994'));
@@ -64,6 +70,9 @@ describe('shortDate', () => {
 
 	it('range across a century -> full end year', () =>
 		expect(shortDate(d('1998-01-01', '2003-12-31', 'range'))).toBe('c. 1998–2003'));
+
+	it('range across months in one year -> short month span', () =>
+		expect(shortDate(d('1994-06-01', '1994-08-31', 'range'))).toBe('c. Jun–Aug'));
 
 	it('unknown -> em dash', () => expect(shortDate(d(null, null, 'unknown'))).toBe('—'));
 });
