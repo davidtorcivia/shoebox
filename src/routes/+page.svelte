@@ -6,17 +6,15 @@
 	import MasonryGrid from '$lib/ui/MasonryGrid.svelte';
 	import MobileRail from '$lib/ui/MobileRail.svelte';
 	import YearBand from '$lib/ui/YearBand.svelte';
-	import { nearestYearWithContent } from '$lib/ui/rail-math';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 
 	const years = $derived(data.timeline.years);
 	const activeYear = $derived(data.activeYear);
-	const targetYear = (year: number) => nearestYearWithContent(year, years) ?? year;
 
 	function jump(delta: number) {
-		const year = targetYear(activeYear + delta);
+		const year = Math.min(data.now, Math.max(1900, activeYear + delta));
 		void goto(resolve(`/?y=${year}`));
 	}
 </script>
@@ -40,7 +38,7 @@
 />
 
 <DecadeRoom year={activeYear}>
-	<YearBand {activeYear} {years} onStep={jump} />
+	<YearBand {activeYear} {years} now={data.now} onStep={jump} />
 	<CenturyRail {years} earliest={data.timeline.earliest} {activeYear} now={data.now} />
 	<MasonryGrid items={data.items} {activeYear} />
 	<MobileRail {years} earliest={data.timeline.earliest} {activeYear} now={data.now} />

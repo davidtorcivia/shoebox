@@ -1,29 +1,38 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import type { YearCount } from './rail-math';
 
 	interface Props {
 		activeYear: number;
 		years: YearCount[];
+		now: number;
 		onStep?: (delta: number) => void;
 	}
 
-	let { activeYear, years, onStep }: Props = $props();
+	let { activeYear, years, now, onStep }: Props = $props();
 	const current = $derived(years.find((year) => year.year === activeYear));
 	const count = $derived(current?.count ?? 0);
 	const people = $derived(current?.people ?? 0);
 	const neighborYears = $derived([activeYear - 2, activeYear - 1, activeYear + 1, activeYear + 2]);
+	const canNext = $derived(activeYear < now);
 </script>
 
 <section class="year-band" aria-label="Current year">
 	<button type="button" aria-label="Previous year" onclick={() => onStep?.(-1)}>‹</button>
 	<div class="years">
-		<span class="side">{neighborYears[0]}</span>
-		<span class="near">{neighborYears[1]}</span>
+		<a class="side" href={resolve(`/?y=${neighborYears[0]}`)}>{neighborYears[0]}</a>
+		<a class="near" href={resolve(`/?y=${neighborYears[1]}`)}>{neighborYears[1]}</a>
 		<h1>{activeYear}<small>{count} moments · {people} people</small></h1>
-		<span class="near">{neighborYears[2]}</span>
-		<span class="side">{neighborYears[3]}</span>
+		{#if neighborYears[2] <= now}
+			<a class="near" href={resolve(`/?y=${neighborYears[2]}`)}>{neighborYears[2]}</a>
+		{/if}
+		{#if neighborYears[3] <= now}
+			<a class="side" href={resolve(`/?y=${neighborYears[3]}`)}>{neighborYears[3]}</a>
+		{/if}
 	</div>
-	<button type="button" aria-label="Next year" onclick={() => onStep?.(1)}>›</button>
+	<button type="button" aria-label="Next year" disabled={!canNext} onclick={() => onStep?.(1)}
+		>›</button
+	>
 </section>
 
 <style>
@@ -46,6 +55,11 @@
 		color: inherit;
 		font-size: 2.2rem;
 		cursor: pointer;
+	}
+
+	button:disabled {
+		cursor: default;
+		opacity: 0.28;
 	}
 
 	.years {
@@ -83,6 +97,14 @@
 		font-family: var(--font-serif);
 		font-weight: 760;
 		color: rgba(255, 245, 232, 0.52);
+		text-decoration: none;
+	}
+
+	.near:hover,
+	.side:hover,
+	.near:focus-visible,
+	.side:focus-visible {
+		color: var(--cream);
 	}
 
 	.near {

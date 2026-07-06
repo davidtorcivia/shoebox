@@ -72,8 +72,7 @@
 	let newPersonName = $state('');
 	let personError = $state('');
 	let tagsText = $state('');
-	// svelte-ignore state_referenced_locally
-	let peopleOptions = $state<PersonOption[]>(people);
+	let peopleOptions = $derived<PersonOption[]>(people);
 
 	$effect(() => {
 		if (loadedItemId === item.id) return;
@@ -86,16 +85,13 @@
 		tagsText = item.tags.map((tag) => tag.name).join(', ');
 	});
 
-	$effect(() => {
-		peopleOptions = people;
-	});
-
 	const selectedPeopleDetail = $derived(
 		peopleOptions.filter((person) => selectedPeople.includes(person.id))
 	);
 	const peopleValue = $derived(selectedPeople.join(', '));
 	const personMatches = $derived.by(() => {
 		const query = personQuery.trim().toLowerCase();
+		if (query.length === 0) return [];
 		return peopleOptions
 			.filter(
 				(person) =>
@@ -194,27 +190,34 @@
 				{#each selectedPeopleDetail as person (person.id)}
 					<button
 						type="button"
+						class="selected"
 						style:--person-accent={person.accentColor}
 						onclick={() => removePerson(person.id)}
+						aria-label={`Remove ${person.name}`}
 					>
 						<span>{person.name.slice(0, 1)}</span>
 						{person.name}
+						<em>Remove</em>
 					</button>
 				{/each}
 			</div>
 		{/if}
-		<div class="people-chips">
-			{#each personMatches as person (person.id)}
-				<button
-					type="button"
-					style:--person-accent={person.accentColor}
-					onclick={() => selectPerson(person.id)}
-				>
-					<span>{person.name.slice(0, 1)}</span>
-					{person.name}
-				</button>
-			{/each}
-		</div>
+		{#if personQuery.trim()}
+			<div class="people-chips">
+				{#each personMatches as person (person.id)}
+					<button
+						type="button"
+						style:--person-accent={person.accentColor}
+						onclick={() => selectPerson(person.id)}
+					>
+						<span>{person.name.slice(0, 1)}</span>
+						{person.name}
+					</button>
+				{:else}
+					<p class="hint">No matching people.</p>
+				{/each}
+			</div>
+		{/if}
 		{#if creatingPerson}
 			<div class="create-person">
 				<input
@@ -240,7 +243,7 @@
 <style>
 	.meta-form {
 		display: grid;
-		gap: 0.85rem;
+		gap: 0.95rem;
 		padding: 1rem 0;
 		color: var(--cream);
 	}
@@ -328,6 +331,26 @@
 		background: color-mix(in srgb, var(--cream) 11%, transparent);
 	}
 
+	.people-chips button.selected {
+		color: var(--ink);
+		background: color-mix(in srgb, var(--person-accent) 78%, var(--cream));
+	}
+
+	.people-chips em {
+		font-family: var(--sans);
+		font-size: 0.62rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		opacity: 0.72;
+	}
+
+	.hint {
+		margin: 0;
+		font-family: var(--serif);
+		font-size: 0.95rem;
+		opacity: 0.72;
+	}
+
 	.people-chips button span {
 		display: grid;
 		width: 22px;
@@ -351,5 +374,21 @@
 		color: var(--dawn);
 		font-family: var(--sans);
 		font-size: 0.75rem;
+	}
+
+	:global(.meta-form .date-field),
+	:global(.meta-form .date-field .controls),
+	:global(.meta-form .date-field .range-row) {
+		grid-template-columns: 1fr;
+	}
+
+	:global(.meta-form .date-field .date-label) {
+		padding: 0;
+	}
+
+	:global(.meta-form .date-field .range-copy) {
+		padding: 0.7rem 0.75rem;
+		line-height: 1.25;
+		letter-spacing: 0.12em;
 	}
 </style>

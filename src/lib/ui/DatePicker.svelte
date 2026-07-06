@@ -107,7 +107,7 @@
 				<option value="day">Exact day</option>
 				<option value="month">Month</option>
 				<option value="year">Year</option>
-				<option value="range">Estimated time</option>
+				<option value="range">Estimate</option>
 			</select>
 		</label>
 
@@ -159,7 +159,7 @@
 				</div>
 			</label>
 		{:else if precision === 'range'}
-			<div class="range-copy">Between the earliest possible date and latest possible date</div>
+			<div class="range-copy">Estimate between earliest and latest possible dates</div>
 			<div class="range-row">
 				<div class="boundary">
 					<span>Earliest possible</span>
@@ -386,10 +386,19 @@
 		}
 	}
 
-	@container (max-width: 420px) {
+	@container (max-width: 560px) {
+		.date-field,
 		.controls,
 		.range-row {
 			grid-template-columns: 1fr;
+		}
+
+		.date-label {
+			padding: 0;
+		}
+
+		.range-copy {
+			line-height: 1.25;
 		}
 	}
 </style>

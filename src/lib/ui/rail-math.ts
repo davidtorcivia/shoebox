@@ -46,7 +46,7 @@ export interface RailLabel {
 export function railSpan(earliest: number | null, now: number): Span {
 	const currentDecade = decadeOf(now);
 	const contentBase = earliest === null ? currentDecade : decadeOf(earliest);
-	return { start: contentBase - 10, end: currentDecade + 19 };
+	return { start: contentBase - 10, end: now };
 }
 
 export function decadeLabelText(decade: number): string {
@@ -59,7 +59,7 @@ export function railDecades(
 	earliest: number | null,
 	activeYear: number,
 	now: number,
-	maxTickPx = 44
+	maxTickPx = 34
 ): RailDecade[] {
 	const span = railSpan(earliest, now);
 	const counts = new Map(years.map((year) => [year.year, year]));
@@ -70,6 +70,7 @@ export function railDecades(
 		const ticks: RailTick[] = [];
 		for (let offset = 0; offset < 10; offset += 1) {
 			const year = decade + offset;
+			if (year > now) continue;
 			const entry = counts.get(year);
 			const count = entry?.count ?? 0;
 			ticks.push({

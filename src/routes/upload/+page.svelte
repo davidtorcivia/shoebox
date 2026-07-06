@@ -68,13 +68,14 @@
 	);
 	const personMatches = $derived.by(() => {
 		const query = personQuery.trim().toLowerCase();
+		if (query.length === 0) return [];
 		return peopleOptions
 			.filter(
 				(person) =>
 					!selectedPeople.includes(person.id) &&
 					(query.length === 0 || person.name.toLowerCase().includes(query))
 			)
-			.slice(0, query.length === 0 ? 8 : 14);
+			.slice(0, 14);
 	});
 
 	function chooseFiles(event: Event): void {
@@ -318,30 +319,34 @@
 								{#each selectedPeopleDetail as person (person.id)}
 									<button
 										type="button"
+										class="selected"
 										style:--person-accent={person.accentColor}
 										onclick={() => removePerson(person.id)}
 										aria-label={`Remove ${person.name}`}
 									>
 										<span>{person.name.slice(0, 1)}</span>
 										{person.name}
+										<em>Remove</em>
 									</button>
 								{/each}
 							</div>
 						{/if}
-						<div class="people-results">
-							{#each personMatches as person (person.id)}
-								<button
-									type="button"
-									style:--person-accent={person.accentColor}
-									onclick={() => selectPerson(person.id)}
-								>
-									<span>{person.name.slice(0, 1)}</span>
-									{person.name}
-								</button>
-							{:else}
-								<p>No matching people.</p>
-							{/each}
-						</div>
+						{#if personQuery.trim()}
+							<div class="people-results">
+								{#each personMatches as person (person.id)}
+									<button
+										type="button"
+										style:--person-accent={person.accentColor}
+										onclick={() => selectPerson(person.id)}
+									>
+										<span>{person.name.slice(0, 1)}</span>
+										{person.name}
+									</button>
+								{:else}
+									<p>No matching people.</p>
+								{/each}
+							</div>
+						{/if}
 					</div>
 				</div>
 
@@ -637,6 +642,18 @@
 	.selected-people button {
 		background: color-mix(in srgb, var(--person-accent) 72%, transparent);
 		color: var(--ink);
+	}
+
+	.selected-people button.selected {
+		background: color-mix(in srgb, var(--person-accent) 82%, var(--cream));
+	}
+
+	.selected-people em {
+		font-family: var(--font-sans);
+		font-size: 10px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		opacity: 0.68;
 	}
 
 	.people-results span,

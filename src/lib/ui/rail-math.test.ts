@@ -16,13 +16,13 @@ const YEARS: YearCount[] = [
 ];
 
 describe('railSpan', () => {
-	it('spans from the previous content decade through next current decade', () => {
-		expect(railSpan(1972, 2026)).toEqual({ start: 1960, end: 2039 });
-		expect(railSpan(1993, 2026)).toEqual({ start: 1980, end: 2039 });
+	it('spans from the previous content decade through the current year', () => {
+		expect(railSpan(1972, 2026)).toEqual({ start: 1960, end: 2026 });
+		expect(railSpan(1993, 2026)).toEqual({ start: 1980, end: 2026 });
 	});
 
 	it('falls back to the current decade when there is no content', () => {
-		expect(railSpan(null, 2026)).toEqual({ start: 2010, end: 2039 });
+		expect(railSpan(null, 2026)).toEqual({ start: 2010, end: 2026 });
 	});
 });
 
@@ -38,9 +38,12 @@ describe('decadeLabelText', () => {
 describe('railDecades', () => {
 	const decades = railDecades(YEARS, 1993, 1994, 2026, 44);
 
-	it('covers 1980 through 2030 inclusive, ten ticks each', () => {
-		expect(decades.map((d) => d.decade)).toEqual([1980, 1990, 2000, 2010, 2020, 2030]);
-		expect(decades.every((d) => d.ticks.length === 10)).toBe(true);
+	it('covers 1980 through the current decade and clips future years', () => {
+		expect(decades.map((d) => d.decade)).toEqual([1980, 1990, 2000, 2010, 2020]);
+		expect(decades.slice(0, -1).every((d) => d.ticks.length === 10)).toBe(true);
+		expect(decades.at(-1)!.ticks.map((tick) => tick.year)).toEqual([
+			2020, 2021, 2022, 2023, 2024, 2025, 2026
+		]);
 	});
 
 	it('scales tick height by sqrt(count) with the max at maxTickPx', () => {
@@ -49,7 +52,7 @@ describe('railDecades', () => {
 		expect(d90.ticks.find((t) => t.year === 1993)!.height).toBe(22);
 	});
 
-	it('marks empty years, active year, century marks, active + future decades/years', () => {
+	it('marks empty years, active year, century marks, and active decade', () => {
 		const d90 = decades.find((d) => d.decade === 1990)!;
 		expect(d90.active).toBe(true);
 		expect(d90.ticks.find((t) => t.year === 1994)!.active).toBe(true);
@@ -57,11 +60,8 @@ describe('railDecades', () => {
 		expect(d90.ticks.find((t) => t.year === 1995)!.height).toBe(0);
 		expect(decades.find((d) => d.decade === 2000)!.centuryMark).toBe(true);
 		expect(decades.find((d) => d.decade === 1980)!.centuryMark).toBe(false);
-		expect(decades.find((d) => d.decade === 2030)!.future).toBe(true);
 		expect(decades.find((d) => d.decade === 2020)!.future).toBe(false);
-		expect(decades.find((d) => d.decade === 2020)!.ticks.find((t) => t.year === 2027)!.future).toBe(
-			true
-		);
+		expect(decades.find((d) => d.decade === 2020)!.ticks.some((t) => t.year > 2026)).toBe(false);
 	});
 });
 
@@ -92,16 +92,16 @@ describe('mobileRailTicks', () => {
 	const ticks = mobileRailTicks(YEARS, 1993, 1994, 2026);
 
 	it('buckets the span into 5-year ticks', () => {
-		expect(ticks.length).toBe(12);
+		expect(ticks.length).toBe(10);
 		expect(ticks[0].startYear).toBe(1980);
-		expect(ticks.at(-1)!.startYear).toBe(2035);
+		expect(ticks.at(-1)!.startYear).toBe(2025);
 	});
 
 	it('warms only buckets overlapping the active decade; marks empties and futures', () => {
 		expect(ticks.filter((t) => t.warm).map((t) => t.startYear)).toEqual([1990, 1995]);
 		expect(ticks.find((t) => t.startYear === 1980)!.empty).toBe(true);
 		expect(ticks.find((t) => t.startYear === 1990)!.empty).toBe(false);
-		expect(ticks.find((t) => t.startYear === 2030)!.future).toBe(true);
+		expect(ticks.some((t) => t.startYear > 2026)).toBe(false);
 	});
 
 	it('gives the fullest bucket 30px', () => {

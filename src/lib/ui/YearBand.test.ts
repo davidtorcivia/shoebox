@@ -7,6 +7,7 @@ describe('YearBand', () => {
 		const { body } = render(YearBand, {
 			props: {
 				activeYear: 1994,
+				now: 2026,
 				years: [{ year: 1994, count: 214, people: 12 }]
 			}
 		});

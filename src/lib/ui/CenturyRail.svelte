@@ -42,6 +42,7 @@
 	.rail {
 		position: relative;
 		z-index: 2;
+		margin-top: clamp(1rem, 2.2vw, 1.75rem);
 		padding: 0 1.875rem;
 		color: var(--timeline-chrome, var(--ink));
 	}
@@ -53,7 +54,7 @@
 
 	.ticks {
 		align-items: flex-end;
-		height: 44px;
+		height: 34px;
 	}
 
 	.decade {
