@@ -134,6 +134,9 @@
 
 <style>
 	.lightbox {
+		display: grid;
+		place-items: center;
+		max-height: inherit;
 		overflow: hidden;
 		cursor: zoom-in;
 		touch-action: none;
@@ -141,7 +144,10 @@
 
 	img {
 		display: block;
-		width: 100%;
+		width: auto;
+		max-width: 100%;
+		max-height: inherit;
+		object-fit: contain;
 		user-select: none;
 		transform-origin: center center;
 		-webkit-user-drag: none;

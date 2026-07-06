@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { contextFromParams, neighborsOf } from '$lib/server/neighbors';
 import { items } from '$lib/server/db/schema';
 import { confirmedFacesForItem } from '$lib/server/faces';
+import { listPeople } from '$lib/server/people';
 import { requireRole, ROLE_RANK } from '$lib/server/roles';
 import type { ItemDTO } from '$lib/dto';
 import type { PageServerLoad } from './$types';
@@ -34,9 +35,11 @@ export const load: PageServerLoad = async ({ fetch, locals, params, url }) => {
 		neighbors,
 		me,
 		canEdit,
+		canCreatePeople: ROLE_RANK[me.role] >= ROLE_RANK.editor,
 		canShare: ROLE_RANK[me.role] >= ROLE_RANK.editor,
 		facesEnabled,
 		faces: facesEnabled ? await confirmedFacesForItem(locals.db, item.id) : [],
+		people: await listPeople(locals.db, locals.platform.storage),
 		backYear,
 		contextQuery: url.searchParams.toString()
 	};

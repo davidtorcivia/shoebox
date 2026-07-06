@@ -274,12 +274,17 @@
 <style>
 	.player {
 		position: relative;
+		display: grid;
+		justify-items: center;
 		width: 100%;
+		max-height: inherit;
 	}
 
 	video {
 		display: block;
-		width: 100%;
+		width: auto;
+		max-width: 100%;
+		max-height: inherit;
 		background: var(--ink);
 	}
 
@@ -318,6 +323,7 @@
 	}
 
 	.controls {
+		width: 100%;
 		display: flex;
 		gap: 22px;
 		align-items: center;

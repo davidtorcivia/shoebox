@@ -38,9 +38,11 @@
 	const roomYear = $derived(year ?? data.backYear ?? new Date().getFullYear());
 	const room = $derived(playerRoomFor(roomYear));
 	const backLabel = $derived(data.backYear ?? year ?? 'Timeline');
-	const title = $derived(item.title ?? item.displayDate);
+	const title = $derived(item.title);
+	const pageTitle = $derived(item.title ?? item.displayDate);
 	const mediaSrc = $derived(item.urls.original ?? item.urls.thumb1600 ?? item.urls.poster);
 	const poster = $derived(item.urls.poster || item.urls.thumb800 || item.urls.thumb1600);
+	const hasKnownDate = $derived(item.date.precision !== 'unknown');
 
 	$effect(() => {
 		if (data.item.id === loadedItemId) return;
@@ -92,7 +94,7 @@
 </script>
 
 <svelte:head>
-	<title>{title} · Shoebox</title>
+	<title>{pageTitle} · Shoebox</title>
 </svelte:head>
 
 <svelte:window
@@ -118,7 +120,11 @@
 		<a href={data.backYear ? resolve(`/?y=${data.backYear}`) : resolve('/')}
 			>← Back to {backLabel}</a
 		>
-		<h1>{title}</h1>
+		{#if title}
+			<h1>{title}</h1>
+		{:else}
+			<span class="topbar-spacer" aria-hidden="true"></span>
+		{/if}
 		<a href={data.backYear ? resolve(`/?y=${data.backYear}`) : resolve('/')} aria-label="Close"
 			>✕ Close</a
 		>
@@ -129,15 +135,9 @@
 			<div class="stage">
 				<div class="media-frame">
 					{#if item.type === 'video'}
-						<Player
-							bind:this={player}
-							src={mediaSrc}
-							{poster}
-							duration={item.duration}
-							title={item.title ?? item.displayDate}
-						/>
+						<Player bind:this={player} src={mediaSrc} {poster} duration={item.duration} {title} />
 					{:else}
-						<Lightbox src={mediaSrc} alt={item.title ?? item.displayDate} />
+						<Lightbox src={mediaSrc} alt={item.title ?? 'Photo'} />
 					{/if}
 					{#if facesVisible && data.faces.length > 0}
 						<FaceBoxes faces={data.faces} />
@@ -168,7 +168,9 @@
 
 		<aside class="rail">
 			<p class="eyebrow">{eyebrowFor(item.date, data.source, item.tapeLabel)} · {item.type}</p>
-			<p class="date">{item.displayDate}</p>
+			{#if hasKnownDate}
+				<p class="date">{item.displayDate}</p>
+			{/if}
 			{#if item.tapeLabel}
 				<p class="tape">{item.tapeLabel}</p>
 			{/if}
@@ -219,7 +221,12 @@
 			{#if data.canEdit}
 				<details class="edit">
 					<summary>Edit metadata</summary>
-					<MetaForm {item} onsubmit={(payload) => void save(payload)} />
+					<MetaForm
+						{item}
+						people={data.people}
+						canCreatePeople={data.canCreatePeople}
+						onsubmit={(payload) => void save(payload)}
+					/>
 					<AlbumToggle itemId={item.id} memberships={item.albums} />
 					{#if saveState}
 						<p class="save-state">{saveState}</p>
@@ -232,8 +239,9 @@
 
 <style>
 	.item-room {
-		min-height: 100svh;
-		padding: clamp(1rem, 2vw, 2rem);
+		margin-top: -56px;
+		min-height: calc(100svh - 56px);
+		padding: calc(56px + clamp(1rem, 2vw, 2rem)) clamp(1rem, 2vw, 2rem) clamp(1rem, 2vw, 2rem);
 		color: var(--cream);
 		background-image:
 			var(--grain), radial-gradient(80% 60% at 100% 0%, var(--pool) 0%, transparent 60%),
@@ -247,6 +255,10 @@
 		gap: 1rem;
 		align-items: center;
 		margin-bottom: clamp(1.5rem, 5vw, 4rem);
+	}
+
+	.topbar-spacer {
+		min-height: 1px;
 	}
 
 	.topbar a {
@@ -289,6 +301,9 @@
 
 	.media-frame {
 		position: relative;
+		display: grid;
+		align-items: start;
+		max-height: min(72svh, calc(100svh - 220px));
 	}
 
 	.social {

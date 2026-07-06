@@ -36,6 +36,11 @@
 	let date = $state<ItemDate>(itemDateFrom({ precision: 'unknown' }));
 	let selectedPeople = $state<string[]>([]);
 	let personQuery = $state('');
+	// svelte-ignore state_referenced_locally
+	let peopleOptions = $state(data.people);
+	let creatingPerson = $state(false);
+	let newPersonName = $state('');
+	let personError = $state('');
 	let tags = $state('');
 	let progress = $state(0);
 	let currentIndex = $state(0);
@@ -45,7 +50,7 @@
 	let results = $state<QueueResult[]>([]);
 
 	const selectedPeopleDetail = $derived(
-		data.people.filter((person) => selectedPeople.includes(person.id))
+		peopleOptions.filter((person) => selectedPeople.includes(person.id))
 	);
 	const queueLabel = $derived(
 		files.length === 0
@@ -63,7 +68,7 @@
 	);
 	const personMatches = $derived.by(() => {
 		const query = personQuery.trim().toLowerCase();
-		return data.people
+		return peopleOptions
 			.filter(
 				(person) =>
 					!selectedPeople.includes(person.id) &&
@@ -88,6 +93,26 @@
 
 	function removePerson(id: string): void {
 		selectedPeople = selectedPeople.filter((personId) => personId !== id);
+	}
+
+	async function createPerson(): Promise<void> {
+		const name = newPersonName.trim();
+		if (!name) return;
+		personError = '';
+		const res = await fetch('/api/people', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ name })
+		});
+		if (!res.ok) {
+			personError = 'Could not add person.';
+			return;
+		}
+		const { person } = await res.json();
+		peopleOptions = [...peopleOptions, person].sort((a, b) => a.name.localeCompare(b.name));
+		selectPerson(person.id);
+		newPersonName = '';
+		creatingPerson = false;
 	}
 
 	function tagsList(): string[] {
@@ -262,11 +287,32 @@
 				<div class="field-row people-field" role="group" aria-labelledby="people-field-label">
 					<span id="people-field-label" class="field-label">People</span>
 					<div class="field-control people-control">
+						{#if data.canCreatePeople}
+							<button
+								type="button"
+								class="add-person"
+								onclick={() => (creatingPerson = !creatingPerson)}
+							>
+								Add person
+							</button>
+						{/if}
 						<input
 							bind:value={personQuery}
 							placeholder="Search people"
 							aria-label="Search people to tag"
 						/>
+						{#if creatingPerson}
+							<div class="create-person">
+								<input
+									bind:value={newPersonName}
+									placeholder="New person name"
+									aria-label="New person name"
+								/>
+								<button type="button" onclick={() => void createPerson()}>Add</button>
+								<button type="button" onclick={() => (creatingPerson = false)}>Cancel</button>
+							</div>
+							{#if personError}<p class="person-error">{personError}</p>{/if}
+						{/if}
 						{#if selectedPeopleDetail.length}
 							<div class="selected-people" aria-label="Selected people">
 								{#each selectedPeopleDetail as person (person.id)}
@@ -524,6 +570,45 @@
 	.people-control {
 		display: grid;
 		gap: 8px;
+	}
+
+	.add-person {
+		justify-self: start;
+		min-height: 32px;
+		border: 0;
+		background: transparent;
+		color: color-mix(in srgb, #d8b58d 82%, var(--cream));
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: 11px;
+		font-weight: 800;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+	}
+
+	.create-person {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto auto;
+		gap: 8px;
+	}
+
+	.create-person button {
+		min-height: 48px;
+		border: 0;
+		background: color-mix(in srgb, var(--cream) 12%, transparent);
+		color: var(--cream);
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: 11px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+
+	.person-error {
+		margin: 0;
+		color: var(--dawn);
+		font-family: var(--font-sans);
+		font-size: 12px;
 	}
 
 	.people-results,

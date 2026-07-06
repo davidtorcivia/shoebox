@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { railDecades, type YearCount } from './rail-math';
 
 	interface Props {
@@ -17,13 +18,15 @@
 		{#each decades as decade (decade.decade)}
 			<div class:active={decade.active} class:future={decade.future} class="decade">
 				{#each decade.ticks as tick (tick.year)}
-					<i
+					<a
+						href={resolve(`/?y=${tick.year}`)}
 						class:empty={tick.empty}
 						class:active={tick.active}
 						class:future={tick.future}
 						style={`height: ${Math.max(tick.height, tick.empty ? 2 : 4)}px`}
-						title={`${tick.year}: ${tick.empty ? 0 : 'items'}`}
-					></i>
+						title={`${tick.year}: ${tick.count} moments · ${tick.people} people`}
+						aria-label={`${tick.year}: ${tick.count} moments, ${tick.people} people`}
+					></a>
 				{/each}
 			</div>
 		{/each}
@@ -61,22 +64,32 @@
 		padding: 0 5px;
 	}
 
-	i {
+	a {
 		flex: 1;
 		min-width: 1px;
 		background: var(--timeline-soft, rgba(23, 20, 18, 0.22));
+		transition:
+			height var(--motion-fast) ease,
+			background-color var(--motion-fast) ease,
+			opacity var(--motion-fast) ease;
 	}
 
-	i.empty {
+	a.empty {
 		background: color-mix(in srgb, var(--timeline-chrome, var(--ink)) 16%, transparent);
 	}
 
-	i.active {
+	a.active {
 		background: var(--timeline-chrome, var(--ink));
 	}
 
-	i.future,
-	.decade.future i {
+	a:hover,
+	a:focus-visible {
+		background: var(--cream);
+		opacity: 1;
+	}
+
+	a.future,
+	.decade.future a {
 		opacity: 0.32;
 	}
 

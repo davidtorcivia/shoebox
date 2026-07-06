@@ -1,11 +1,11 @@
 import { asc } from 'drizzle-orm';
 import { people } from '$lib/server/db/schema';
-import { requireRole } from '$lib/server/roles';
+import { requireRole, ROLE_RANK } from '$lib/server/roles';
 import type { PersonListDTO } from '$lib/types';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	requireRole(locals, 'uploader');
+	const user = requireRole(locals, 'uploader');
 	const rows: PersonListDTO[] = await locals.db
 		.select({
 			id: people.id,
@@ -18,5 +18,5 @@ export const load: PageServerLoad = async ({ locals }) => {
 		})
 		.from(people)
 		.orderBy(asc(people.name));
-	return { people: rows };
+	return { people: rows, canCreatePeople: ROLE_RANK[user.role] >= ROLE_RANK.editor };
 };

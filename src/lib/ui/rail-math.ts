@@ -11,6 +11,8 @@ export interface Span {
 
 export interface RailTick {
 	year: number;
+	count: number;
+	people: number;
 	height: number;
 	empty: boolean;
 	active: boolean;
@@ -60,7 +62,7 @@ export function railDecades(
 	maxTickPx = 44
 ): RailDecade[] {
 	const span = railSpan(earliest, now);
-	const counts = new Map(years.map((year) => [year.year, year.count]));
+	const counts = new Map(years.map((year) => [year.year, year]));
 	const maxCount = Math.max(1, ...years.map((year) => year.count));
 	const out: RailDecade[] = [];
 
@@ -68,9 +70,12 @@ export function railDecades(
 		const ticks: RailTick[] = [];
 		for (let offset = 0; offset < 10; offset += 1) {
 			const year = decade + offset;
-			const count = counts.get(year) ?? 0;
+			const entry = counts.get(year);
+			const count = entry?.count ?? 0;
 			ticks.push({
 				year,
+				count,
+				people: entry?.people ?? 0,
 				height: count > 0 ? Math.round(Math.sqrt(count / maxCount) * maxTickPx) : 0,
 				empty: count === 0,
 				active: year === activeYear,

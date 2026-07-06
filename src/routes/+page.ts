@@ -13,8 +13,11 @@ export const load: PageLoad = async ({ fetch, url }) => {
 	};
 	const now = new Date().getFullYear();
 	const requested = Number(url.searchParams.get('y'));
-	const fallback = 2000;
-	const activeYear = Number.isInteger(requested) ? requested : fallback;
+	const fallback = timeline.latest ?? 2000;
+	const activeYear =
+		Number.isInteger(requested) && requested >= 1900 && requested <= now + 20
+			? requested
+			: fallback;
 	const itemsRes = await fetch(`/api/items?year=${activeYear}&limit=100`);
 	if (!itemsRes.ok) throw error(itemsRes.status, 'Items unavailable');
 	const items = (await itemsRes.json()) as { items: ItemDTO[]; nextCursor: string | null };

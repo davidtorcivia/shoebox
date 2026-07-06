@@ -1,4 +1,6 @@
 import { fitWithin } from '$lib/domain/dims';
+import { type ItemDate } from '$lib/domain/dates';
+import { guessDateFromFile } from './date-guess';
 
 export interface VideoDerivatives {
 	poster: Blob;
@@ -8,6 +10,7 @@ export interface VideoDerivatives {
 	width: number;
 	height: number;
 	duration: number;
+	date: ItemDate | null;
 }
 
 export async function deriveVideo(file: File): Promise<VideoDerivatives> {
@@ -28,7 +31,8 @@ export async function deriveVideo(file: File): Promise<VideoDerivatives> {
 			thumb_1600: await renderVideo(video, 1600),
 			width: video.videoWidth,
 			height: video.videoHeight,
-			duration: video.duration
+			duration: video.duration,
+			date: guessDateFromFile(file)
 		};
 	} finally {
 		URL.revokeObjectURL(url);

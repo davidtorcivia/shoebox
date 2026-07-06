@@ -253,6 +253,7 @@
 
 <style>
 	.date-field {
+		container-type: inline-size;
 		display: grid;
 		grid-template-columns: 132px minmax(0, 1fr);
 		gap: 14px;
@@ -278,7 +279,7 @@
 
 	.controls {
 		display: grid;
-		grid-template-columns: minmax(220px, 0.7fr) minmax(260px, 1fr);
+		grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr);
 		gap: 10px;
 		min-width: 0;
 	}
@@ -286,7 +287,7 @@
 	.controls[data-mode='range'],
 	.controls[data-mode='year'],
 	.controls[data-mode='unknown'] {
-		grid-template-columns: minmax(220px, 0.7fr) minmax(260px, 1fr);
+		grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr);
 	}
 
 	.control,
@@ -382,6 +383,13 @@
 
 		.date-label {
 			padding: 0;
+		}
+	}
+
+	@container (max-width: 420px) {
+		.controls,
+		.range-row {
+			grid-template-columns: 1fr;
 		}
 	}
 </style>

@@ -32,60 +32,120 @@ export type DecadePalette = {
 
 export const DECADES: DecadePalette[] = [
 	{
-		decade: 1940,
-		stops: ['#585850', '#A88868', '#C9B99F'],
-		pools: [{ color: '#51515166', pos: '10% -10%', size: '80% 60%' }],
-		chromeOn: 'ink'
-	},
-	{
-		decade: 1950,
-		stops: ['#A8D8EA', '#CFE3D8', '#F7E1A0'],
-		pools: [{ color: '#F7E1A099', pos: '70% 40%', size: '70% 55%' }],
-		chromeOn: 'ink'
-	},
-	{
-		decade: 1960,
-		stops: ['#FFD700', '#C9C25A', '#446179'],
-		pools: [{ color: '#44617955', pos: '85% 5%', size: '70% 50%' }],
-		chromeOn: 'ink'
-	},
-	{
-		decade: 1970,
-		stops: ['#FFB11B', '#D8D0C0', '#FFF1CF'],
-		pools: [{ color: '#D3826E55', pos: '0% 80%', size: '60% 50%' }],
-		chromeOn: 'ink'
-	},
-	{
-		decade: 1980,
-		stops: ['#0C0C0C', '#1F3A8A', '#AB5C57'],
-		pools: [{ color: '#1F3A8A88', pos: '75% 15%', size: '80% 60%' }],
+		decade: 1900,
+		stops: ['#16202A', '#7E6E5A', '#D9C7A2'],
+		pools: [
+			{ color: '#B88F5C66', pos: '14% -8%', size: '78% 58%' },
+			{ color: '#284C5F55', pos: '96% 18%', size: '70% 54%' }
+		],
 		chromeOn: 'cream'
 	},
 	{
-		decade: 1990,
-		stops: ['#F35336', '#FA7B62', '#FFD9A8'],
+		decade: 1910,
+		stops: ['#243322', '#87603F', '#E4C77F'],
 		pools: [
-			{ color: '#9D2B22AA', pos: '8% -10%', size: '90% 70%' },
-			{ color: '#FFD9A899', pos: '108% 38%', size: '70% 55%' }
+			{ color: '#D0A04466', pos: '78% -8%', size: '76% 58%' },
+			{ color: '#633A3D55', pos: '2% 92%', size: '68% 50%' }
 		],
 		chromeOn: 'ink'
 	},
 	{
+		decade: 1920,
+		stops: ['#101A24', '#1F6F78', '#F4C15D'],
+		pools: [
+			{ color: '#F4C15D66', pos: '92% 8%', size: '74% 54%' },
+			{ color: '#C94B4B4f', pos: '5% 82%', size: '68% 52%' }
+		],
+		chromeOn: 'cream'
+	},
+	{
+		decade: 1930,
+		stops: ['#202323', '#7B715E', '#C9B07D'],
+		pools: [
+			{ color: '#B9483F50', pos: '16% 0%', size: '76% 56%' },
+			{ color: '#78908A44', pos: '92% 80%', size: '70% 48%' }
+		],
+		chromeOn: 'cream'
+	},
+	{
+		decade: 1940,
+		stops: ['#1E2424', '#596D63', '#C5A36F'],
+		pools: [
+			{ color: '#3C4E5266', pos: '8% -10%', size: '82% 60%' },
+			{ color: '#C07A4D4c', pos: '92% 90%', size: '70% 46%' }
+		],
+		chromeOn: 'cream'
+	},
+	{
+		decade: 1950,
+		stops: ['#224E64', '#A8D8EA', '#F7D774'],
+		pools: [
+			{ color: '#F7D77477', pos: '82% 30%', size: '72% 58%' },
+			{ color: '#E46D6D55', pos: '0% 88%', size: '64% 48%' }
+		],
+		chromeOn: 'ink'
+	},
+	{
+		decade: 1960,
+		stops: ['#2B2D64', '#E7563D', '#FFD700'],
+		pools: [
+			{ color: '#FFD70077', pos: '84% 8%', size: '76% 52%' },
+			{ color: '#35A77D55', pos: '4% 92%', size: '70% 48%' }
+		],
+		chromeOn: 'ink'
+	},
+	{
+		decade: 1970,
+		stops: ['#362014', '#B45F2A', '#E2B857'],
+		pools: [
+			{ color: '#6B6E2368', pos: '85% 10%', size: '72% 54%' },
+			{ color: '#D3826E5c', pos: '0% 88%', size: '66% 48%' }
+		],
+		chromeOn: 'ink'
+	},
+	{
+		decade: 1980,
+		stops: ['#090A1F', '#2447B8', '#D02F8A'],
+		pools: [
+			{ color: '#00B7C777', pos: '86% 8%', size: '78% 58%' },
+			{ color: '#D02F8A66', pos: '4% 90%', size: '70% 50%' }
+		],
+		chromeOn: 'cream'
+	},
+	{
+		decade: 1990,
+		stops: ['#222126', '#6E9FA8', '#F0C36E'],
+		pools: [
+			{ color: '#9D4C7A66', pos: '10% -8%', size: '82% 60%' },
+			{ color: '#A6C36F55', pos: '94% 84%', size: '72% 48%' }
+		],
+		chromeOn: 'cream'
+	},
+	{
 		decade: 2000,
-		stops: ['#672422', '#C3272B', '#A8B8C4'],
-		pools: [{ color: '#67242288', pos: '15% -5%', size: '80% 55%' }],
+		stops: ['#111827', '#1F3A8A', '#A8B8C4'],
+		pools: [
+			{ color: '#71C7EC5c', pos: '84% 6%', size: '78% 56%' },
+			{ color: '#C3272B4f', pos: '8% 92%', size: '70% 48%' }
+		],
 		chromeOn: 'cream'
 	},
 	{
 		decade: 2010,
-		stops: ['#171412', '#5E6F4D', '#B8B0A8'],
-		pools: [{ color: '#5E6F4D66', pos: '80% 20%', size: '75% 55%' }],
+		stops: ['#171412', '#5E6F4D', '#D8CFC0'],
+		pools: [
+			{ color: '#8EB89755', pos: '82% 18%', size: '74% 56%' },
+			{ color: '#E6A75A44', pos: '4% 92%', size: '66% 48%' }
+		],
 		chromeOn: 'cream'
 	},
 	{
 		decade: 2020,
-		stops: ['#1F3A8A', '#47484B', '#D6D6D6'],
-		pools: [{ color: '#1F3A8A77', pos: '20% -10%', size: '80% 60%' }],
+		stops: ['#09111F', '#243C8F', '#D7D7E0'],
+		pools: [
+			{ color: '#4D7CFE66', pos: '18% -8%', size: '82% 60%' },
+			{ color: '#FA7B6250', pos: '98% 84%', size: '70% 50%' }
+		],
 		chromeOn: 'cream'
 	}
 ];
@@ -93,10 +153,8 @@ export const DECADES: DecadePalette[] = [
 export function paletteFor(year: number): DecadePalette {
 	const decade = Math.floor(year / 10) * 10;
 	const first = DECADES[0].decade;
-	const last = DECADES[DECADES.length - 1].decade;
 
-	if (decade >= last) return DECADES[DECADES.length - 1];
-	if (decade >= first) return DECADES[(decade - first) / 10];
+	if (decade >= first) return DECADES[((decade - first) / 10) % DECADES.length];
 
 	const stepsBack = (first - decade) / 10;
 	const idx = (DECADES.length - (stepsBack % DECADES.length)) % DECADES.length;

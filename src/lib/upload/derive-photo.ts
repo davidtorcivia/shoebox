@@ -2,6 +2,7 @@ import { encode } from 'blurhash';
 import exifr from 'exifr';
 import { fitWithin } from '$lib/domain/dims';
 import { itemDateFrom, type ItemDate } from '$lib/domain/dates';
+import { guessDateFromFile } from './date-guess';
 
 export interface PhotoDerivatives {
 	poster: Blob;
@@ -21,7 +22,7 @@ export async function derivePhoto(file: File): Promise<PhotoDerivatives> {
 	const thumb_800 = await renderBitmap(bitmap, 800);
 	const thumb_1600 = await renderBitmap(bitmap, 1600);
 	const blurhash = await blurhashFor(bitmap).catch(() => null);
-	const date = await exifDate(file).catch(() => null);
+	const date = (await exifDate(file).catch(() => null)) ?? guessDateFromFile(file);
 
 	return {
 		poster,

@@ -57,6 +57,8 @@
 
 <style>
 	.nav {
+		position: relative;
+		z-index: 20;
 		display: flex;
 		align-items: center;
 		gap: 2rem;
