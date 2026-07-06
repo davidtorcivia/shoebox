@@ -10,6 +10,8 @@ import {
 	completeUpload,
 	expectedChunkSize,
 	initUpload,
+	MAX_DERIVATIVE_BYTES,
+	MAX_UPLOAD_BYTES,
 	readManifest,
 	saveChunk,
 	validateUploadMeta
@@ -70,7 +72,9 @@ describe('initUpload', () => {
 			{ ...input, sizeBytes: 0 },
 			{ ...input, sizeBytes: 1.5 },
 			{ ...input, mime: 'application/zip' },
-			{ ...input, filename: '' }
+			{ ...input, filename: '' },
+			{ ...input, sizeBytes: MAX_UPLOAD_BYTES + 1 },
+			{ ...input, filename: 'x'.repeat(256) }
 		]) {
 			await expect(initUpload(db, storage, userId, bad)).rejects.toMatchObject({ status: 400 });
 		}
@@ -118,6 +122,9 @@ describe('initUpload', () => {
 		const again = await initUpload(db, storage, userId, input);
 		expect(again.receivedChunks).toEqual([0]);
 	});
+	it('uses the 8 MiB contract chunk size', () => {
+		expect(CHUNK_SIZE).toBe(8 * 1024 * 1024);
+	});
 });
 
 describe('saveChunk', () => {
@@ -163,6 +170,8 @@ describe('completeUpload', () => {
 
 	const webp = (n: number) => ({ data: new Uint8Array(n).fill(7), mime: 'image/webp' });
 
+	const sniffVideo = async (): Promise<{ mime: string }> => ({ mime: 'video/mp4' });
+
 	function derivatives() {
 		return {
 			poster: webp(40),
@@ -197,7 +206,7 @@ describe('completeUpload', () => {
 			meta: meta(),
 			blurhash: 'LKO2?U%2Tw',
 			derivatives: derivatives()
-		});
+		}, sniffVideo);
 
 		expect(dto.status).toBe('ready');
 		expect(dto.urls.original).toBe(`/media/media/${dto.id}/original.mp4`);
@@ -241,7 +250,7 @@ describe('completeUpload', () => {
 			meta: meta(),
 			blurhash: null,
 			derivatives: derivatives()
-		});
+		}, sniffVideo);
 		const stored = await storage.get(`media/${dto.id}/original.mp4`);
 		expect(new Uint8Array(await new Response(stored!.stream).arrayBuffer())).toEqual(
 			new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
@@ -276,7 +285,7 @@ describe('completeUpload', () => {
 			meta: meta(),
 			blurhash: null,
 			derivatives: derivatives()
-		});
+		}, sniffVideo);
 		const init2 = await initUpload(db, storage, user.id, {
 			sha256: SHA,
 			sizeBytes: bytes.length,
@@ -300,7 +309,7 @@ describe('completeUpload', () => {
 			meta: meta(),
 			blurhash: null,
 			derivatives: derivatives()
-		});
+		}, sniffVideo);
 		const rows = await db.select().from(itemsTable).where(eq(itemsTable.sha256, SHA));
 		expect(rows.map((row) => row.id).sort()).toEqual([first.id, second.id].sort());
 	});
@@ -315,8 +324,137 @@ describe('completeUpload', () => {
 				meta: meta({ type: 'photo' }),
 				blurhash: null,
 				derivatives: derivatives()
+			}, sniffVideo)
+		).rejects.toMatchObject({ status: 400 });
+	});
+
+	it('rejects non-media content even when the declared mime is allowed', async () => {
+		const bytes = new Uint8Array(32).map((_, i) => i); // not real media bytes
+		const { user, uploadId } = await uploadAll(bytes, SHA);
+		await expect(
+			completeUpload(db, storage, queue(), user, {
+				uploadId,
+				allowDuplicate: false,
+				meta: meta(),
+				blurhash: null,
+				derivatives: derivatives()
 			})
 		).rejects.toMatchObject({ status: 400 });
+		expect((await db.select().from(itemsTable)).length).toBe(0);
+	});
+
+	it('trusts the sniffed type over the client-declared mime', async () => {
+		const bytes = new Uint8Array(16);
+		const { user, uploadId } = await uploadAll(bytes, SHA);
+		const dto = await completeUpload(
+			db,
+			storage,
+			queue(),
+			user,
+			{
+				uploadId,
+				allowDuplicate: false,
+				meta: meta(),
+				blurhash: null,
+				derivatives: derivatives()
+			},
+			async () => ({ mime: 'video/quicktime' })
+		);
+		expect(dto.urls.original).toBe(`/media/media/${dto.id}/original.mov`);
+		const original = (
+			await db.select().from(itemFiles).where(eq(itemFiles.itemId, dto.id))
+		).find((f) => f.kind === 'original');
+		expect(original!.mime).toBe('video/quicktime');
+	});
+
+	it('rejects an oversized derivative before storing the original', async () => {
+		const bytes = new Uint8Array(8);
+		const { user, uploadId } = await uploadAll(bytes, SHA);
+		const tooBig = { data: new Uint8Array(MAX_DERIVATIVE_BYTES + 1), mime: 'image/webp' };
+		await expect(
+			completeUpload(
+				db,
+				storage,
+				queue(),
+				user,
+				{
+					uploadId,
+					allowDuplicate: false,
+					meta: meta(),
+					blurhash: null,
+					derivatives: {
+						poster: tooBig,
+						thumb_400: webp(10),
+						thumb_800: webp(20),
+						thumb_1600: webp(30)
+					}
+				},
+				sniffVideo
+			)
+		).rejects.toMatchObject({ status: 400 });
+		expect((await db.select().from(itemsTable)).length).toBe(0);
+	});
+
+	it('forbids a different user from completing the upload', async () => {
+		const bytes = new Uint8Array(8);
+		const { uploadId } = await uploadAll(bytes, SHA);
+		const other = await seedUser(db, { id: 'u_other', username: 'other' });
+		await expect(
+			completeUpload(
+				db,
+				storage,
+				queue(),
+				other,
+				{
+					uploadId,
+					allowDuplicate: false,
+					meta: meta(),
+					blurhash: null,
+					derivatives: derivatives()
+				},
+				sniffVideo
+			)
+		).rejects.toMatchObject({ status: 403 });
+	});
+
+	it('serializes concurrent same-sha completions so exactly one wins', async () => {
+		const bytes = new Uint8Array(12);
+		const { user, uploadId } = await uploadAll(bytes, SHA);
+		const results = await Promise.allSettled([
+			completeUpload(
+				db,
+				storage,
+				queue(),
+				user,
+				{
+					uploadId,
+					allowDuplicate: false,
+					meta: meta(),
+					blurhash: null,
+					derivatives: derivatives()
+				},
+				sniffVideo
+			),
+			completeUpload(
+				db,
+				storage,
+				queue(),
+				user,
+				{
+					uploadId,
+					allowDuplicate: false,
+					meta: meta(),
+					blurhash: null,
+					derivatives: derivatives()
+				},
+				sniffVideo
+			)
+		]);
+		const fulfilled = results.filter((r) => r.status === 'fulfilled');
+		const rejected = results.filter((r) => r.status === 'rejected');
+		expect(fulfilled.length).toBe(1);
+		expect(rejected.length).toBe(1);
+		expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ status: 409 });
 	});
 });
 

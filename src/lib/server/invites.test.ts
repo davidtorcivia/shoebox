@@ -1,3 +1,4 @@
+import { isHttpError } from '@sveltejs/kit';
 import { ACCENTS } from '$lib/ui/tokens';
 import { nanoid } from 'nanoid';
 import { describe, expect, it } from 'vitest';
@@ -20,6 +21,22 @@ async function seedAdmin(db: Db): Promise<string> {
 		username: `admin-${id}`,
 		passwordHash: 'unused',
 		role: 'admin',
+		accentColor: ACCENTS[0].hex,
+		personId: null,
+		comfortMode: false,
+		theme: 'system',
+		createdAt: new Date()
+	});
+	return id;
+}
+
+async function seedOwner(db: Db): Promise<string> {
+	const id = nanoid(12);
+	await db.insert(users).values({
+		id,
+		username: `owner-${id}`,
+		passwordHash: 'unused',
+		role: 'owner',
 		accentColor: ACCENTS[0].hex,
 		personId: null,
 		comfortMode: false,
@@ -118,5 +135,46 @@ describe('redeemInvite', () => {
 		expect(
 			await redeemInvite(db, open.token, { username: 'first', password: 'long-enough-pw' })
 		).toEqual({ ok: false, reason: 'username_taken' });
+	});
+
+	it('prevents double-redemption of a single-use invite under concurrency', async () => {
+		const db = openNodeDb(':memory:');
+		const adminId = await seedAdmin(db);
+		const invite = await createInvite(db, { role: 'user', createdBy: adminId });
+		const results = await Promise.all([
+			redeemInvite(db, invite.token, { username: 'cousin-a', password: 'long-enough-pw' }),
+			redeemInvite(db, invite.token, { username: 'cousin-b', password: 'long-enough-pw' })
+		]);
+		const oks = results.filter((r) => r.ok);
+		expect(oks).toHaveLength(1);
+		expect(results.some((r) => !r.ok && r.reason === 'exhausted')).toBe(true);
+		const after = await getInviteByToken(db, invite.token);
+		expect(after!.useCount).toBe(1);
+	});
+});
+
+describe('createInvite admin guard', () => {
+	it('rejects an admin invitation created by a non-owner (403)', async () => {
+		const db = openNodeDb(':memory:');
+		const adminId = await seedAdmin(db);
+		await expect(createInvite(db, { role: 'admin', createdBy: adminId })).rejects.toSatisfy(
+			(err: unknown) => isHttpError(err) && err.status === 403
+		);
+		const remaining = await listInvites(db);
+		expect(remaining).toHaveLength(0);
+	});
+
+	it('allows an admin invitation created by the owner', async () => {
+		const db = openNodeDb(':memory:');
+		const ownerId = await seedOwner(db);
+		const invite = await createInvite(db, { role: 'admin', createdBy: ownerId });
+		expect(invite.role).toBe('admin');
+	});
+
+	it('still lets any admin mint non-admin invitations', async () => {
+		const db = openNodeDb(':memory:');
+		const adminId = await seedAdmin(db);
+		const invite = await createInvite(db, { role: 'editor', createdBy: adminId });
+		expect(invite.role).toBe('editor');
 	});
 });

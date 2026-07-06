@@ -1,0 +1,56 @@
+name: shoebox
+
+services:
+  app:
+    build: .
+    image: shoebox-app:0.1.0
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    env_file: .env
+    environment:
+      PLATFORM: node
+      DATABASE_PATH: /data/shoebox.db
+      MEDIA_PATH: /media
+    volumes:
+      - ${SHOEBOX_DATA_DIR:-./data}:/data
+      - ${SHOEBOX_MEDIA_DIR:-./media}:/media
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: shoebox-worker:0.1.0
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PLATFORM: node
+      DATABASE_PATH: /data/shoebox.db
+      MEDIA_PATH: /media
+      INGEST_PATH: /ingest
+      MIGRATIONS_PATH: /app/migrations
+    volumes:
+      - ${SHOEBOX_DATA_DIR:-./data}:/data
+      - ${SHOEBOX_MEDIA_DIR:-./media}:/media
+      - ${SHOEBOX_INGEST_DIR:-./ingest}:/ingest
+    depends_on:
+      app:
+        condition: service_healthy
+
+  faces:
+    build:
+      context: .
+      dockerfile: faces/Dockerfile
+    image: shoebox-faces:0.1.0
+    restart: unless-stopped
+    profiles: ['faces']
+    env_file: .env
+    environment:
+      DATABASE_PATH: /data/shoebox.db
+      MEDIA_PATH: /media
+    volumes:
+      - ${SHOEBOX_DATA_DIR:-./data}:/data
+      - ${SHOEBOX_MEDIA_DIR:-./media}:/media
+    depends_on:
+      app:
+        condition: service_healthy

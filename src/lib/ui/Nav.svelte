@@ -8,9 +8,9 @@
 		accentColor: string;
 		avatarStorageKey: string | null;
 	}
-	let { user }: { user: NavUser } = $props();
+	let { user, ingestion }: { user: NavUser; ingestion: boolean } = $props();
 
-	const showArrivals = $derived(['editor', 'admin', 'owner'].includes(user.role));
+	const showArrivals = $derived(ingestion && ['editor', 'admin', 'owner'].includes(user.role));
 	const showUpload = $derived(['uploader', 'editor', 'admin', 'owner'].includes(user.role));
 	const accentOn = $derived(ACCENTS.find((accent) => accent.hex === user.accentColor)?.on ?? 'ink');
 </script>

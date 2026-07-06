@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as schema from '../lib/server/db/schema';
 import { createFsStorage } from '../lib/server/platform/storage-fs';
-import { claimJob, logIngestFailure, runJob, type WorkerContext } from './jobs';
+import { claimJob, logIngestFailure, MAX_ATTEMPTS, runJob, STALE_CLAIM_SECONDS, type WorkerContext } from './jobs';
 import { createTestDb, insertJob } from './test-helpers';
 
 function testCtx(db: ReturnType<typeof createTestDb>): WorkerContext {
@@ -58,6 +58,58 @@ describe('claimJob', () => {
 		insertJob(db, { kind: 'derivatives' });
 		expect(claimJob(db, ['derivatives'])).not.toBeNull();
 		expect(claimJob(db, ['derivatives'])).toBeNull();
+	});
+});
+
+describe('claimJob stale recovery', () => {
+	it('reclaims a job stuck in running longer than the stale threshold', () => {
+		const db = createTestDb();
+		const stale = Math.floor(Date.now() / 1000) - (STALE_CLAIM_SECONDS + 60);
+		const id = insertJob(db, {
+			kind: 'derivatives',
+			status: 'running',
+			attempts: 2,
+			payload: { itemId: 'stuck', claimedAt: stale }
+		});
+		const job = claimJob(db, ['derivatives']);
+		expect(job).not.toBeNull();
+		expect(job!.id).toBe(id);
+		// claimedAt is operational bookkeeping, stripped from the handler payload
+		expect(job!.payload).toEqual({ itemId: 'stuck' });
+		// reclaim counts as an attempt so a perpetually-crashing job eventually fails
+		expect(job!.attempts).toBe(3);
+		const row = db.select().from(schema.jobs).where(eq(schema.jobs.id, id)).get()!;
+		expect(row.status).toBe('running');
+	});
+
+	it('does not reclaim a running job claimed recently', () => {
+		const db = createTestDb();
+		const recent = Math.floor(Date.now() / 1000) - 10;
+		const id = insertJob(db, {
+			kind: 'derivatives',
+			status: 'running',
+			attempts: 0,
+			payload: { itemId: 'fresh', claimedAt: recent }
+		});
+		expect(claimJob(db, ['derivatives'])).toBeNull();
+		const row = db.select().from(schema.jobs).where(eq(schema.jobs.id, id)).get()!;
+		expect(row.status).toBe('running');
+		expect(row.attempts).toBe(0);
+	});
+
+	it('fails a stuck job once it has exhausted its retries', () => {
+		const db = createTestDb();
+		const stale = Math.floor(Date.now() / 1000) - (STALE_CLAIM_SECONDS + 60);
+		const id = insertJob(db, {
+			kind: 'derivatives',
+			status: 'running',
+			attempts: MAX_ATTEMPTS,
+			payload: { itemId: 'done-for', claimedAt: stale }
+		});
+		// finalize marks it failed; the reclaim selector no longer picks it up
+		expect(claimJob(db, ['derivatives'])).toBeNull();
+		const row = db.select().from(schema.jobs).where(eq(schema.jobs.id, id)).get()!;
+		expect(row.status).toBe('failed');
 	});
 });
 

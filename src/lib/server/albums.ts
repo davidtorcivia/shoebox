@@ -189,7 +189,8 @@ async function toDTOs(db: Db, storage: StorageAdapter, rows: AlbumRow[]): Promis
 	const countRows = await db
 		.select({ albumId: albumItems.albumId, count: sql<number>`count(*)` })
 		.from(albumItems)
-		.where(inArray(albumItems.albumId, ids))
+		.innerJoin(items, eq(albumItems.itemId, items.id))
+		.where(and(inArray(albumItems.albumId, ids), isNull(items.deletedAt)))
 		.groupBy(albumItems.albumId);
 	const counts = new Map(countRows.map((row) => [row.albumId, Number(row.count)]));
 

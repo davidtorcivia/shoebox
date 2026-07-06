@@ -36,6 +36,10 @@ def test_connect_sets_busy_timeout(db):
     assert db.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
 
 
+def test_connect_enables_foreign_keys(db):
+    assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+
+
 def test_claim_returns_oldest_runnable_and_marks_running(db):
     add_job(db, "j2", created_at=NOW - 5)
     add_job(db, "j1", created_at=NOW - 50)

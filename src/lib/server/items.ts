@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import {
 	albumItems,
@@ -355,65 +355,60 @@ export async function listItems(
 	query: ListItemsQuery
 ): Promise<{ items: ItemDTO[]; nextCursor: string | null }> {
 	const limit = Math.min(Math.max(query.limit ?? 50, 1), 100);
-	let rows = await db.select().from(items).where(isNull(items.deletedAt));
+	const conds: SQL[] = [isNull(items.deletedAt)];
 
-	if (query.type) rows = rows.filter((row) => row.type === query.type);
-	if (query.status) rows = rows.filter((row) => row.status === query.status);
+	if (query.type) conds.push(eq(items.type, query.type));
+	if (query.status) conds.push(eq(items.status, query.status));
 	if (query.year) {
-		const prefix = String(query.year).padStart(4, '0');
-		rows = rows.filter((row) => row.sortDate?.startsWith(prefix));
+		const prefix = `${String(query.year).padStart(4, '0')}%`;
+		conds.push(sql`${items.sortDate} like ${prefix}`);
 	}
 	if (query.month && query.year) {
-		const prefix = `${String(query.year).padStart(4, '0')}-${String(query.month).padStart(2, '0')}`;
-		rows = rows.filter((row) => row.sortDate?.startsWith(prefix));
+		const prefix = `${String(query.year).padStart(4, '0')}-${String(query.month).padStart(2, '0')}%`;
+		conds.push(sql`${items.sortDate} like ${prefix}`);
 	}
 	if (query.q?.trim()) {
-		const q = query.q.trim().toLowerCase();
-		rows = rows.filter((row) =>
-			[row.title, row.description].some((value) => value?.toLowerCase().includes(q))
+		const needle = query.q.trim().toLowerCase();
+		conds.push(
+			sql`(instr(lower(coalesce(${items.title}, '')), ${needle}) > 0
+			     or instr(lower(coalesce(${items.description}, '')), ${needle}) > 0)`
 		);
 	}
 	if (query.album) {
-		const albumRows = await db
-			.select({ itemId: albumItems.itemId })
-			.from(albumItems)
-			.where(eq(albumItems.albumId, query.album));
-		const allowed = new Set(albumRows.map((row) => row.itemId));
-		rows = rows.filter((row) => allowed.has(row.id));
+		conds.push(
+			sql`${items.id} in (select item_id from album_items where album_id = ${query.album})`
+		);
 	}
-	if (query.people?.length) {
-		const linked = await db
-			.select({ itemId: itemPeople.itemId, personId: itemPeople.personId })
-			.from(itemPeople)
-			.where(inArray(itemPeople.personId, query.people));
-		rows = rows.filter((row) => {
-			const linkedPeople = new Set(
-				linked.filter((link) => link.itemId === row.id).map((link) => link.personId)
-			);
-			return query.people!.every((personId) => linkedPeople.has(personId));
-		});
+	for (const personId of query.people ?? []) {
+		conds.push(
+			sql`${items.id} in (select item_id from item_people where person_id = ${personId})`
+		);
 	}
 	if (query.tags?.length) {
-		const tagNames = query.tags.map(normalizeTagName).filter(Boolean);
-		const linked = await db
-			.select({ itemId: itemTags.itemId, name: tags.name })
-			.from(itemTags)
-			.innerJoin(tags, eq(itemTags.tagId, tags.id))
-			.where(inArray(tags.name, tagNames));
-		rows = rows.filter((row) => {
-			const linkedTags = new Set(
-				linked.filter((link) => link.itemId === row.id).map((link) => link.name)
+		for (const name of query.tags.map(normalizeTagName).filter(Boolean)) {
+			conds.push(
+				sql`${items.id} in (select it.item_id from item_tags it inner join tags t on t.id = it.tag_id where t.name = ${name})`
 			);
-			return tagNames.every((name) => linkedTags.has(name));
-		});
+		}
 	}
 
-	rows.sort(compareItemRows);
+	// NULL sortDates sort last (undated items), matching the previous in-memory
+	// ordering. Keyset pagination over (sortKey, id) avoids loading the table.
+	const sortKey = sql<string>`coalesce(${items.sortDate}, '9999-12-31')`;
 	if (query.cursor) {
 		const cursor = decodeCursor(query.cursor);
-		const index = rows.findIndex((row) => row.id === cursor.id && row.sortDate === cursor.s);
-		if (index >= 0) rows = rows.slice(index + 1);
+		const cursorKey = cursor.s ?? '9999-12-31';
+		conds.push(
+			sql`(${sortKey} > ${cursorKey} or (${sortKey} = ${cursorKey} and ${items.id} > ${cursor.id}))`
+		);
 	}
+
+	const rows = await db
+		.select()
+		.from(items)
+		.where(and(...conds))
+		.orderBy(asc(sortKey), asc(items.id))
+		.limit(limit + 1);
 
 	const page = rows.slice(0, limit);
 	const hasMore = rows.length > limit;
@@ -510,14 +505,6 @@ export async function restoreItem(db: Db, storage: StorageAdapter, id: string): 
 	const dto = await getItemDTO(db, storage, id);
 	if (!dto) throw error(500, 'item restore failed');
 	return dto;
-}
-
-function compareItemRows(a: ItemRow, b: ItemRow): number {
-	if (a.sortDate && b.sortDate && a.sortDate !== b.sortDate)
-		return a.sortDate.localeCompare(b.sortDate);
-	if (a.sortDate && !b.sortDate) return -1;
-	if (!a.sortDate && b.sortDate) return 1;
-	return a.id.localeCompare(b.id);
 }
 
 async function getItemRow(

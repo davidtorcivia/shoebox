@@ -4,9 +4,12 @@ import type { Db } from './db';
 import { sessions, users } from './db/schema';
 import { openNodeDb } from './platform/db-node';
 import {
+	_resetLoginRateLimits,
 	createSession,
 	destroySession,
 	hashPassword,
+	resetLoginAttempts,
+	takeLoginAttempt,
 	validateSession,
 	verifyPassword
 } from './auth';
@@ -88,5 +91,33 @@ describe('sessions', () => {
 		const { token } = await createSession(db, userId);
 		await destroySession(db, token);
 		expect(await validateSession(db, token)).toBeNull();
+	});
+});
+
+describe('login rate limiter', () => {
+	it('allows up to capacity then rejects within the window', () => {
+		_resetLoginRateLimits();
+		const now = 1_000_000;
+		let allowed = 0;
+		for (let i = 0; i < 5; i += 1) if (takeLoginAttempt('attacker', now)) allowed += 1;
+		expect(allowed).toBe(5);
+		expect(takeLoginAttempt('attacker', now)).toBe(false);
+	});
+
+	it('keys case-insensitively and resets after a success', () => {
+		_resetLoginRateLimits();
+		const now = 2_000_000;
+		expect(takeLoginAttempt('Victim', now)).toBe(true);
+		// different case, same identifier → same bucket
+		expect(takeLoginAttempt('VICTIM', now)).toBe(true);
+		resetLoginAttempts('victim');
+		// bucket cleared → next attempt is fresh
+		expect(takeLoginAttempt('victim', now)).toBe(true);
+	});
+
+	it('opens a fresh window after the interval elapses', () => {
+		_resetLoginRateLimits();
+		expect(takeLoginAttempt('someone', 3_000_000)).toBe(true);
+		expect(takeLoginAttempt('someone', 3_000_000 + 61_000)).toBe(true);
 	});
 });

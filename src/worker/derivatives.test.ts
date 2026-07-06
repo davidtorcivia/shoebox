@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { copyFile, mkdir, stat } from 'node:fs/promises';
+import { copyFile, mkdir, rm, stat } from 'node:fs/promises';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,7 +8,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { FIXTURE_JPG, FIXTURE_MP4, generateFixtures } from '../../e2e/fixtures/generate';
 import * as schema from '../lib/server/db/schema';
 import { createFsStorage } from '../lib/server/platform/storage-fs';
-import { derivativesHandler, probeVideo } from './derivatives';
+import { derivativesHandler, probeVideo, runFfmpeg } from './derivatives';
 import type { WorkerContext } from './jobs';
 import { createTestDb, seedItem, seedOwner } from './test-helpers';
 
@@ -144,5 +144,25 @@ describe('derivativesHandler for videos', () => {
 		expect(Math.abs((item.duration ?? 0) - 2)).toBeLessThan(0.5);
 		expect(item.width).toBe(320);
 		expect(item.height).toBe(180);
+	}, 10_000);
+});
+
+describe('ffmpeg / ffprobe timeouts', () => {
+	it('rejects when ffprobe exceeds its timeout', async () => {
+		await expect(probeVideo(FIXTURE_MP4, 1)).rejects.toThrow(/timed out/i);
+	}, 10_000);
+
+	it('rejects when ffmpeg exceeds its timeout and leaves no running process', async () => {
+		const tmp = mkdtempSync(join(tmpdir(), 'shoebox-ff-to-'));
+		const out = join(tmp, 'poster.png');
+		await expect(
+			runFfmpeg(
+				(cmd) => cmd.seekInput(0.05).outputOptions(['-frames:v 1', "-vf scale=160:-2"]),
+				FIXTURE_MP4,
+				out,
+				1
+			)
+		).rejects.toThrow(/timed out/i);
+		await rm(tmp, { recursive: true, force: true });
 	}, 10_000);
 });

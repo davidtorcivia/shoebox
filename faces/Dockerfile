@@ -24,4 +24,13 @@ CMD ["pytest", "tests", "-v"]
 
 FROM base AS runtime
 
+# Run the worker as a non-root user (uid/gid 1000, matching the node app) so a
+# compromise while scanning untrusted media cannot escalate to root on the
+# mounted /data and /media volumes. Host bind-mounts must be uid-1000 writable,
+# the same requirement the app container already imposes.
+RUN groupadd -g 1000 faces && useradd -u 1000 -g 1000 -m -s /usr/sbin/nologin faces \
+    && chown -R faces:faces /app /models
+
+USER faces
+
 CMD ["python", "-m", "main"]

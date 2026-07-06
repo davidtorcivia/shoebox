@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -105,6 +105,28 @@ describe('processIngestFile for duplicates and failures', () => {
 		if (result.status !== 'failed') throw new Error('expected failed result');
 		expect(result.reason).toContain('do not match');
 		expect(readdirSync(join(env.ingestPath, '_failed'))).toEqual(['fake.mp4']);
+	});
+});
+
+describe('processIngestFile path safety', () => {
+	it('refuses a symlink that resolves outside the ingest directory', async () => {
+		const env = makeEnv();
+		// a real file living OUTSIDE ingestPath (a sibling temp dir)
+		const outside = mkdtempSync(join(tmpdir(), 'shoebox-outside-'));
+		const target = join(outside, 'secret.jpg');
+		await copyFile(FIXTURE_JPG, target);
+		// a symlink inside ingest pointing at the external file
+		const link = join(env.ingestPath, 'escape.jpg');
+		await symlink(target, link);
+
+		const result = await processIngestFile(env.deps, link);
+
+		expect(result.status).toBe('failed');
+		if (result.status !== 'failed') throw new Error('expected failed result');
+		expect(result.reason).toContain('symlink escape');
+		// nothing is ingested and the symlink is left in place (never moved)
+		expect(env.deps.db.select().from(schema.items).all()).toHaveLength(0);
+		expect(existsSync(link)).toBe(true);
 	});
 });
 

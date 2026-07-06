@@ -1,3 +1,4 @@
+import { env } from '$env/dynamic/private';
 import { and, asc, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { hashPassword, verifyPassword } from './auth';
@@ -148,11 +149,39 @@ export async function resolveShare(
 	return { ok: true, share: toRecord(row) };
 }
 
-export async function shareCookieValue(token: string): Promise<string> {
-	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
-	return toHex(new Uint8Array(digest));
+/**
+ * Secret keying the share-access cookie HMAC.
+ *
+ * Set `SECRET_KEY` in production so cookies survive restarts and are honored by
+ * every replica. When unset we fall back to a random per-process key: still
+ * unforgeable, but cookies then won't outlive a restart or span instances.
+ */
+let shareCookieKey: Uint8Array | null = null;
+function getShareCookieKey(): Uint8Array {
+	if (shareCookieKey) return shareCookieKey;
+	const configured = env.SECRET_KEY?.trim();
+	shareCookieKey = configured
+		? new TextEncoder().encode(configured)
+		: crypto.getRandomValues(new Uint8Array(32));
+	return shareCookieKey;
 }
 
-export function canAccessMedia(user: App.Locals['user']): boolean {
-	return user !== null;
+/**
+ * HMAC-SHA256 of the share token keyed by the server secret.
+ *
+ * This must NOT be a bare hash of the token: the token is the public share URL,
+ * so a plain digest would be forgeable by any holder of the link and would
+ * defeat password-protected shares (hooks.server.ts validates the cookie by
+ * recomputing this value).
+ */
+export async function shareCookieValue(token: string): Promise<string> {
+	const key = await crypto.subtle.importKey(
+		'raw',
+		getShareCookieKey().buffer as ArrayBuffer,
+		{ name: 'HMAC', hash: 'SHA-256' },
+		false,
+		['sign']
+	);
+	const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(token));
+	return toHex(new Uint8Array(sig));
 }

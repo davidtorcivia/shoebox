@@ -18,7 +18,7 @@
 </script>
 
 {#if data.user && !data.pathname.startsWith('/share')}
-	<Nav user={data.user} />
+	<Nav user={data.user} ingestion={data.features.ingestion} />
 {/if}
 <main>
 	{@render children()}

@@ -7,6 +7,8 @@ export default defineConfig({
 	timeout: 120_000,
 	fullyParallel: false,
 	workers: 1,
+	snapshotPathTemplate: '{testDir}/__screenshots__/{testFilePath}/{arg}{ext}',
+	expect: { toHaveScreenshot: { threshold: 0.2, animations: 'disabled' } },
 	use: {
 		baseURL: 'http://localhost:4173'
 	},

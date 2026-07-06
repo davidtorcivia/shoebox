@@ -15,6 +15,10 @@ ffmpeg.setFfprobePath(ffprobeStatic.path);
 
 const THUMB_WIDTHS = [400, 800, 1600] as const;
 const WEBP_QUALITY = 82;
+/** Bounds ffmpeg against malformed inputs that would otherwise hang the worker.
+ * Generous enough for real transcodes; ffprobe is given a shorter leash. */
+const FFMPEG_TIMEOUT_MS = 180_000;
+const FFPROBE_TIMEOUT_MS = 30_000;
 
 export interface VideoProbe {
 	duration: number;
@@ -42,44 +46,76 @@ export function normalizeCreationTime(raw: string | null): string | null {
 	return date.toISOString().slice(0, 10);
 }
 
-export function probeVideo(filePath: string): Promise<VideoProbe> {
-	return new Promise((resolve, reject) => {
-		ffmpeg.ffprobe(filePath, (err, data) => {
-			if (err) {
-				reject(err instanceof Error ? err : new Error(String(err)));
-				return;
-			}
-
-			const stream = data.streams.find((candidate) => candidate.codec_type === 'video');
-			if (!stream) {
-				reject(new Error(`no video stream in ${filePath}`));
-				return;
-			}
-
-			resolve({
-				duration: Number(data.format.duration ?? 0),
-				width: stream.width ?? 0,
-				height: stream.height ?? 0,
-				creationTime: normalizeCreationTime(
-					(data.format.tags?.creation_time as string | undefined) ?? null
-				)
-			});
+export function probeVideo(filePath: string, timeoutMs = FFPROBE_TIMEOUT_MS): Promise<VideoProbe> {
+	const { promise, resolve, reject } = Promise.withResolvers<VideoProbe>();
+	let settled = false;
+	const timer = setTimeout(() => {
+		if (settled) return;
+		settled = true;
+		reject(new Error(`ffprobe timed out after ${timeoutMs}ms (input: ${filePath})`));
+	}, timeoutMs);
+	ffmpeg.ffprobe(filePath, (err, data) => {
+		if (settled) return;
+		if (err) {
+			settled = true;
+			clearTimeout(timer);
+			reject(err instanceof Error ? err : new Error(String(err)));
+			return;
+		}
+		const stream = data.streams.find((candidate) => candidate.codec_type === 'video');
+		if (!stream) {
+			settled = true;
+			clearTimeout(timer);
+			reject(new Error(`no video stream in ${filePath}`));
+			return;
+		}
+		settled = true;
+		clearTimeout(timer);
+		resolve({
+			duration: Number(data.format.duration ?? 0),
+			width: stream.width ?? 0,
+			height: stream.height ?? 0,
+			creationTime: normalizeCreationTime(
+				(data.format.tags?.creation_time as string | undefined) ?? null
+			)
 		});
 	});
+	return promise;
 }
 
-function runFfmpeg(
+export function runFfmpeg(
 	configure: (cmd: ffmpeg.FfmpegCommand) => ffmpeg.FfmpegCommand,
 	input: string,
-	output: string
+	output: string,
+	timeoutMs = FFMPEG_TIMEOUT_MS
 ): Promise<void> {
-	return new Promise((resolve, reject) => {
-		configure(ffmpeg(input))
-			.output(output)
-			.on('end', () => resolve())
-			.on('error', (err) => reject(err instanceof Error ? err : new Error(String(err))))
-			.run();
-	});
+	const { promise, resolve, reject } = Promise.withResolvers<void>();
+	const cmd = configure(ffmpeg(input)).output(output);
+	let settled = false;
+	const timer = setTimeout(() => {
+		if (settled) return;
+		settled = true;
+		try {
+			cmd.kill('SIGKILL');
+		} catch {
+			/* process already exited */
+		}
+		reject(new Error(`ffmpeg timed out after ${timeoutMs}ms (input: ${input})`));
+	}, timeoutMs);
+	cmd.on('end', () => {
+		if (settled) return;
+		settled = true;
+		clearTimeout(timer);
+		resolve();
+	})
+		.on('error', (err) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			reject(err instanceof Error ? err : new Error(String(err)));
+		})
+		.run();
+	return promise;
 }
 
 function replaceItemFiles(db: WorkerDb, itemId: string, rows: DerivedRow[]): void {

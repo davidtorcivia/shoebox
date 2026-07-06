@@ -15,12 +15,10 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
 export const POST: RequestHandler = async ({ locals, request }) => {
 	const user = requireRole(locals, 'uploader');
-	const body = (await request.json()) as Omit<CreateItemInput, 'uploadedBy'> & {
-		uploadedBy?: string;
-	};
+	const body = (await request.json()) as Omit<CreateItemInput, 'uploadedBy'>;
 	const item = await createItem(locals.db, locals.platform.storage, locals.platform.queue, {
 		...body,
-		uploadedBy: body.uploadedBy ?? user.id
+		uploadedBy: user.id
 	});
 	return json({ item }, { status: 201 });
 };

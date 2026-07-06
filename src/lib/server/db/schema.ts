@@ -146,7 +146,7 @@ export const itemPeople = sqliteTable(
 			.notNull()
 			.default('manual')
 	},
-	(t) => [primaryKey({ columns: [t.itemId, t.personId] })]
+	(t) => [primaryKey({ columns: [t.itemId, t.personId] }), index('item_people_person').on(t.personId)]
 );
 
 export const tags = sqliteTable('tags', {
@@ -167,7 +167,7 @@ export const itemTags = sqliteTable(
 			.notNull()
 			.references(() => tags.id)
 	},
-	(t) => [primaryKey({ columns: [t.itemId, t.tagId] })]
+	(t) => [primaryKey({ columns: [t.itemId, t.tagId] }), index('item_tags_tag').on(t.tagId)]
 );
 
 export const albums = sqliteTable('albums', {
@@ -193,7 +193,7 @@ export const albumItems = sqliteTable(
 			.references(() => items.id),
 		position: integer('position').notNull()
 	},
-	(t) => [primaryKey({ columns: [t.albumId, t.itemId] })]
+	(t) => [primaryKey({ columns: [t.albumId, t.itemId] }), index('album_items_album_position').on(t.albumId, t.position)]
 );
 
 export const comments = sqliteTable('comments', {
@@ -207,7 +207,7 @@ export const comments = sqliteTable('comments', {
 	body: text('body').notNull(),
 	createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 	deletedAt: integer('deleted_at', { mode: 'timestamp' })
-});
+}, (t) => [index('comments_item').on(t.itemId)]);
 
 export const shares = sqliteTable('shares', {
 	id: text('id').primaryKey(),
@@ -235,7 +235,7 @@ export const faces = sqliteTable('faces', {
 	status: text('status', { enum: ['pending', 'confirmed', 'rejected'] })
 		.notNull()
 		.default('pending')
-});
+}, (t) => [index('faces_item').on(t.itemId)]);
 
 export const jobs = sqliteTable(
 	'jobs',

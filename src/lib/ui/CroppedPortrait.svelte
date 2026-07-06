@@ -6,7 +6,7 @@
 </script>
 
 <div class="portrait">
-	<img src={url} alt={name} style={cropStyle(crop)} draggable="false" />
+	<img src={url} alt={name} style={cropStyle(crop)} draggable="false" loading="lazy" />
 </div>
 
 <style>

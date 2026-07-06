@@ -20,6 +20,15 @@ export default ts.config(
 		languageOptions: { parserOptions: { parser: ts.parser } }
 	},
 	{
-		ignores: ['build/', '.svelte-kit/', 'static/', 'src/lib/server/db/migrations/', 'e2e/.data/']
+		ignores: [
+			'build/**',
+			'build-worker/**',
+			'.wrangler/**',
+			'.svelte-kit/**',
+			'static/**',
+			'src/lib/server/db/migrations/**',
+			'e2e/.data/**',
+			'docs/superpowers/**'
+		]
 	}
 );

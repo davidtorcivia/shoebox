@@ -2,8 +2,7 @@ import { expect, type Page } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-
-export const OWNER = { username: 'matriarch', password: 'super-secret-8' };
+import { OWNER } from './auth';
 
 const DB_PATH = 'e2e/.data/shoebox.db';
 const MEDIA_ROOT = 'e2e/.data/media';
@@ -14,29 +13,6 @@ type SeededPlayer = {
 	personId: string;
 	albumId: string;
 };
-
-export async function ensureOwner(page: Page): Promise<void> {
-	await page.goto('/setup');
-	if (
-		await page
-			.getByRole('heading', { name: 'Set up Shoebox' })
-			.isVisible()
-			.catch(() => false)
-	) {
-		await page.getByLabel('Username').fill(OWNER.username);
-		await page.getByLabel('Password').fill(OWNER.password);
-		await page.getByRole('button', { name: 'Create owner' }).click();
-		await page.waitForURL('/');
-		return;
-	}
-
-	if (page.url().endsWith('/login')) {
-		await page.getByLabel('Username').fill(OWNER.username);
-		await page.getByLabel('Password').fill(OWNER.password);
-		await page.getByRole('button', { name: 'Sign in' }).click();
-		await page.waitForURL('/');
-	}
-}
 
 export async function seedPlayerRoom(page: Page): Promise<SeededPlayer> {
 	const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;

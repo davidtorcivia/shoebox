@@ -13,7 +13,7 @@
 	const decades = $derived(railDecades(years, earliest, activeYear, now));
 </script>
 
-<section class="rail" aria-label="Timeline years">
+<section class="rail" aria-label="Timeline years" data-testid="century-rail">
 	<div class="ticks">
 		{#each decades as decade (decade.decade)}
 			<div class:active={decade.active} class:future={decade.future} class="decade">

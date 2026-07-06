@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { E2E_ENV, E2E_INGEST_DIR } from './env';
 import { FIXTURE_MP4 } from './fixtures/generate';
-import { ensureOwner } from './helpers/seed-player';
+import { ensureOwner } from './helpers/auth';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -13,7 +13,8 @@ let worker: ChildProcess;
 test.beforeAll(() => {
 	worker = spawn('pnpm', ['worker'], {
 		env: { ...process.env, ...E2E_ENV },
-		stdio: 'inherit'
+		stdio: 'inherit',
+		shell: true
 	});
 });
 

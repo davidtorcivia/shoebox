@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { seedFaces, type FacesSeed } from './helpers/faces-seed';
-import { ensureOwner } from './helpers/seed-player';
+import { ensureOwner } from './helpers/auth';
 
 test.describe.configure({ mode: 'serial' });
 

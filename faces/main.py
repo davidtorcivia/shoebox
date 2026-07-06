@@ -8,6 +8,7 @@ human review owns that later.
 
 import os
 import time
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +20,23 @@ from boxes import normalize_box
 PHOTO_TYPES = {"photo"}
 VIDEO_TYPES = {"video"}
 MAX_VIDEO_FRAMES = 60
+
+
+def _resolve_within(media_path: Path | str, storage_key: str) -> Path:
+    """Resolve ``storage_key`` under ``media_path`` and refuse any escape.
+
+    ``storage_key`` is read from the database (``item_files``). We treat it as
+    untrusted: an absolute key or one containing ``..`` must never read outside
+    the mounted media directory, so a tampered row cannot point the worker at
+    arbitrary host files.
+    """
+    root = Path(media_path).resolve()
+    target = (root / storage_key).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError:
+        raise PermissionError(f"refusing path outside MEDIA_PATH: {storage_key}")
+    return target
 
 
 def load_cv2():
@@ -89,7 +107,7 @@ def process_job(conn, media_path: Path | str, analyzer, job: dict) -> bool:
     try:
         item_id = job["payload"]["itemId"]
         storage_key, item_type = dbq.original_path(conn, item_id)
-        original = Path(media_path) / storage_key
+        original = _resolve_within(media_path, storage_key)
         if item_type in PHOTO_TYPES:
             detections = scan_photo(original, analyzer)
         elif item_type in VIDEO_TYPES:
@@ -102,7 +120,8 @@ def process_job(conn, media_path: Path | str, analyzer, job: dict) -> bool:
         dbq.apply_cluster_assignments(conn, assignments)
         dbq.complete_job(conn, job["id"])
         return True
-    except Exception:
+    except Exception as exc:
+        print(f"[faces] job {job.get('id')} failed: {exc}", file=sys.stderr)
         dbq.fail_job(conn, job["id"])
         return False
 
@@ -122,7 +141,10 @@ def run_loop(
             if job is None:
                 time.sleep(interval)
                 continue
-            process_job(conn, media_path, worker_analyzer, job)
+            try:
+                process_job(conn, media_path, worker_analyzer, job)
+            except Exception as exc:
+                print(f"[faces] worker error on job {job.get('id')}: {exc}", file=sys.stderr)
     finally:
         conn.close()
 

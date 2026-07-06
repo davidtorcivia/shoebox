@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
-import { copyFile, mkdir, rename, stat, unlink } from 'node:fs/promises';
+import { copyFile, mkdir, open, realpath, rename, stat, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join, relative, sep } from 'node:path';
 import chokidar from 'chokidar';
 import { eq } from 'drizzle-orm';
 import exifr from 'exifr';
-import { fileTypeFromFile } from 'file-type';
+import { fileTypeFromBuffer, type FileTypeResult } from 'file-type';
 import { nanoid } from 'nanoid';
 import sharp from 'sharp';
 import { sortDate } from '../lib/domain/dates';
@@ -102,6 +102,16 @@ export async function processIngestFile(
 		return { status: 'failed', reason: 'outside ingest scope' };
 	}
 
+	// Resolve symlinks before trusting the path: a symlink (file or directory)
+	// placed inside INGEST_PATH must not let us hash, transcode, or move files
+	// that actually live outside it.
+	const realIngest = await realpath(deps.ingestPath);
+	const realAbs = await realpath(absPath);
+	if (relative(realIngest, realAbs).split(sep).join('/').startsWith('..')) {
+		console.warn(`[ingest] refusing symlink escape ${relPath} -> ${realAbs}`);
+		return { status: 'failed', reason: 'outside ingest scope (symlink escape)' };
+	}
+
 	const fail = async (reason: string): Promise<IngestResult> => {
 		logIngestFailure(deps.db, relPath, reason);
 		await moveAside(deps, absPath, '_failed');
@@ -113,9 +123,20 @@ export async function processIngestFile(
 	const type = SUPPORTED_EXTENSIONS[ext];
 	if (!type) return fail(`unsupported extension .${ext}`);
 
-	let sniffed: Awaited<ReturnType<typeof fileTypeFromFile>>;
+	// Detect by header sample rather than fileTypeFromFile: file-type's fromFile
+	// lazy-imports strtok3 at runtime, which the esbuild worker bundle can't
+	// resolve. A header sample uses the bundled tokenizer (self-contained bundle).
+	let sniffed: FileTypeResult | undefined;
 	try {
-		sniffed = await fileTypeFromFile(absPath);
+		const sampleSize = Math.min(8192, (await stat(absPath)).size);
+		const handle = await open(absPath, 'r');
+		try {
+			const sample = Buffer.alloc(sampleSize);
+			const { bytesRead } = await handle.read(sample, 0, sampleSize, 0);
+			sniffed = await fileTypeFromBuffer(sample.subarray(0, bytesRead));
+		} finally {
+			await handle.close();
+		}
 	} catch (err) {
 		return fail(`unreadable: ${err instanceof Error ? err.message : String(err)}`);
 	}

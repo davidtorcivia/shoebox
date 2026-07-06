@@ -31,7 +31,14 @@ export async function listComments(
 		})
 		.from(comments)
 		.innerJoin(users, eq(comments.userId, users.id))
-		.where(and(eq(comments.itemId, itemId), isNull(comments.deletedAt)))
+		.innerJoin(items, eq(comments.itemId, items.id))
+		.where(
+			and(
+				eq(comments.itemId, itemId),
+				isNull(comments.deletedAt),
+				isNull(items.deletedAt)
+			)
+		)
 		.orderBy(asc(comments.createdAt));
 
 	return rows.map((row) => ({

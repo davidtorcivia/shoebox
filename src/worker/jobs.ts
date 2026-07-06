@@ -25,6 +25,10 @@ export type JobHandlers = Partial<Record<JobKind, JobHandler>>;
 
 export const MAX_ATTEMPTS = 5;
 
+/** A claimed job is considered stuck (and reclaimed) once it has been
+ * 'running' longer than this. Bounds recovery from worker crashes mid-job. */
+export const STALE_CLAIM_SECONDS = 15 * 60;
+
 const ALL_KINDS: readonly JobKind[] = ['derivatives', 'sprite', 'ingest_scan', 'face_scan'];
 
 export function claimJob(
@@ -36,13 +40,60 @@ export function claimJob(
 	if (safeKinds.length === 0) return null;
 
 	const nowSeconds = Math.floor(now.getTime() / 1000);
+	const staleBefore = nowSeconds - STALE_CLAIM_SECONDS;
 	const kindList = safeKinds.map((kind) => `'${kind}'`).join(', ');
+
+	// A job that crashed its worker mid-run stays 'running'. Once it has burned
+	// through all retries in that state it cannot make progress, so fail it now
+	// instead of reclaiming it forever. Skipped entirely when nothing is running
+	// so the idle poll loop does not contend for the write lock.
+	const stuck = db
+		.get<{ id: string } | undefined>(
+			sql.raw(`
+				SELECT id FROM jobs
+				WHERE kind IN (${kindList}) AND status = 'running' AND attempts >= ${MAX_ATTEMPTS}
+				LIMIT 1
+			`)
+		);
+	if (stuck) {
+		db.run(
+			sql.raw(`
+				UPDATE jobs SET status = 'failed'
+				WHERE kind IN (${kindList})
+					AND status = 'running'
+					AND attempts >= ${MAX_ATTEMPTS}
+					AND (
+						json_extract(payload, '$.claimedAt') IS NULL
+						OR CAST(json_extract(payload, '$.claimedAt') AS INTEGER) <= ${staleBefore}
+					)
+			`)
+		);
+	}
+
+	// Atomic compare-and-set: the inner SELECT and outer UPDATE run under a
+	// single SQLite write lock, so two workers can never claim the same row.
+	// A 'running' row older than the stale threshold is reclaimed (counted as a
+	// fresh attempt) to recover from a worker that died holding the job.
 	const row = db.get<{ id: string; kind: JobKind; payload: string; attempts: number } | undefined>(
 		sql.raw(`
-			UPDATE jobs SET status = 'running'
+			UPDATE jobs
+			SET status = 'running',
+				attempts = CASE WHEN status = 'running' THEN attempts + 1 ELSE attempts END,
+				payload = json_set(payload, '$.claimedAt', ${nowSeconds})
 			WHERE id = (
 				SELECT id FROM jobs
-				WHERE status = 'pending' AND run_after <= ${nowSeconds} AND kind IN (${kindList})
+				WHERE kind IN (${kindList})
+					AND (
+						(status = 'pending' AND run_after <= ${nowSeconds})
+						OR (
+							status = 'running'
+							AND attempts < ${MAX_ATTEMPTS}
+							AND (
+								json_extract(payload, '$.claimedAt') IS NULL
+								OR CAST(json_extract(payload, '$.claimedAt') AS INTEGER) <= ${staleBefore}
+							)
+						)
+					)
 				ORDER BY created_at ASC, id ASC
 				LIMIT 1
 			)
@@ -50,10 +101,13 @@ export function claimJob(
 		`)
 	);
 	if (!row) return null;
+	const payload = JSON.parse(row.payload) as Record<string, unknown>;
+	// claimedAt is operational bookkeeping; keep it out of the handler payload.
+	delete payload.claimedAt;
 	return {
 		id: row.id,
 		kind: row.kind,
-		payload: JSON.parse(row.payload) as Record<string, unknown>,
+		payload,
 		attempts: row.attempts
 	};
 }

@@ -3,6 +3,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 import dbq
 import main
@@ -145,3 +146,43 @@ def test_process_job_replaces_pending_faces_reclusters_and_completes(db, monkeyp
     assert {row["status"] for row in rows} == {"pending"}
     assert len({row["cluster_id"] for row in rows}) == 1
     assert db.execute("SELECT status FROM jobs WHERE id='job1'").fetchone()["status"] == "done"
+
+
+def test_process_job_rejects_storage_key_escape(db, monkeypatch, tmp_path):
+    # A tampered item_files row must never point the decoder outside MEDIA_PATH.
+    add_item(db, storage_key="../../etc/passwd")
+    add_job(db)
+    fake_cv2 = FakeCv2()
+    monkeypatch.setattr(main, "load_cv2", lambda: fake_cv2)
+
+    result = main.process_job(db, tmp_path, FakeAnalyzer(), {"id": "job1", "payload": {"itemId": "it1"}})
+
+    assert result is False
+    assert fake_cv2.imread_path is None  # decoder never handed the escaped path
+    row = db.execute("SELECT status FROM jobs WHERE id='job1'").fetchone()
+    assert row["status"] == "pending"  # failed -> backed off, not crashed
+
+
+def test_run_loop_survives_process_job_raising(monkeypatch, tmp_path):
+    # Even if process_job (or fail_job) raises unexpectedly, the loop must keep
+    # running rather than tearing the worker down.
+    step = {"n": 0}
+
+    def fake_claim(_conn):
+        step["n"] += 1
+        if step["n"] == 1:
+            return {"id": "job1", "payload": {"itemId": "it1"}}
+        # BaseException intentionally escapes run_loop's `except Exception` to stop the loop.
+        raise SystemExit("break")
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(dbq, "claim_face_scan_job", fake_claim)
+    monkeypatch.setattr(main, "process_job", boom)
+    monkeypatch.setattr(time, "sleep", lambda *_: None)
+
+    # If run_loop failed to catch the RuntimeError it would propagate instead of
+    # the SystemExit we use to terminate the loop -> the assertion would fail.
+    with pytest.raises(SystemExit):
+        main.run_loop(str(tmp_path / "ignored.db"), str(tmp_path), analyzer=object(), poll_interval=0)

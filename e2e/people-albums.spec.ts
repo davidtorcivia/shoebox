@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { ensureOwner, OWNER } from './helpers/seed-player';
+import { ensureOwner, OWNER } from './helpers/auth';
 import { PHASE05_USER, seedPhase05, type Phase05Seed } from './helpers/seed-phase05';
 
 test.describe.configure({ mode: 'serial' });
@@ -53,8 +53,11 @@ test('album creation, item-room membership toggle, and comments work together', 
 		await page.goto(`/item/${itemId}`);
 		await page.getByText('Edit metadata').click();
 		await page.getByTestId('album-toggle').locator('summary').click();
-		await page.getByTestId(`album-check-${albumId}`).check();
-		await page.waitForResponse((res) => res.url().includes(`/api/albums/${albumId}/items`) && res.ok());
+		await page.getByLabel('Search albums').fill('Summer');
+		await Promise.all([
+			page.waitForResponse((res) => res.url().includes(`/api/albums/${albumId}/items`) && res.ok()),
+			page.getByTestId(`album-check-${albumId}`).click()
+		]);
 	}
 
 	await page.goto(`/albums/${albumId}`);

@@ -67,7 +67,7 @@
 				aria-label={`Drag ${item.title ?? `item ${index + 1}`}`}
 				onpointerdown={(event) => onDown(event, id)}
 			>
-				<img src={item.urls.thumb400 || item.urls.poster} alt={item.title ?? `Item ${index + 1}`} draggable="false" />
+			<img src={item.urls.thumb400 || item.urls.poster} alt={item.title ?? `Item ${index + 1}`} draggable="false" loading="lazy" />
 				<button
 					type="button"
 					class="cover"

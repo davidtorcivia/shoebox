@@ -26,6 +26,9 @@ export async function applyArrivalsBatch(
 ): Promise<{ updated: number }> {
 	const apply = req.apply ?? {};
 	let updated = 0;
+	// Changing an item's date moves it between year_counts buckets; approval
+	// can also change status. Either path can leave the aggregate stale.
+	const datesApplied = Boolean(apply.date && apply.date.precision !== 'unknown');
 
 	for (const itemId of req.itemIds) {
 		const [item] = await db
@@ -101,6 +104,6 @@ export async function applyArrivalsBatch(
 		updated += 1;
 	}
 
-	if (req.approve && updated > 0) await recomputeYearCounts(db);
+	if (updated > 0 && (req.approve || datesApplied)) await recomputeYearCounts(db);
 	return { updated };
 }

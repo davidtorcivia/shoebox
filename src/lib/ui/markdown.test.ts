@@ -19,6 +19,12 @@ describe('renderMarkdown', () => {
 		expect(renderMarkdown('[bad](javascript:alert(1))')).not.toContain('javascript:');
 	});
 
+	it('drops data: URIs in href', () => {
+		expect(renderMarkdown('[x](data:text/html,<script>alert(1)</script>)')).not.toMatch(
+			/data:/i
+		);
+	});
+
 	it('renders lists', () => {
 		expect(renderMarkdown('- a\n- b')).toContain('<li>a</li>');
 	});

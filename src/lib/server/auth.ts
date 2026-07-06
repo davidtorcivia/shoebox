@@ -141,3 +141,35 @@ export function setSessionCookie(
 		expires: expiresAt
 	});
 }
+
+const LOGIN_RATE_CAPACITY = 5;
+const LOGIN_RATE_WINDOW_MS = 60_000;
+type LoginBucket = { count: number; windowStart: number };
+const loginBuckets = new Map<string, LoginBucket>();
+
+/**
+ * In-memory brute-force limiter for /login, keyed by the (lower-cased)
+ * username being attempted. Mirrors the share-password limiter in shares.ts:
+ * up to LOGIN_RATE_CAPACITY attempts per LOGIN_RATE_WINDOW_MS, then rejected.
+ * Call resetLoginAttempts() after a successful sign-in so a legitimate user
+ * is never left locked out.
+ */
+export function takeLoginAttempt(identifier: string, nowMs: number = Date.now()): boolean {
+	const key = identifier.toLowerCase();
+	const bucket = loginBuckets.get(key);
+	if (!bucket || nowMs - bucket.windowStart >= LOGIN_RATE_WINDOW_MS) {
+		loginBuckets.set(key, { count: 1, windowStart: nowMs });
+		return true;
+	}
+	if (bucket.count >= LOGIN_RATE_CAPACITY) return false;
+	bucket.count += 1;
+	return true;
+}
+
+export function resetLoginAttempts(identifier: string): void {
+	loginBuckets.delete(identifier.toLowerCase());
+}
+
+export function _resetLoginRateLimits(): void {
+	loginBuckets.clear();
+}

@@ -49,4 +49,38 @@ describe('migrations', () => {
 			expect(row.sql).toContain(col);
 		}
 	});
+
+	it('creates every hot-path index needed by the documented queries', () => {
+		const sqlite = new Database(':memory:');
+		migrate(drizzle(sqlite), { migrationsFolder: 'src/lib/server/db/migrations' });
+		const names = indexNames(sqlite);
+		for (const idx of HOT_INDEXES) expect(names, `missing index ${idx}`).toContain(idx);
+	});
+
+	it('is idempotent: a second migrate() over the same db is a safe no-op', () => {
+		// App and worker both call openNodeDb() (which runs migrate) at startup on the
+		// same file. The second pass must not throw once migrations are recorded.
+		const sqlite = new Database(':memory:');
+		const db = drizzle(sqlite);
+		migrate(db, { migrationsFolder: 'src/lib/server/db/migrations' });
+		expect(() => migrate(db, { migrationsFolder: 'src/lib/server/db/migrations' })).not.toThrow();
+	});
 });
+
+const HOT_INDEXES = [
+	'item_people_person',
+	'album_items_album_position',
+	'comments_item',
+	'faces_item',
+	'jobs_claim',
+	'items_sort',
+	'shares_token_unique',
+	'item_tags_tag'
+] as const;
+
+function indexNames(sqlite: Database.Database): string[] {
+	const rows = sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all() as {
+		name: string;
+	}[];
+	return rows.map((r) => r.name);
+}

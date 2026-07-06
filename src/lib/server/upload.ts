@@ -1,8 +1,10 @@
 import { error } from '@sveltejs/kit';
+import { fileTypeFromBuffer } from 'file-type';
 import { nanoid } from 'nanoid';
 import { fitWithin } from '$lib/domain/dims';
 import { isValidItemDate, type ItemDate } from '$lib/domain/dates';
 import { findDuplicate } from '$lib/server/dedupe';
+import { ROLE_RANK } from '$lib/server/roles';
 import { createItem, type ItemFileInput } from '$lib/server/items';
 import type { JobQueueAdapter, StorageAdapter } from '$lib/server/platform/types';
 import type { ItemDTO, UploadMeta } from '$lib/types';
@@ -10,7 +12,11 @@ import type { ItemDTO, UploadMeta } from '$lib/types';
 type Db = App.Locals['db'];
 type SessionUser = NonNullable<App.Locals['user']>;
 
-export const CHUNK_SIZE = 512 * 1024;
+export const CHUNK_SIZE = 8 * 1024 * 1024;
+/** Per-upload total byte cap; keep aligned with the BODY_LIMIT_MB operator default. */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
+/** Per-derivative byte cap — derivatives are webp thumbnails; anything larger is abuse. */
+export const MAX_DERIVATIVE_BYTES = 5 * 1024 * 1024;
 
 export const ALLOWED_MIME: Record<string, { ext: string; type: 'video' | 'photo' }> = {
 	'video/mp4': { ext: 'mp4', type: 'video' },
@@ -55,6 +61,17 @@ export interface InitUploadResult {
 
 const SHA_RE = /^[0-9a-f]{64}$/;
 
+export type MediaSniffer = (sample: Uint8Array) => Promise<{ mime: string } | null>;
+
+/**
+ * Default media sniffer: detects the real type from file content via file-type.
+ * The sniffed type is authoritative — the client-declared MIME only hints at it.
+ */
+export const sniffMediaType: MediaSniffer = async (sample) => {
+	const detected = await fileTypeFromBuffer(sample);
+	return detected ? { mime: detected.mime } : null;
+};
+
 export function chunkKey(uploadId: string, index: number): string {
 	return `tmp/${uploadId}/${index}`;
 }
@@ -96,11 +113,17 @@ export async function initUpload(
 	if (!Number.isInteger(input.sizeBytes) || input.sizeBytes <= 0) {
 		throw error(400, 'invalid sizeBytes');
 	}
+	if (input.sizeBytes > MAX_UPLOAD_BYTES) {
+		throw error(400, 'file exceeds maximum upload size');
+	}
 	if (!ALLOWED_MIME[input.mime]) {
 		throw error(400, `unsupported mime: ${input.mime}`);
 	}
 	if (typeof input.filename !== 'string' || input.filename.length === 0) {
 		throw error(400, 'missing filename');
+	}
+	if (input.filename.length > 255) {
+		throw error(400, 'filename too long');
 	}
 
 	const uploadId = input.sha256;
@@ -192,9 +215,10 @@ export interface CompleteUploadInput {
 export function concatChunks(
 	storage: StorageAdapter,
 	uploadId: string,
-	totalChunks: number
+	totalChunks: number,
+	startIndex = 0
 ): ReadableStream<Uint8Array> {
-	let index = 0;
+	let index = startIndex;
 	let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
 	return new ReadableStream<Uint8Array>({
@@ -222,6 +246,68 @@ export function concatChunks(
 			}
 		}
 	});
+}
+
+/**
+ * Emit `prefix` then pipe `tail` (if any) into one stream, so the assembled
+ * original is never fully buffered: the first chunk (already read for sniffing)
+ * is replayed from memory and the rest streams off storage.
+ */
+function prefixedStream(
+	prefix: Uint8Array,
+	tail: ReadableStream<Uint8Array> | null
+): ReadableStream<Uint8Array> {
+	const reader = tail?.getReader();
+	let sentPrefix = false;
+	return new ReadableStream<Uint8Array>({
+		async pull(controller) {
+			if (!sentPrefix) {
+				sentPrefix = true;
+				if (prefix.byteLength > 0) controller.enqueue(prefix);
+				if (!reader) {
+					controller.close();
+					return;
+				}
+				return;
+			}
+			if (!reader) {
+				controller.close();
+				return;
+			}
+			const result = await reader.read();
+			if (result.done) {
+				controller.close();
+				return;
+			}
+			controller.enqueue(result.value);
+		},
+		cancel() {
+			reader?.cancel().catch(() => {});
+		}
+	});
+}
+
+/**
+ * Per-sha in-process mutex. Serializes the check-then-insert critical section of
+ * completeUpload so two concurrent commits of the same sha256 cannot both pass
+ * the duplicate check: the second waits for the first's createItem commit, then
+ * its own check observes the inserted row -> 409. Single-process (primary node
+ * deploy); the platform Db contract is unchanged.
+ */
+const uploadLocks = new Map<string, Promise<void>>();
+
+async function withShaLock<T>(sha: string, fn: () => Promise<T>): Promise<T> {
+	const prev = uploadLocks.get(sha) ?? Promise.resolve();
+	const run = prev.then(() => fn());
+	const slot: Promise<void> = run.then(
+		() => undefined,
+		() => undefined
+	);
+	uploadLocks.set(sha, slot);
+	slot.finally(() => {
+		if (uploadLocks.get(sha) === slot) uploadLocks.delete(sha);
+	});
+	return run;
 }
 
 export function validateUploadMeta(raw: unknown): UploadMeta {
@@ -268,9 +354,23 @@ export async function completeUpload(
 	storage: StorageAdapter,
 	queue: JobQueueAdapter,
 	user: SessionUser,
-	input: CompleteUploadInput
+	input: CompleteUploadInput,
+	sniff: MediaSniffer = sniffMediaType
 ): Promise<ItemDTO> {
 	const manifest = await readManifest(storage, input.uploadId);
+	if (
+		!Number.isInteger(manifest.totalChunks) ||
+		manifest.totalChunks <= 0 ||
+		!Number.isInteger(manifest.sizeBytes) ||
+		manifest.sizeBytes <= 0 ||
+		manifest.sizeBytes > MAX_UPLOAD_BYTES
+	) {
+		throw error(400, 'corrupt upload manifest');
+	}
+	// Only the user who started the upload (or an admin+) may complete it.
+	if (manifest.createdBy !== user.id && ROLE_RANK[user.role] < ROLE_RANK.admin) {
+		throw error(403, 'not the owner of this upload');
+	}
 
 	const missing: number[] = [];
 	for (let index = 0; index < manifest.totalChunks; index += 1) {
@@ -281,24 +381,73 @@ export async function completeUpload(
 	}
 	if (missing.length > 0) throw error(409, `missing chunks: ${missing.join(',')}`);
 
+	// Serialize same-sha commits: the second caller awaits the first's createItem
+	// commit, then its duplicate check sees the inserted row -> 409. This closes
+	// the dedupe race for the single-process node deploy (the primary target).
+	const dto = await withShaLock(manifest.sha256, () =>
+		commitUpload(db, storage, queue, user, input, manifest, sniff)
+	);
+
+	for (let index = 0; index < manifest.totalChunks; index += 1) {
+		await storage.delete(chunkKey(input.uploadId, index));
+	}
+	await storage.delete(manifestKey(input.uploadId));
+
+	return dto;
+}
+
+/**
+ * Duplicate check + media store + item insert, executed under the per-sha lock.
+ * Split out so the lock scope is exactly the non-atomic check-then-insert region.
+ */
+async function commitUpload(
+	db: Db,
+	storage: StorageAdapter,
+	queue: JobQueueAdapter,
+	user: SessionUser,
+	input: CompleteUploadInput,
+	manifest: UploadManifest,
+	sniff: MediaSniffer
+): Promise<ItemDTO> {
 	const duplicate = await findDuplicate(db, manifest.sha256);
 	if (duplicate && !input.allowDuplicate) {
 		throw error(409, `duplicate of item ${duplicate.itemId}`);
 	}
 
-	const kind = ALLOWED_MIME[manifest.mime];
-	if (!kind) throw error(400, `unsupported mime: ${manifest.mime}`);
+	// Sniff the real media type from the first chunk's content (≤ CHUNK_SIZE).
+	// The client-declared MIME is not trusted: the sniffed type picks the storage
+	// extension and stored content-type, so a mislabeled or non-media payload
+	// cannot be stored as a real media object.
+	const firstGot = await storage.get(chunkKey(input.uploadId, 0));
+	if (!firstGot) throw error(409, 'missing chunk 0');
+	const firstBytes = new Uint8Array(await new Response(firstGot.stream).arrayBuffer());
+	const sniffed = await sniff(firstBytes);
+	if (!sniffed) throw error(400, 'could not detect media type from upload content');
+	const kind = ALLOWED_MIME[sniffed.mime];
+	if (!kind) throw error(400, `unsupported media type: ${sniffed.mime}`);
 	if (input.meta.type !== kind.type) {
 		throw error(
 			400,
-			`meta.type '${input.meta.type}' does not match uploaded mime '${manifest.mime}'`
+			`meta.type '${input.meta.type}' does not match detected media '${sniffed.mime}'`
 		);
+	}
+
+	// Bound derivatives before storing anything so an abusive payload is rejected
+	// before the original is written.
+	for (const field of ['poster', 'thumb_400', 'thumb_800', 'thumb_1600'] as const) {
+		if (input.derivatives[field].data.byteLength > MAX_DERIVATIVE_BYTES) {
+			throw error(400, `${field} exceeds maximum derivative size`);
+		}
 	}
 
 	const itemId = nanoid(12);
 	const originalKey = `media/${itemId}/original.${kind.ext}`;
-	await storage.put(originalKey, concatChunks(storage, input.uploadId, manifest.totalChunks), {
-		contentType: manifest.mime,
+	const tail =
+		manifest.totalChunks === 1
+			? null
+			: concatChunks(storage, input.uploadId, manifest.totalChunks, 1);
+	await storage.put(originalKey, prefixedStream(firstBytes, tail), {
+		contentType: sniffed.mime,
 		sizeHint: manifest.sizeBytes
 	});
 
@@ -306,7 +455,7 @@ export async function completeUpload(
 		{
 			kind: 'original',
 			storageKey: originalKey,
-			mime: manifest.mime,
+			mime: sniffed.mime,
 			width: input.meta.width,
 			height: input.meta.height
 		}
@@ -322,8 +471,10 @@ export async function completeUpload(
 	for (const spec of derivativeSpecs) {
 		const derivative = input.derivatives[spec.field];
 		const key = `media/${itemId}/${spec.field}.webp`;
+		// Derivatives are webp by contract; ignore the client-declared MIME so a
+		// spoofed content-type cannot turn a thumbnail into served HTML/SVG.
 		await storage.put(key, derivative.data, {
-			contentType: derivative.mime,
+			contentType: 'image/webp',
 			sizeHint: derivative.data.byteLength
 		});
 		const dims =
@@ -333,13 +484,13 @@ export async function completeUpload(
 		files.push({
 			kind: spec.field,
 			storageKey: key,
-			mime: derivative.mime,
+			mime: 'image/webp',
 			width: dims.width,
 			height: dims.height
 		});
 	}
 
-	const dto = await createItem(db, storage, queue, {
+	return await createItem(db, storage, queue, {
 		id: itemId,
 		type: input.meta.type,
 		title: input.meta.title,
@@ -358,13 +509,6 @@ export async function completeUpload(
 		tags: input.meta.tags,
 		uploadedBy: user.id
 	});
-
-	for (let index = 0; index < manifest.totalChunks; index += 1) {
-		await storage.delete(chunkKey(input.uploadId, index));
-	}
-	await storage.delete(manifestKey(input.uploadId));
-
-	return dto;
 }
 
 function stringOrNull(value: unknown): string | null {

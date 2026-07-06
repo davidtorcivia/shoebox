@@ -7,13 +7,19 @@ compatibility_flags = ["nodejs_compat"]
 directory = ".svelte-kit/cloudflare"
 binding = "ASSETS"
 
+[observability]
+enabled = true
+
 [vars]
 PLATFORM = "cloudflare"
+R2_ACCOUNT_ID = "set-me-via-wrangler-whoami"
+R2_BUCKET_NAME = "shoebox-media"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "shoebox"
+database_name = "shoebox-db"
 database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "src/lib/server/db/migrations"
 
 [[r2_buckets]]
 binding = "MEDIA"

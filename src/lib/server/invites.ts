@@ -1,5 +1,6 @@
+import { error } from '@sveltejs/kit';
 import { nextAccent } from '$lib/domain/accents';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, lt, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { hashPassword } from './auth';
 import type { Db } from './db';
@@ -15,6 +16,17 @@ export async function createInvite(
 	db: Db,
 	opts: { role: InviteRole; createdBy: string; expiresAt?: Date | null; maxUses?: number }
 ): Promise<InviteRow> {
+	if (opts.role === 'admin') {
+		// Only the owner may mint admin invitations. changeRole already enforces
+		// "only owner promotes to admin"; this guards the parallel invite path so
+		// a non-owner admin cannot bootstrap a new admin via an invite link.
+		const creator = (
+			await db.select({ role: users.role }).from(users).where(eq(users.id, opts.createdBy)).limit(1)
+		)[0];
+		if (!creator || creator.role !== 'owner') {
+			error(403, 'Only the owner can mint admin invitations.');
+		}
+	}
 	const row: InviteRow = {
 		id: nanoid(12),
 		token: nanoid(24),
@@ -78,6 +90,16 @@ export async function redeemInvite(
 		.limit(1);
 	if (taken.length > 0) return { ok: false, reason: 'username_taken' };
 
+	// Atomically claim one use BEFORE creating the account, so concurrent
+	// redemptions of a single-use invite cannot both succeed. The WHERE guard
+	// (use_count < max_uses) makes the increment compare-and-set; a zero-rows
+	// result means another request consumed the last use.
+	const claimed = await db
+		.update(invites)
+		.set({ useCount: sql`${invites.useCount} + 1` })
+		.where(and(eq(invites.id, invite.id), lt(invites.useCount, invite.maxUses)));
+	if (updateChanges(claimed) === 0) return { ok: false, reason: 'exhausted' };
+
 	const accentRows = await db.select({ accentColor: users.accentColor }).from(users);
 	const user: typeof users.$inferSelect = {
 		id: nanoid(12),
@@ -92,10 +114,25 @@ export async function redeemInvite(
 		theme: 'system',
 		createdAt: new Date()
 	};
-	await db.insert(users).values(user);
-	await db
-		.update(invites)
-		.set({ useCount: invite.useCount + 1 })
-		.where(eq(invites.id, invite.id));
+	try {
+		await db.insert(users).values(user);
+	} catch {
+		// Username collided under concurrency (unique index); the claimed use is spent.
+		return { ok: false, reason: 'username_taken' };
+	}
 	return { ok: true, user };
+}
+
+/**
+ * Portable affected-rows count from a Drizzle UPDATE result: better-sqlite3
+ * returns { changes }, the D1 driver returns { meta: { changes } }.
+ */
+function updateChanges(result: unknown): number {
+	if (result && typeof result === 'object') {
+		const r = result as Record<string, unknown>;
+		if (typeof r.changes === 'number') return r.changes;
+		const meta = r.meta as Record<string, unknown> | undefined;
+		if (meta && typeof meta.changes === 'number') return meta.changes;
+	}
+	return 0;
 }

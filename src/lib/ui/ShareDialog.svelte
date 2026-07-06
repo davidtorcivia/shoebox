@@ -29,6 +29,19 @@
 		if (open) void refresh();
 	});
 
+	let closeBtn = $state<HTMLButtonElement | null>(null);
+
+	$effect(() => {
+		if (open) closeBtn?.focus();
+	});
+
+	function onKey(event: KeyboardEvent) {
+		if (open && event.key === 'Escape') {
+			event.preventDefault();
+			onClose();
+		}
+	}
+
 	async function refresh(): Promise<void> {
 		const res = await fetch(`/api/shares?targetType=${targetType}&targetId=${targetId}`);
 		if (res.ok) shares = ((await res.json()) as { shares: ShareRecord[] }).shares;
@@ -81,6 +94,8 @@
 	}
 </script>
 
+<svelte:window onkeydown={onKey} />
+
 {#if open}
 	<div
 		class="scrim"
@@ -97,7 +112,7 @@
 	>
 		<header>
 			<h2>Share this {targetType}</h2>
-			<button class="close" type="button" onclick={onClose} aria-label="Close">x</button>
+			<button class="close" type="button" onclick={onClose} aria-label="Close" bind:this={closeBtn}>x</button>
 		</header>
 
 		<form onsubmit={create}>

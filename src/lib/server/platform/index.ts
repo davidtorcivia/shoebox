@@ -1,15 +1,15 @@
 import { env } from '$env/dynamic/private';
 import { PLATFORM } from '$env/static/private';
-import type { D1Database, R2Bucket } from '@cloudflare/workers-types';
+import type { D1Database } from '@cloudflare/workers-types';
 import type { RequestEvent } from '@sveltejs/kit';
 import type { Db } from '../db';
 import { openD1Db } from './db-d1';
 import { platformFeatures } from './features';
 import { noopQueue } from './queue-noop';
-import { createR2Storage } from './storage-r2';
+import { createR2Storage, type R2StorageEnv } from './storage-r2';
 import type { Platform } from './types';
 
-type CfBindings = { DB: D1Database; MEDIA: R2Bucket };
+type CfBindings = { DB: D1Database } & R2StorageEnv;
 
 let nodeRuntime: { platform: Platform; db: Db } | null = null;
 
@@ -43,7 +43,7 @@ function cfRuntime(event: RequestEvent): { platform: Platform; db: Db } {
 		db: openD1Db(bindings.DB),
 		platform: {
 			name: 'cloudflare',
-			storage: createR2Storage(bindings.MEDIA),
+			storage: createR2Storage(bindings),
 			queue: noopQueue,
 			features: platformFeatures('cloudflare', {})
 		}
