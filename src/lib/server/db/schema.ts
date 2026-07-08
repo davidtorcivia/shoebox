@@ -61,6 +61,11 @@ export const items = sqliteTable(
 		duration: real('duration'),
 		// Chosen poster frame timestamp (seconds) for videos; null = auto (10% in).
 		posterTime: real('poster_time'),
+		// Freeform, user-editable place name; lat/lng are plumbing for a future map
+		// (populated from EXIF GPS when present).
+		location: text('location'),
+		lat: real('lat'),
+		lng: real('lng'),
 		width: integer('width').notNull(),
 		height: integer('height').notNull(),
 		sizeBytes: integer('size_bytes').notNull(),
@@ -272,6 +277,62 @@ export const jobs = sqliteTable(
 		createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
 	},
 	(t) => [index('jobs_claim').on(t.status, t.runAfter)]
+);
+
+// Personal saved list — a private bookmark per user, kept out of the main UI.
+export const favorites = sqliteTable(
+	'favorites',
+	{
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id),
+		itemId: text('item_id')
+			.notNull()
+			.references(() => items.id),
+		createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+	},
+	(t) => [
+		primaryKey({ columns: [t.userId, t.itemId] }),
+		index('favorites_user').on(t.userId, t.createdAt)
+	]
+);
+
+// Public emoji reactions on an item. A user may leave several distinct emoji.
+export const reactions = sqliteTable(
+	'reactions',
+	{
+		itemId: text('item_id')
+			.notNull()
+			.references(() => items.id),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id),
+		emoji: text('emoji').notNull(),
+		createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+	},
+	(t) => [
+		primaryKey({ columns: [t.itemId, t.userId, t.emoji] }),
+		index('reactions_item').on(t.itemId)
+	]
+);
+
+// Short audio "memories" family members attach to an item.
+export const voiceNotes = sqliteTable(
+	'voice_notes',
+	{
+		id: text('id').primaryKey(),
+		itemId: text('item_id')
+			.notNull()
+			.references(() => items.id),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id),
+		storageKey: text('storage_key').notNull(),
+		mime: text('mime').notNull(),
+		duration: real('duration'),
+		createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
+	},
+	(t) => [index('voice_notes_item').on(t.itemId)]
 );
 
 export const settings = sqliteTable('settings', {
