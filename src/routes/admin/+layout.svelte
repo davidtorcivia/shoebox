@@ -1,12 +1,22 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import { FONT } from '$lib/ui/tokens';
 	import type { Snippet } from 'svelte';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
-	const sections = $derived([
+	type AdminHref =
+		| '/admin/users'
+		| '/admin/invites'
+		| '/admin/shares'
+		| '/admin/trash'
+		| '/admin/settings'
+		| '/admin/jobs'
+		| '/admin/health'
+		| '/admin/faces';
+	const sections = $derived<{ href: AdminHref; label: string }[]>([
 		{ href: '/admin/users', label: 'Users' },
 		{ href: '/admin/invites', label: 'Invites' },
 		{ href: '/admin/shares', label: 'Shares' },
@@ -14,7 +24,7 @@
 		{ href: '/admin/settings', label: 'Settings' },
 		{ href: '/admin/jobs', label: 'Jobs' },
 		{ href: '/admin/health', label: 'Health' },
-		...(data.features.faces ? [{ href: '/admin/faces', label: 'Faces' }] : [])
+		...(data.features.faces ? [{ href: '/admin/faces' as const, label: 'Faces' }] : [])
 	]);
 </script>
 
@@ -24,7 +34,7 @@
 		<nav aria-label="Admin sections">
 			{#each sections as section (section.href)}
 				<a
-					href={section.href}
+					href={resolve(section.href)}
 					aria-current={page.url.pathname.startsWith(section.href) ? 'page' : undefined}
 				>
 					{section.label}

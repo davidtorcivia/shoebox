@@ -117,9 +117,11 @@
 			<p class="media-date">{item.displayDate}</p>
 			{#if item.description}<p class="story">{item.description}</p>{/if}
 			{#if canDownload && item.urls.original}
+				<!-- eslint-disable svelte/no-navigation-without-resolve -- storage adapters return media URLs, not app routes -->
 				<a class="download" data-testid="share-download" href={item.urls.original} download>
 					Download original
 				</a>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			{/if}
 		</div>
 		{#if !single}

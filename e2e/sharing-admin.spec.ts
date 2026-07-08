@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { ensureOwner, OWNER } from './helpers/auth';
+import { ensureOwner } from './helpers/auth';
 import { seedPlayerRoom } from './helpers/seed-player';
 
 test.describe.configure({ mode: 'serial' });

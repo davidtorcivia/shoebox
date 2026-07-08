@@ -20,6 +20,16 @@ export default ts.config(
 		languageOptions: { parserOptions: { parser: ts.parser } }
 	},
 	{
+		rules: {
+			// Underscore-prefixed identifiers are deliberately unused (ignored
+			// callback params, placeholder destructures).
+			'@typescript-eslint/no-unused-vars': [
+				'error',
+				{ argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }
+			]
+		}
+	},
+	{
 		ignores: [
 			'build/**',
 			'build-worker/**',

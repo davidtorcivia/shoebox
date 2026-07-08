@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { resolve } from '$app/paths';
 	import AccentSwatches from '$lib/ui/AccentSwatches.svelte';
 	import Gradient from '$lib/ui/Gradient.svelte';
 	import { comfortMode, themePref } from '$lib/ui/theme';
@@ -218,7 +219,9 @@
 				<div class="label">Linked person</div>
 				{#if data.linkedPerson}
 					<p class="linked" data-testid="linked-person">
-						Linked to <a href={`/people/${data.linkedPerson.slug}`}>{data.linkedPerson.name}</a>.
+						Linked to <a href={resolve(`/people/${data.linkedPerson.slug}`)}
+							>{data.linkedPerson.name}</a
+						>.
 					</p>
 				{:else}
 					<p class="linked">Not linked to a person.</p>

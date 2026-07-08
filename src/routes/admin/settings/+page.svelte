@@ -1,22 +1,22 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { SvelteSet } from 'svelte/reactivity';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 	let siteName = $state('');
-	let holidaySet = $state<Set<string>>(new Set());
+	const holidaySet = new SvelteSet<string>();
 	let saved = $state(false);
 
 	$effect(() => {
 		siteName = data.settings.siteName;
-		holidaySet = new Set(data.settings.holidaySet);
+		holidaySet.clear();
+		for (const id of data.settings.holidaySet) holidaySet.add(id);
 	});
 
 	function toggle(id: string): void {
-		const next = new Set(holidaySet);
-		if (next.has(id)) next.delete(id);
-		else next.add(id);
-		holidaySet = next;
+		if (holidaySet.has(id)) holidaySet.delete(id);
+		else holidaySet.add(id);
 	}
 
 	async function save(event: SubmitEvent): Promise<void> {

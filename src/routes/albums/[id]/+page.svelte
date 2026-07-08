@@ -77,12 +77,14 @@
 					/>
 				{/if}
 				{#if data.canExport}
+					<!-- eslint-disable svelte/no-navigation-without-resolve -- API download endpoint, not an app route -->
 					<a
 						class="arrange export"
 						data-testid="export-button"
 						href={`/api/albums/${album.id}/export`}
 						download>Export album</a
 					>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 				{/if}
 			</div>
 		</header>

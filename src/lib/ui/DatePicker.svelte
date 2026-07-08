@@ -34,7 +34,6 @@
 	// apart from our own writes, so it re-hydrates the editing state instead of
 	// clobbering the parent's value back to stale internal state — the bug that
 	// made saved dates/precision silently revert to "unknown".
-	// svelte-ignore state_referenced_locally
 	let emitted = $state<ItemDate>(value);
 
 	function sameDate(a: ItemDate, b: ItemDate): boolean {

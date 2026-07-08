@@ -17,14 +17,13 @@ describe('createWorker polling loop', () => {
 		const db = createTestDb();
 		const delays: number[] = [];
 		const ran: string[] = [];
-		let worker: ReturnType<typeof createWorker>;
 		const sleep = async (ms: number): Promise<void> => {
 			delays.push(ms);
 			if (delays.length === 6) insertJob(db, { kind: 'derivatives', payload: { itemId: 'x' } });
 			if (delays.length === 8) void worker.stop();
 		};
 
-		worker = createWorker({
+		const worker = createWorker({
 			db,
 			ctx: testCtx(db),
 			handlers: {
@@ -45,9 +44,8 @@ describe('createWorker polling loop', () => {
 		const db = createTestDb();
 		insertJob(db, { kind: 'derivatives', payload: { itemId: 'slow' } });
 		let finished = false;
-		let worker: ReturnType<typeof createWorker>;
 
-		worker = createWorker({
+		const worker = createWorker({
 			db,
 			ctx: testCtx(db),
 			handlers: {

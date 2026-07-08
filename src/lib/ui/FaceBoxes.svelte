@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
+
 	export type FaceOverlay = {
 		id: string;
 		box: { x: number; y: number; w: number; h: number };
@@ -13,7 +15,7 @@
 		<a
 			class="face"
 			data-testid="face-box"
-			href={`/people/${face.person.slug}`}
+			href={resolve(`/people/${face.person.slug}`)}
 			style={`--x:${face.box.x * 100}%;--y:${face.box.y * 100}%;--w:${face.box.w * 100}%;--h:${face.box.h * 100}%;--accent:${face.person.accentColor};`}
 		>
 			<span>{face.person.name}</span>

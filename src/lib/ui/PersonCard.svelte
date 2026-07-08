@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import type { PersonListDTO } from '$lib/domain/people-dto';
 	import { personRoomFor } from '$lib/ui/tokens';
 	import CroppedPortrait from './CroppedPortrait.svelte';
@@ -23,7 +24,7 @@
 	const initial = $derived(person.name.trim().charAt(0).toUpperCase());
 </script>
 
-<a class="card" href={`/people/${person.slug}`} data-testid="person-card">
+<a class="card" href={resolve(`/people/${person.slug}`)} data-testid="person-card">
 	<div class="square">
 		{#if person.avatarUrl && person.avatarCrop}
 			<div class="portrait-slot" data-testid="person-card-photo">

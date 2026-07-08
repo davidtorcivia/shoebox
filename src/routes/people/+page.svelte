@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import Gradient from '$lib/ui/Gradient.svelte';
 	import PersonCard from '$lib/ui/PersonCard.svelte';
 
@@ -29,7 +30,7 @@
 			return;
 		}
 		const { person } = await res.json();
-		await goto(`/people/${person.slug}/edit`);
+		await goto(resolve(`/people/${person.slug}/edit`));
 	}
 </script>
 

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import Gradient from '$lib/ui/Gradient.svelte';
 	import { ACCENTS, personRoomFor } from '$lib/ui/tokens';
 
@@ -27,7 +28,7 @@
 			return;
 		}
 		const { album } = (await res.json()) as { album: { id: string } };
-		await goto(`/albums/${album.id}`);
+		await goto(resolve(`/albums/${album.id}`));
 	}
 </script>
 
@@ -58,17 +59,21 @@
 
 		<div class="grid" data-testid="albums-grid">
 			{#each data.albums as album (album.id)}
-				<a class="card" href={`/albums/${album.id}`} data-testid="album-card">
+				<a class="card" href={resolve(`/albums/${album.id}`)} data-testid="album-card">
 					<div class="cover">
 						{#if album.coverUrl}
 							<img src={album.coverUrl} alt={album.title} data-testid="album-cover" />
 						{:else}
-							<div class="fill" style:background-image={fallback(album.createdBy.accentColor)}></div>
+							<div
+								class="fill"
+								style:background-image={fallback(album.createdBy.accentColor)}
+							></div>
 						{/if}
 					</div>
 					<span class="title">{album.title}</span>
 					<span class="count">
-						{album.itemCount} {album.itemCount === 1 ? 'moment' : 'moments'}
+						{album.itemCount}
+						{album.itemCount === 1 ? 'moment' : 'moments'}
 					</span>
 				</a>
 			{:else}
