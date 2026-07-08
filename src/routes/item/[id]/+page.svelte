@@ -282,28 +282,6 @@
 						onClose={() => (shareOpen = false)}
 					/>
 				{/if}
-				{#if data.canEdit && item.type === 'video' && item.urls.sprite}
-					<button
-						class="thumb-action"
-						type="button"
-						data-testid="choose-thumbnail"
-						onclick={() => (thumbPickerOpen = true)}
-					>
-						Choose thumbnail
-					</button>
-					<ThumbnailPicker
-						open={thumbPickerOpen}
-						spriteUrl={item.urls.sprite}
-						duration={item.duration}
-						currentPosterTime={item.posterTime ?? null}
-						saving={savingThumb}
-						onClose={() => (thumbPickerOpen = false)}
-						onChoose={(time) => void chooseThumbnail(time)}
-					/>
-					{#if thumbState}
-						<span class="thumb-state" role="status">{thumbState}</span>
-					{/if}
-				{/if}
 				{#if data.facesEnabled && item.type === 'photo' && data.faces.length > 0}
 					<button
 						class="face-toggle"
@@ -357,6 +335,30 @@
 						onsubmit={(payload) => void save(payload)}
 					/>
 					<AlbumToggle itemId={item.id} memberships={item.albums} />
+					{#if item.type === 'video' && item.urls.sprite}
+						<div class="thumb-picker">
+							<button
+								class="thumb-action"
+								type="button"
+								data-testid="choose-thumbnail"
+								onclick={() => (thumbPickerOpen = true)}
+							>
+								Choose thumbnail
+							</button>
+							<ThumbnailPicker
+								open={thumbPickerOpen}
+								spriteUrl={item.urls.sprite}
+								duration={item.duration}
+								currentPosterTime={item.posterTime ?? null}
+								saving={savingThumb}
+								onClose={() => (thumbPickerOpen = false)}
+								onChoose={(time) => void chooseThumbnail(time)}
+							/>
+							{#if thumbState}
+								<span class="thumb-state" role="status">{thumbState}</span>
+							{/if}
+						</div>
+					{/if}
 					{#if saveState}
 						<p class="save-state">{saveState}</p>
 					{/if}
@@ -600,6 +602,22 @@
 
 	.edit {
 		margin-top: 0.5rem;
+	}
+
+	.thumb-picker {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 12px;
+		margin-top: 12px;
+	}
+
+	.thumb-picker .thumb-action {
+		min-height: 40px;
+		padding: 0 16px;
+		border: 1px solid color-mix(in srgb, var(--cream) 32%, transparent);
+		background: color-mix(in srgb, var(--cream) 6%, transparent);
+		line-height: normal;
 	}
 
 	summary {
