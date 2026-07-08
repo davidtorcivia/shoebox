@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	decadeLabelText,
 	mobileRailLabels,
-	mobileRailTicks,
+	mobileRailYearTicks,
 	nearestYearWithContent,
 	railDecades,
 	railSpan,
@@ -88,24 +88,23 @@ describe('nearestYearWithContent', () => {
 	});
 });
 
-describe('mobileRailTicks', () => {
-	const ticks = mobileRailTicks(YEARS, 1993, 1994, 2026);
+describe('mobileRailYearTicks', () => {
+	const ticks = mobileRailYearTicks(YEARS, 1993, 1994, 2026);
 
-	it('buckets the span into 5-year ticks', () => {
-		expect(ticks.length).toBe(10);
-		expect(ticks[0].startYear).toBe(1980);
-		expect(ticks.at(-1)!.startYear).toBe(2025);
+	it('emits one tick per year that has media, in order', () => {
+		expect(ticks.map((t) => t.year)).toEqual([1993, 1994]);
 	});
 
-	it('warms only buckets overlapping the active decade; marks empties and futures', () => {
-		expect(ticks.filter((t) => t.warm).map((t) => t.startYear)).toEqual([1990, 1995]);
-		expect(ticks.find((t) => t.startYear === 1980)!.empty).toBe(true);
-		expect(ticks.find((t) => t.startYear === 1990)!.empty).toBe(false);
-		expect(ticks.some((t) => t.startYear > 2026)).toBe(false);
+	it('positions each tick by its fraction across the span', () => {
+		// span is 1980..2026
+		expect(ticks.find((t) => t.year === 1993)!.frac).toBeCloseTo((1993 - 1980) / (2026 - 1980), 4);
 	});
 
-	it('gives the fullest bucket 30px', () => {
-		expect(ticks.find((t) => t.startYear === 1990)!.height).toBe(30);
+	it('scales height by sqrt(count) with the busiest year tallest, and marks active', () => {
+		expect(ticks.find((t) => t.year === 1994)!.height).toBe(28);
+		expect(ticks.find((t) => t.year === 1994)!.active).toBe(true);
+		expect(ticks.find((t) => t.year === 1993)!.active).toBe(false);
+		expect(ticks.find((t) => t.year === 1993)!.height).toBeLessThan(28);
 	});
 });
 

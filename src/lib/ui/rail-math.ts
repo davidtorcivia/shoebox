@@ -28,12 +28,13 @@ export interface RailDecade {
 	ticks: RailTick[];
 }
 
-export interface MobileTick {
-	startYear: number;
+export interface MobileYearTick {
+	year: number;
+	/** Position across the rail span, 0..1. */
+	frac: number;
+	/** Bar height in px, scaled to the year's media count. */
 	height: number;
-	empty: boolean;
-	warm: boolean;
-	future: boolean;
+	active: boolean;
 }
 
 export interface RailLabel {
@@ -104,37 +105,29 @@ export function nearestYearWithContent(target: number, years: YearCount[]): numb
 	return withContent.sort((a, b) => Math.abs(a - target) - Math.abs(b - target) || a - b)[0];
 }
 
-export function mobileRailTicks(
+// One skinny tick per year that has media, positioned by its fraction across the
+// span and scaled (height) to its media count — a compact sparkline rather than
+// wide multi-year buckets.
+export function mobileRailYearTicks(
 	years: YearCount[],
 	earliest: number | null,
 	activeYear: number,
 	now: number,
-	bucketYears = 5,
-	maxTickPx = 30
-): MobileTick[] {
+	maxTickPx = 28
+): MobileYearTick[] {
 	const span = railSpan(earliest, now);
-	const activeDecade = decadeOf(activeYear);
-	const maxBucketCount = Math.max(
-		1,
-		...bucketCounts(years, span, bucketYears).map((bucket) => bucket.count)
+	const withContent = years.filter(
+		(year) => year.count > 0 && year.year >= span.start && year.year <= span.end
 	);
-	const counts = new Map(
-		bucketCounts(years, span, bucketYears).map((bucket) => [bucket.startYear, bucket.count])
-	);
-	const out: MobileTick[] = [];
-
-	for (let startYear = span.start; startYear <= span.end; startYear += bucketYears) {
-		const count = counts.get(startYear) ?? 0;
-		out.push({
-			startYear,
-			height: count > 0 ? Math.round(Math.sqrt(count / maxBucketCount) * maxTickPx) : 0,
-			empty: count === 0,
-			warm: startYear < activeDecade + 10 && startYear + bucketYears > activeDecade,
-			future: startYear > now
-		});
-	}
-
-	return out;
+	const maxCount = Math.max(1, ...withContent.map((year) => year.count));
+	return withContent
+		.map((year) => ({
+			year: year.year,
+			frac: thumbFraction(year.year, span),
+			height: Math.max(3, Math.round(Math.sqrt(year.count / maxCount) * maxTickPx)),
+			active: year.year === activeYear
+		}))
+		.sort((a, b) => a.year - b.year);
 }
 
 export function mobileRailLabels(
@@ -168,21 +161,6 @@ export function mobileRailLabels(
 export function thumbFraction(year: number, span: Span): number {
 	if (span.end <= span.start) return 0;
 	return clamp((year - span.start) / (span.end - span.start), 0, 1);
-}
-
-function bucketCounts(
-	years: YearCount[],
-	span: Span,
-	bucketYears: number
-): { startYear: number; count: number }[] {
-	const buckets = new Map<number, number>();
-	for (const year of years) {
-		const bucket = span.start + Math.floor((year.year - span.start) / bucketYears) * bucketYears;
-		if (bucket >= span.start && bucket <= span.end) {
-			buckets.set(bucket, (buckets.get(bucket) ?? 0) + year.count);
-		}
-	}
-	return [...buckets.entries()].map(([startYear, count]) => ({ startYear, count }));
 }
 
 function decadeOf(year: number): number {

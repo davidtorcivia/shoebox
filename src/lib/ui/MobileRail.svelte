@@ -1,7 +1,7 @@
 <script lang="ts">
 	import {
 		mobileRailLabels,
-		mobileRailTicks,
+		mobileRailYearTicks,
 		thumbFraction,
 		railSpan,
 		type YearCount
@@ -18,7 +18,7 @@
 	let { years, earliest, activeYear, now, onselect }: Props = $props();
 
 	const span = $derived(railSpan(earliest, now));
-	const ticks = $derived(mobileRailTicks(years, earliest, activeYear, now));
+	const ticks = $derived(mobileRailYearTicks(years, earliest, activeYear, now));
 	const labels = $derived(mobileRailLabels(earliest, activeYear, now));
 
 	let track = $state<HTMLElement>();
@@ -96,12 +96,8 @@
 		onkeydown={onKeydown}
 	>
 		<div class="ticks" aria-hidden="true">
-			{#each ticks as tick (tick.startYear)}
-				<i
-					class:warm={tick.warm}
-					class:empty={tick.empty}
-					class:future={tick.future}
-					style={`height: ${Math.max(tick.height, tick.empty ? 2 : 4)}px`}
+			{#each ticks as tick (tick.year)}
+				<i class:active={tick.active} style={`left: ${tick.frac * 100}%; height: ${tick.height}px`}
 				></i>
 			{/each}
 		</div>
@@ -162,28 +158,22 @@
 
 	.ticks {
 		position: relative;
-		display: flex;
-		align-items: flex-end;
-		gap: 2px;
 		height: 30px;
 	}
 
+	/* One skinny line per year with media, anchored to its position on the rail
+	   and as tall as its media count warrants. */
 	i {
-		flex: 1;
-		background: rgba(255, 245, 232, 0.28);
+		position: absolute;
+		bottom: 0;
+		width: 2px;
+		transform: translateX(-1px);
+		background: rgba(255, 245, 232, 0.42);
 		transition: background 160ms ease;
 	}
 
-	i.empty {
-		background: rgba(255, 245, 232, 0.14);
-	}
-
-	i.warm {
-		background: rgba(250, 123, 98, 0.75);
-	}
-
-	i.future {
-		opacity: 0.35;
+	i.active {
+		background: rgba(250, 123, 98, 0.95);
 	}
 
 	.thumb {
