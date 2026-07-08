@@ -44,6 +44,7 @@
 	<div class="nav-groups" class:open={menuOpen} id="primary-nav">
 		<nav aria-label="Primary">
 			<a href={resolve('/')}>Timeline</a>
+			<a href={resolve('/on-this-day')}>On This Day</a>
 			<a href={resolve('/people')}>People</a>
 			{#if linkedPersonSlug}
 				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- person slug is dynamic -->
