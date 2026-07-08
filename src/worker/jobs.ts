@@ -5,7 +5,7 @@ import * as schema from '../lib/server/db/schema';
 import type { StorageAdapter } from '../lib/server/platform/types';
 
 export type WorkerDb = BetterSQLite3Database<typeof schema>;
-export type JobKind = 'derivatives' | 'sprite' | 'ingest_scan' | 'face_scan' | 'transcode';
+export type JobKind = 'derivatives' | 'sprite' | 'ingest_scan' | 'face_scan' | 'transcode' | 'hls';
 
 export interface ClaimedJob {
 	id: string;
@@ -34,7 +34,8 @@ const ALL_KINDS: readonly JobKind[] = [
 	'sprite',
 	'ingest_scan',
 	'face_scan',
-	'transcode'
+	'transcode',
+	'hls'
 ];
 
 export function claimJob(

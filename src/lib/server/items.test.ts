@@ -173,7 +173,8 @@ describe('createItem', () => {
 		expect(queue.enqueued).toEqual([
 			{ kind: 'derivatives', payload: { itemId: 'itm000000001' } },
 			{ kind: 'sprite', payload: { itemId: 'itm000000001' } },
-			{ kind: 'transcode', payload: { itemId: 'itm000000001' } }
+			{ kind: 'transcode', payload: { itemId: 'itm000000001' } },
+			{ kind: 'hls', payload: { itemId: 'itm000000001' } }
 		]);
 	});
 

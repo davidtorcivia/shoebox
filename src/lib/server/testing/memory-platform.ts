@@ -61,7 +61,7 @@ export class MemoryQueue implements JobQueueAdapter {
 	enqueued: { kind: string; payload: Record<string, unknown> }[] = [];
 
 	async enqueue(
-		kind: 'derivatives' | 'sprite' | 'ingest_scan' | 'face_scan' | 'transcode',
+		kind: 'derivatives' | 'sprite' | 'ingest_scan' | 'face_scan' | 'transcode' | 'hls',
 		payload: Record<string, unknown>
 	): Promise<void> {
 		this.enqueued.push({ kind, payload });

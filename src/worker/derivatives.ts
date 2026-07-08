@@ -5,9 +5,9 @@ import ffmpegPath from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
 import { nanoid } from 'nanoid';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import sharp from 'sharp';
 import * as schema from '../lib/server/db/schema';
 import type { JobHandler, WorkerDb } from './jobs';
@@ -31,7 +31,8 @@ export interface VideoProbe {
 	codec: string | null;
 }
 
-type DerivedKind = 'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600' | 'sprite' | 'playback';
+type DerivedKind =
+	'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600' | 'sprite' | 'playback' | 'hls';
 
 /** Video codecs browsers decode natively across Chrome/Firefox/Safari. Anything
  * else (HEVC/H.265, MPEG-2, DV, MPEG-4 ASP, ProRes, …) is served as-is today and
@@ -469,6 +470,125 @@ export const transcodeHandler: JobHandler = async (payload, ctx) => {
 			.where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'original')))
 			.run();
 		await removeStalePlayback(ctx, itemId);
+	} finally {
+		await rm(tmp, { recursive: true, force: true });
+	}
+};
+
+export interface HlsRung {
+	height: number;
+	width: number;
+	maxrateK: number;
+	bandwidth: number;
+}
+
+/** Per-rung H.264 bitrate ceilings (kbit/s). Bounds each rung's size so the
+ * ladder can't balloon the library — CRF still lets simple footage come in well
+ * under these caps. */
+const HLS_MAXRATE_K: Record<number, number> = { 1080: 4500, 720: 2500, 480: 1200 };
+
+/**
+ * Storage-conscious HLS ladder. Videos shorter than 720p get none — they stream
+ * fine as a single file and a segmented ladder would only multiply bytes. Above
+ * that we emit at most three rungs, capped at 1080p and never upscaled, so a 4K
+ * source and a 1080p source both top out at a 1080p rung.
+ */
+export function hlsLadder(srcW: number, srcH: number): HlsRung[] {
+	if (srcW <= 0 || srcH < 720) return [];
+	const capped = Math.min(srcH, 1080);
+	const heights = [1080, 720, 480].filter((h) => h <= capped);
+	// Guarantee a lower rung to actually adapt to (e.g. an exactly-720p source).
+	if (heights.length === 1 && capped > 480) heights.push(480);
+	return [...new Set(heights)].slice(0, 3).map((height) => {
+		const width = Math.round((srcW * height) / srcH / 2) * 2;
+		const maxrateK = HLS_MAXRATE_K[height] ?? 1200;
+		return { height, width, maxrateK, bandwidth: maxrateK * 1000 + 128_000 };
+	});
+}
+
+function hlsContentType(name: string): string {
+	if (name.endsWith('.m3u8')) return 'application/vnd.apple.mpegurl';
+	if (name.endsWith('.ts')) return 'video/mp2t';
+	return 'application/octet-stream';
+}
+
+/**
+ * Build an adaptive HLS ladder for larger videos. Each rung is re-encoded to
+ * H.264 (so the source codec is irrelevant) and segmented; a master playlist
+ * ties them together. The original file is untouched and remains the download.
+ */
+export const hlsHandler: JobHandler = async (payload, ctx) => {
+	const itemId = String(payload.itemId ?? '');
+	const { item, originalKey } = loadItem(ctx.db, itemId);
+	if (item.type !== 'video') return;
+
+	const originalAbs = join(ctx.mediaPath, originalKey);
+	const probe = await probeVideo(originalAbs);
+	const rungs = hlsLadder(probe.width, probe.height);
+	if (rungs.length === 0) return;
+
+	const tmp = await mkdtemp(join(tmpdir(), 'shoebox-hls-'));
+	try {
+		for (const rung of rungs) {
+			await runFfmpeg(
+				(cmd) =>
+					cmd.outputOptions([
+						'-map 0:v:0',
+						'-map 0:a:0?',
+						'-c:v libx264',
+						'-preset veryfast',
+						'-crf 22',
+						`-maxrate ${rung.maxrateK}k`,
+						`-bufsize ${rung.maxrateK * 2}k`,
+						`-vf scale=-2:${rung.height}:flags=lanczos,format=yuv420p`,
+						'-c:a aac',
+						'-b:a 128k',
+						'-hls_time 6',
+						'-hls_playlist_type vod',
+						'-hls_flags independent_segments',
+						`-hls_segment_filename ${join(tmp, `${rung.height}p_%03d.ts`)}`
+					]),
+				originalAbs,
+				join(tmp, `${rung.height}p.m3u8`),
+				TRANSCODE_TIMEOUT_MS
+			);
+			// ffmpeg writes absolute segment paths into the playlist; rewrite them to
+			// bare filenames so the URIs resolve next to the playlist when served.
+			const playlistPath = join(tmp, `${rung.height}p.m3u8`);
+			const text = await readFile(playlistPath, 'utf8');
+			const relative = text
+				.split('\n')
+				.map((line) => (line.startsWith('#') || line.trim() === '' ? line : basename(line.trim())))
+				.join('\n');
+			await writeFile(playlistPath, relative);
+		}
+
+		const master = ['#EXTM3U', '#EXT-X-VERSION:3'];
+		for (const rung of rungs) {
+			master.push(
+				`#EXT-X-STREAM-INF:BANDWIDTH=${rung.bandwidth},RESOLUTION=${rung.width}x${rung.height}`
+			);
+			master.push(`${rung.height}p.m3u8`);
+		}
+		await writeFile(join(tmp, 'master.m3u8'), master.join('\n') + '\n');
+
+		const dir = `media/${itemId}/hls`;
+		for (const name of await readdir(tmp)) {
+			const data = await readFile(join(tmp, name));
+			await ctx.storage.put(`${dir}/${name}`, new Uint8Array(data), {
+				contentType: hlsContentType(name)
+			});
+		}
+
+		replaceItemFiles(ctx.db, itemId, [
+			{
+				kind: 'hls',
+				storageKey: `${dir}/master.m3u8`,
+				mime: 'application/vnd.apple.mpegurl',
+				width: rungs[0].width,
+				height: rungs[0].height
+			}
+		]);
 	} finally {
 		await rm(tmp, { recursive: true, force: true });
 	}

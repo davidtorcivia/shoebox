@@ -36,7 +36,7 @@ type LinkOptions = { reindex?: boolean };
 export type { ItemDTO } from '$lib/types';
 
 export type FileKind =
-	'original' | 'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600' | 'sprite' | 'playback';
+	'original' | 'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600' | 'sprite' | 'playback' | 'hls';
 
 /** Image MIME types a browser renders natively. An original outside this set
  * (HEIC/HEIF, camera RAW) is shown via its webp derivative on the detail page. */
@@ -203,6 +203,9 @@ export async function createItem(
 	if (input.type === 'video') {
 		await queue.enqueue('sprite', { itemId: id });
 		await queue.enqueue('transcode', { itemId: id });
+		// Adaptive-streaming ladder for larger videos; the handler no-ops (and adds
+		// no files) below 720p so small clips don't grow the library.
+		await queue.enqueue('hls', { itemId: id });
 	}
 
 	const dto = await getItemDTO(db, storage, id);
@@ -301,6 +304,7 @@ export async function buildItemDTOs(
 				// fall back to the webp derivative and only link them for download.
 				originalWebSafe = row.type === 'video' || WEB_SAFE_IMAGE_MIME.has(file.mime);
 			} else if (file.kind === 'playback') urls.playback = url;
+			else if (file.kind === 'hls') urls.hls = url;
 			else if (file.kind === 'sprite') urls.sprite = url;
 		}
 

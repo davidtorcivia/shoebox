@@ -220,7 +220,14 @@
 			<div class="stage" onpointerdown={onStagePointerDown} onpointerup={onStagePointerUp}>
 				<div class="media-frame">
 					{#if item.type === 'video'}
-						<Player bind:this={player} src={mediaSrc} {poster} duration={item.duration} {title} />
+						<Player
+							bind:this={player}
+							src={mediaSrc}
+							hls={item.urls.hls ?? null}
+							{poster}
+							duration={item.duration}
+							{title}
+						/>
 					{:else}
 						<Lightbox src={mediaSrc} alt={item.title ?? 'Photo'} />
 					{/if}

@@ -230,7 +230,12 @@ describe('completeUpload', () => {
 		expect([t400!.width, t400!.height]).toEqual([192, 108]);
 		expect(await storage.head(`tmp/${uploadId}/manifest.json`)).toBeNull();
 		expect(await storage.head(`tmp/${uploadId}/0`)).toBeNull();
-		expect(q.enqueued.map((job) => job.kind)).toEqual(['derivatives', 'sprite', 'transcode']);
+		expect(q.enqueued.map((job) => job.kind)).toEqual([
+			'derivatives',
+			'sprite',
+			'transcode',
+			'hls'
+		]);
 	});
 
 	it('accepts a photo with no client derivatives (HEIC/RAW) and defers to the worker', async () => {

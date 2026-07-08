@@ -4,7 +4,7 @@ import * as schema from '../lib/server/db/schema';
 import { openNodeDb } from '../lib/server/platform/db-node';
 import { createSqliteQueue } from '../lib/server/platform/queue-sqlite';
 import { createFsStorage } from '../lib/server/platform/storage-fs';
-import { derivativesHandler, spriteHandler, transcodeHandler } from './derivatives';
+import { derivativesHandler, hlsHandler, spriteHandler, transcodeHandler } from './derivatives';
 import { withFaceScanAfterDerivatives } from './face-enqueue';
 import { startIngestWatcher } from './ingest-watcher';
 import {
@@ -16,7 +16,7 @@ import {
 	type WorkerDb
 } from './jobs';
 
-const HANDLED_KINDS: JobKind[] = ['derivatives', 'sprite', 'transcode'];
+const HANDLED_KINDS: JobKind[] = ['derivatives', 'sprite', 'transcode', 'hls'];
 
 interface IngestWatcher {
 	close(): Promise<void>;
@@ -96,7 +96,8 @@ async function main(): Promise<void> {
 	const handlers: JobHandlers = {
 		derivatives: withFaceScanAfterDerivatives(derivativesHandler, process.env),
 		sprite: spriteHandler,
-		transcode: transcodeHandler
+		transcode: transcodeHandler,
+		hls: hlsHandler
 	};
 	const worker = createWorker({ db, ctx, handlers });
 	let watcher = null as IngestWatcher | null;

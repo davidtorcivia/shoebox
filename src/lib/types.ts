@@ -21,6 +21,8 @@ export interface ItemDTO {
 		thumb1600: string;
 		original?: string;
 		playback?: string;
+		/** Master HLS playlist for adaptive streaming (larger videos only). */
+		hls?: string;
 		sprite?: string;
 	};
 	/** False when `urls.original` is a format the browser can't render (HEIC,

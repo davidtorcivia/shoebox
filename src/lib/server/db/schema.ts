@@ -95,7 +95,16 @@ export const itemFiles = sqliteTable(
 			.notNull()
 			.references(() => items.id),
 		kind: text('kind', {
-			enum: ['original', 'poster', 'thumb_400', 'thumb_800', 'thumb_1600', 'sprite', 'playback']
+			enum: [
+				'original',
+				'poster',
+				'thumb_400',
+				'thumb_800',
+				'thumb_1600',
+				'sprite',
+				'playback',
+				'hls'
+			]
 		}).notNull(),
 		storageKey: text('storage_key').notNull(),
 		mime: text('mime').notNull(),
@@ -266,7 +275,7 @@ export const jobs = sqliteTable(
 	{
 		id: text('id').primaryKey(),
 		kind: text('kind', {
-			enum: ['derivatives', 'sprite', 'ingest_scan', 'face_scan', 'transcode']
+			enum: ['derivatives', 'sprite', 'ingest_scan', 'face_scan', 'transcode', 'hls']
 		}).notNull(),
 		payload: text('payload').notNull(),
 		status: text('status', { enum: ['pending', 'running', 'done', 'failed'] })

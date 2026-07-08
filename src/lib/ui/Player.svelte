@@ -10,11 +10,13 @@
 	interface Props {
 		src: string;
 		poster: string;
+		/** Master HLS playlist. When set, adaptive streaming is preferred over `src`. */
+		hls?: string | null;
 		duration?: number | null;
 		title?: string | null;
 	}
 
-	let { src, poster, duration: durationHint = null, title = null }: Props = $props();
+	let { src, poster, hls = null, duration: durationHint = null, title = null }: Props = $props();
 
 	let root: HTMLDivElement;
 	let video = $state<HTMLVideoElement | null>(null);
@@ -164,6 +166,40 @@
 		}
 	});
 
+	// Wire the media source. Prefer HLS when available: Safari plays the playlist
+	// natively; elsewhere hls.js (lazy-loaded so it never ships to viewers of
+	// progressive clips) attaches to the element. Falls back to the mp4 `src`.
+	$effect(() => {
+		const el = video;
+		if (!el) return;
+		const nativeHls = el.canPlayType('application/vnd.apple.mpegurl') !== '';
+		if (hls && nativeHls) {
+			el.src = hls;
+			return;
+		}
+		if (!hls) {
+			el.src = src;
+			return;
+		}
+		let destroyed = false;
+		let instance: { destroy: () => void } | null = null;
+		void import('hls.js').then(({ default: Hls }) => {
+			if (destroyed || !video) return;
+			if (Hls.isSupported()) {
+				const h = new Hls({ maxBufferLength: 30 });
+				h.loadSource(hls);
+				h.attachMedia(video);
+				instance = h;
+			} else {
+				video.src = src; // last resort: progressive mp4
+			}
+		});
+		return () => {
+			destroyed = true;
+			instance?.destroy();
+		};
+	});
+
 	onDestroy(() => {
 		clearReverse();
 		if (hideTimer) clearTimeout(hideTimer);
@@ -190,10 +226,8 @@
 			<div class="hairline" class:sweep={!$reducedMotion && !$comfortMode} aria-hidden="true"></div>
 		{/if}
 
-		<!-- svelte-ignore a11y_media_has_caption -->
 		<video
 			bind:this={video}
-			{src}
 			{poster}
 			preload="metadata"
 			playsinline

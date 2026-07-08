@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { copyFile, mkdir, rm, stat } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +10,8 @@ import * as schema from '../lib/server/db/schema';
 import { createFsStorage } from '../lib/server/platform/storage-fs';
 import {
 	derivativesHandler,
+	hlsHandler,
+	hlsLadder,
 	isRawImage,
 	needsTranscode,
 	probeVideo,
@@ -174,6 +176,109 @@ describe('isRawImage', () => {
 			expect(isRawImage(mime)).toBe(false);
 		}
 	});
+});
+
+describe('hlsLadder', () => {
+	it('builds no ladder for sub-720p sources (protects library size)', () => {
+		expect(hlsLadder(640, 480)).toEqual([]);
+		expect(hlsLadder(854, 480)).toEqual([]);
+		expect(hlsLadder(0, 0)).toEqual([]);
+	});
+
+	it('emits a full ladder for 1080p and caps 4K at 1080p, never upscaling', () => {
+		const hd = hlsLadder(1920, 1080).map((r) => r.height);
+		expect(hd).toEqual([1080, 720, 480]);
+		const uhd = hlsLadder(3840, 2160).map((r) => r.height);
+		expect(uhd).toEqual([1080, 720, 480]);
+		// A 4K rung is never produced.
+		expect(hlsLadder(3840, 2160).some((r) => r.height > 1080)).toBe(false);
+	});
+
+	it('keeps an exactly-720p source adaptive with a second rung', () => {
+		expect(hlsLadder(1280, 720).map((r) => r.height)).toEqual([720, 480]);
+	});
+
+	it('uses even widths and bounded per-rung bitrates', () => {
+		for (const rung of hlsLadder(1920, 1080)) {
+			expect(rung.width % 2).toBe(0);
+			expect(rung.maxrateK).toBeLessThanOrEqual(4500);
+			expect(rung.bandwidth).toBeGreaterThan(rung.maxrateK * 1000);
+		}
+	});
+});
+
+describe('hlsHandler', () => {
+	async function setupHdVideo(height: number): Promise<{ ctx: WorkerContext; itemId: string }> {
+		const db = createTestDb();
+		const owner = seedOwner(db);
+		const itemId = seedItem(db, owner, { type: 'video', width: 99, height: 99, duration: null });
+		const mediaPath = mkdtempSync(join(tmpdir(), 'shoebox-media-'));
+		const key = `media/${itemId}/original.mp4`;
+		await mkdir(join(mediaPath, 'media', itemId), { recursive: true });
+		// Upscale the tiny fixture to a real HD frame so the ladder engages.
+		await runFfmpeg(
+			(cmd) =>
+				cmd.outputOptions([
+					`-vf scale=-2:${height}`,
+					'-c:v libx264',
+					'-preset ultrafast',
+					'-pix_fmt yuv420p'
+				]),
+			FIXTURE_MP4,
+			join(mediaPath, key)
+		);
+		db.insert(schema.itemFiles)
+			.values({
+				id: 'orig1',
+				itemId,
+				kind: 'original',
+				storageKey: key,
+				mime: 'video/mp4',
+				width: Math.round((320 / 180) * height),
+				height
+			})
+			.run();
+		return { ctx: { db, storage: createFsStorage(mediaPath), mediaPath }, itemId };
+	}
+
+	it('writes a master playlist, variant playlists and segments for an HD video', async () => {
+		const { ctx, itemId } = await setupHdVideo(720);
+		await hlsHandler({ itemId }, ctx);
+
+		const master = join(ctx.mediaPath, `media/${itemId}/hls/master.m3u8`);
+		const text = await readFile(master, 'utf8');
+		expect(text).toContain('#EXTM3U');
+		expect(text).toContain('720p.m3u8');
+		expect(text).toContain('480p.m3u8');
+
+		// The variant playlist references its segments by bare filename (not the
+		// worker's absolute temp path) so they resolve when served.
+		const variant = await readFile(join(ctx.mediaPath, `media/${itemId}/hls/720p.m3u8`), 'utf8');
+		expect(variant).toMatch(/^720p_\d+\.ts$/m);
+		expect(variant).not.toContain(tmpdir());
+
+		const seg = join(ctx.mediaPath, `media/${itemId}/hls/720p_000.ts`);
+		expect((await stat(seg)).size).toBeGreaterThan(0);
+
+		const row = ctx.db
+			.select()
+			.from(schema.itemFiles)
+			.where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'hls')))
+			.get();
+		expect(row?.storageKey).toBe(`media/${itemId}/hls/master.m3u8`);
+	}, 60_000);
+
+	it('produces no HLS files for a sub-720p video', async () => {
+		const { ctx, itemId } = await setupHdVideo(360);
+		await hlsHandler({ itemId }, ctx);
+
+		const row = ctx.db
+			.select()
+			.from(schema.itemFiles)
+			.where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'hls')))
+			.get();
+		expect(row).toBeUndefined();
+	}, 30_000);
 });
 
 describe('transcodeHandler', () => {

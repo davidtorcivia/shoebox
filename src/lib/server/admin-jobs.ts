@@ -4,7 +4,7 @@ import type { Db } from './db';
 
 export interface JobRow {
 	id: string;
-	kind: 'derivatives' | 'sprite' | 'ingest_scan' | 'face_scan' | 'transcode';
+	kind: 'derivatives' | 'sprite' | 'ingest_scan' | 'face_scan' | 'transcode' | 'hls';
 	payload: string;
 	status: 'pending' | 'running' | 'done' | 'failed';
 	attempts: number;
