@@ -45,7 +45,8 @@ function baseEvent(token: string, shareTokens: string[] = []) {
 			}
 		},
 		cookies,
-		url: new URL(`http://localhost/share/${token}`)
+		url: new URL(`http://localhost/share/${token}`),
+		getClientAddress: () => '203.0.113.7'
 	} as never;
 }
 
