@@ -252,7 +252,12 @@
 			align-items: stretch;
 			gap: 0;
 			padding: calc(56px + 0.5rem) 1.5rem 1.2rem;
-			background: color-mix(in srgb, var(--ink) 42%, transparent);
+			/* Nearly opaque on its own so the panel reads as a clean warm-dark menu
+			   even where backdrop-filter misbehaves — iOS Safari renders a translucent
+			   blurred panel as a solid black box, which is what looked broken. The
+			   blur is a progressive enhancement layered on top. */
+			background: color-mix(in srgb, var(--ink) 92%, transparent);
+			border-bottom: 1px solid color-mix(in srgb, var(--cream) 16%, transparent);
 			backdrop-filter: blur(22px) saturate(1.35);
 			-webkit-backdrop-filter: blur(22px) saturate(1.35);
 			box-shadow: 0 18px 40px rgb(0 0 0 / 0.28);

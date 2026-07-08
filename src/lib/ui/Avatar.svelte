@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { CropRect } from '$lib/domain/people-dto';
 	import { accentOn } from '$lib/ui/tokens';
-	import { cropStyle } from './crop';
 
 	let {
 		name,
@@ -19,14 +18,21 @@
 	const initial = $derived(name.trim().charAt(0).toUpperCase());
 	const fg = $derived(accentOn(accentColor));
 	const fontSize = $derived(Math.max(10, Math.round(size * 0.52)));
+
+	// The avatar is square but the stored crop is a portrait rect. Cover-fit the
+	// image on the crop's focal point so the face fills the square without the
+	// non-uniform stretch (squish) the portrait crop-scaling would cause.
+	const clamp = (v: number) => Math.min(100, Math.max(0, v));
+	const focalX = $derived(avatarCrop ? clamp((avatarCrop.x + avatarCrop.w / 2) * 100) : 50);
+	const focalY = $derived(avatarCrop ? clamp((avatarCrop.y + avatarCrop.h / 2) * 100) : 50);
 </script>
 
-{#if avatarUrl && avatarCrop}
+{#if avatarUrl}
 	<span class="avatar photo" aria-hidden="true" style={`--avatar-size: ${size}px`}>
 		<img
 			src={avatarUrl}
 			alt={name}
-			style={cropStyle(avatarCrop)}
+			style={`object-position: ${focalX}% ${focalY}%`}
 			draggable="false"
 			loading="lazy"
 		/>
@@ -58,13 +64,14 @@
 	}
 
 	.photo {
-		position: relative;
 		overflow: hidden;
+		background: color-mix(in srgb, var(--cream, #fff5e8) 10%, transparent);
 	}
 
 	.photo img {
-		position: absolute;
+		width: 100%;
+		height: 100%;
 		display: block;
-		max-width: none;
+		object-fit: cover;
 	}
 </style>
