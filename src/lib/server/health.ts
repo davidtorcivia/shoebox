@@ -152,7 +152,11 @@ export async function loadHealth(db: Db): Promise<HealthReport> {
 
 	// Library.
 	const readyCounts = await db
-		.select({ type: items.type, count: sql<number>`count(*)`, bytes: sql<number>`sum(${items.sizeBytes})` })
+		.select({
+			type: items.type,
+			count: sql<number>`count(*)`,
+			bytes: sql<number>`sum(${items.sizeBytes})`
+		})
 		.from(items)
 		.where(and(eq(items.status, 'ready'), isNull(items.deletedAt)))
 		.groupBy(items.type);

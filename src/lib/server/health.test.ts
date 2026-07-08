@@ -4,7 +4,9 @@ import * as schema from './db/schema';
 import { loadHealth } from './health';
 import type { Db } from './db';
 
-const NOW = Date.now();
+// Drizzle's timestamp columns persist whole unix seconds, so align to a second
+// boundary to make round-tripped time comparisons exact.
+const NOW = Math.floor(Date.now() / 1000) * 1000;
 const minsAgo = (m: number) => new Date(NOW - m * 60_000);
 
 function setup() {
