@@ -50,6 +50,9 @@ export function maybeEnqueueFaceScan(db: WorkerDb, itemId: string, env: FaceEnv)
 export function withFaceScanAfterDerivatives(handler: JobHandler, env: FaceEnv): JobHandler {
 	return async (payload, ctx) => {
 		await handler(payload, ctx);
+		// A poster-only regeneration doesn't change the frames, so there's nothing
+		// new to detect — skip the (expensive) face re-scan.
+		if (payload.skipFaceScan) return;
 		maybeEnqueueFaceScan(ctx.db, String(payload.itemId ?? ''), env);
 	};
 }

@@ -400,7 +400,7 @@ describe('update/delete/restore', () => {
 });
 
 describe('setItemPoster', () => {
-	it('stores the chosen frame and enqueues a derivatives re-run', async () => {
+	it('stores the chosen frame, busts the poster cache, and regenerates it', async () => {
 		await createItem(db, storage, queue, baseInput());
 		const user = await seedUser(db, { id: 'u_ed', username: 'ed', role: 'editor' });
 		queue.enqueued.length = 0;
@@ -408,12 +408,16 @@ describe('setItemPoster', () => {
 		const dto = await setItemPoster(db, storage, queue, user, 'itm000000001', 4.2);
 
 		expect(dto.posterTime).toBe(4.2);
-		const [row] = await db
-			.select()
-			.from(itemsTable)
-			.where(eq(itemsTable.id, 'itm000000001'));
+		// Cache-busted so the browser fetches the freshly written frame.
+		expect(dto.urls.poster).toContain('?v=4.2');
+		expect(dto.urls.thumb400).toContain('?v=4.2');
+		const [row] = await db.select().from(itemsTable).where(eq(itemsTable.id, 'itm000000001'));
 		expect(row.posterTime).toBe(4.2);
-		expect(queue.enqueued).toEqual([{ kind: 'derivatives', payload: { itemId: 'itm000000001' } }]);
+		// No real original on disk in the test, so it falls back to a background
+		// regeneration — and never triggers a face re-scan.
+		expect(queue.enqueued).toEqual([
+			{ kind: 'derivatives', payload: { itemId: 'itm000000001', skipFaceScan: true } }
+		]);
 	});
 
 	it('rejects photos, bad times, and non-owners', async () => {
@@ -432,9 +436,9 @@ describe('setItemPoster', () => {
 			queue,
 			baseInput({ id: 'itm000000009', sha256: 'e'.repeat(64), type: 'photo', duration: null })
 		);
-		await expect(
-			setItemPoster(db, storage, queue, owner, 'itm000000009', 1)
-		).rejects.toMatchObject({ status: 400 });
+		await expect(setItemPoster(db, storage, queue, owner, 'itm000000009', 1)).rejects.toMatchObject(
+			{ status: 400 }
+		);
 
 		const stranger = await seedUser(db, { id: 'u_x', username: 'x', role: 'uploader' });
 		await expect(

@@ -266,12 +266,16 @@ export async function buildItemDTOs(
 		};
 		const urls: ItemDTO['urls'] = { poster: '', thumb400: '', thumb800: '', thumb1600: '' };
 
+		// When the user has picked a poster frame we overwrite poster.webp and the
+		// thumbnails in place (same keys), so bust their cache with the chosen time
+		// — otherwise the browser keeps showing the previously cached image.
+		const bust = row.type === 'video' && row.posterTime != null ? `?v=${row.posterTime}` : '';
 		for (const file of files.filter((file) => file.itemId === row.id)) {
 			const url = await storage.mediaUrl(file.storageKey);
-			if (file.kind === 'poster') urls.poster = url;
-			else if (file.kind === 'thumb_400') urls.thumb400 = url;
-			else if (file.kind === 'thumb_800') urls.thumb800 = url;
-			else if (file.kind === 'thumb_1600') urls.thumb1600 = url;
+			if (file.kind === 'poster') urls.poster = url + bust;
+			else if (file.kind === 'thumb_400') urls.thumb400 = url + bust;
+			else if (file.kind === 'thumb_800') urls.thumb800 = url + bust;
+			else if (file.kind === 'thumb_1600') urls.thumb1600 = url + bust;
 			else if (file.kind === 'original') urls.original = url;
 			else if (file.kind === 'playback') urls.playback = url;
 			else if (file.kind === 'sprite') urls.sprite = url;
@@ -561,8 +565,11 @@ export async function restoreItem(db: Db, storage: StorageAdapter, id: string): 
 }
 
 /**
- * Set a video's poster frame to `posterTime` seconds and re-run the derivatives
- * job so the poster (and the thumbnails derived from it) reflect the choice.
+ * Set a video's poster frame to `posterTime` seconds. The poster + thumbnails
+ * are regenerated inline so the new frame is ready the instant this returns (the
+ * DTO's cache-busted URLs then surface it immediately); if inline extraction
+ * isn't available we fall back to a background derivatives job. Either way we do
+ * NOT re-scan faces — the poster frame has nothing to do with face detection.
  */
 export async function setItemPoster(
 	db: Db,
@@ -582,7 +589,31 @@ export async function setItemPoster(
 	}
 
 	await db.update(items).set({ posterTime }).where(eq(items.id, id));
-	await queue.enqueue('derivatives', { itemId: id });
+
+	const original = (
+		await db
+			.select({ key: itemFiles.storageKey })
+			.from(itemFiles)
+			.where(and(eq(itemFiles.itemId, id), eq(itemFiles.kind, 'original')))
+			.limit(1)
+	)[0];
+	try {
+		if (!original) throw new Error('no original file');
+		const mediaPath = process.env.MEDIA_PATH ?? './data/media';
+		const { renderVideoPoster } = await import('$lib/server/media/poster');
+		await renderVideoPoster({
+			mediaPath,
+			originalKey: original.key,
+			time: posterTime,
+			storage,
+			itemId: id
+		});
+	} catch {
+		// Inline extraction unavailable (e.g. non-node runtime or missing binary):
+		// regenerate in the background instead. skipFaceScan avoids a pointless
+		// full face re-scan.
+		await queue.enqueue('derivatives', { itemId: id, skipFaceScan: true });
+	}
 
 	const dto = await getItemDTO(db, storage, id);
 	if (!dto) throw error(500, 'item not found after poster update');

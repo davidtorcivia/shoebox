@@ -142,8 +142,9 @@
 		const body = (await res.json()) as { item: ItemDTO };
 		item = body.item;
 		thumbPickerOpen = false;
-		// The new poster is rendered by the worker; it appears on next reload.
-		thumbState = 'Thumbnail queued — it updates once processing finishes.';
+		// The poster is regenerated inline and the URL is cache-busted, so the new
+		// frame shows immediately.
+		thumbState = 'Thumbnail updated.';
 	}
 
 	async function deleteMedia() {
