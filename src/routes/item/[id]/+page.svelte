@@ -232,12 +232,9 @@
 		</div>
 
 		<aside class="rail">
-			<p class="eyebrow">{eyebrowFor(item.date, item.tapeLabel)}</p>
+			<p class="eyebrow">{eyebrowFor(item.date, null)}</p>
 			{#if hasKnownDate}
 				<p class="date">{item.displayDate}</p>
-			{/if}
-			{#if item.tapeLabel}
-				<p class="tape">{item.tapeLabel}</p>
 			{/if}
 			{#if item.description}
 				<p class="story">{item.description}</p>
@@ -492,7 +489,6 @@
 	}
 
 	.eyebrow,
-	.tape,
 	.save-state,
 	summary {
 		font-family: var(--font-sans);

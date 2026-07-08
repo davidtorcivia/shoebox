@@ -9,13 +9,12 @@ const people: ItemDTO['people'] = [
 ];
 
 describe('PeopleRow', () => {
-	it('renders the fixed label, names, and age text', () => {
+	it('renders each person as an avatar button carrying their name', () => {
 		const { body } = render(PeopleRow, { props: { people } });
-		expect(body).toContain('People');
+		// Names ride on the avatar buttons (title/aria) and expand on tap.
 		expect(body).toContain('Marta');
 		expect(body).toContain('Eric');
-		expect(body).toContain('age 38');
-		expect(body).toContain('/people/marta');
+		expect(body).toContain('aria-expanded');
 	});
 
 	it('does not emit italic, radius, or media-border styling', () => {

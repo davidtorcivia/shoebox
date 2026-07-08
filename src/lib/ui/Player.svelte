@@ -1,13 +1,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { formatTimecode } from '$lib/domain/timecode';
-	import {
-		SHUTTLE_PAUSED,
-		nextRate,
-		shuttleNext,
-		togglePlay,
-		type Shuttle
-	} from '$lib/domain/shuttle';
+	import { SHUTTLE_PAUSED, shuttleNext, togglePlay, type Shuttle } from '$lib/domain/shuttle';
 	import { CREAM, DAWN, FONT, INK, MOTION } from '$lib/ui/tokens';
 	import { comfortMode, reducedMotion } from '$lib/ui/theme';
 	import ScrubTrack from './ScrubTrack.svelte';
@@ -29,7 +23,6 @@
 	let duration = $state(0);
 	let buffered = $state(0);
 	let muted = $state(false);
-	let rate = $state(1);
 	let volume = $state(1);
 	let volumeOpen = $state(false);
 	let fullscreen = $state(false);
@@ -89,7 +82,6 @@
 			video.pause();
 		} else if (next.mode === 'forward') {
 			video.playbackRate = next.rate;
-			rate = next.rate;
 			void video.play();
 		} else {
 			video.pause();
@@ -115,13 +107,6 @@
 		const clamped = Math.min(limit, Math.max(0, time));
 		video.currentTime = clamped;
 		currentTime = clamped;
-		poke();
-	}
-
-	function cycleRate() {
-		if (!video) return;
-		rate = nextRate(rate);
-		video.playbackRate = rate;
 		poke();
 	}
 
@@ -276,7 +261,6 @@
 						onclick={() => (volumeOpen = !volumeOpen)}>Vol</button
 					>
 				</span>
-				<button class="control-button" type="button" onclick={cycleRate}>{rate}x</button>
 				<button class="control-button" type="button" onclick={() => void toggleFullscreen()}>
 					{fullscreen ? 'Exit' : 'Full'}
 				</button>

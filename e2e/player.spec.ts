@@ -10,14 +10,14 @@ test('item room video, neighbors, photo lightbox, and edit panel', async ({ page
 	const context = `y=1994&people=${seeded.personId}`;
 
 	await page.goto(`/item/${seeded.videoId}?${context}`);
-	await expect(page.getByText('Aunt June').first()).toBeVisible();
+	// People render as avatar buttons that carry the name and expand on tap.
+	await expect(page.getByRole('button', { name: 'Aunt June' }).first()).toBeVisible();
 	await expect(page.getByText('Player E2E Album')).toBeVisible();
 	await expect(page.getByText('June 14, 1994')).toBeVisible();
 	await expect(page.getByTestId('comments-slot')).toBeVisible();
 
 	await page.keyboard.press('l');
 	await page.keyboard.press('l');
-	await expect(page.getByRole('button', { name: '2x' })).toBeVisible();
 	await page.keyboard.press('k');
 	await page.keyboard.press(' ');
 	await page.keyboard.press('ArrowRight');
