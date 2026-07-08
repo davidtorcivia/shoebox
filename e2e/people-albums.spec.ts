@@ -23,8 +23,8 @@ test('relationships derive family rows and year age captions', async ({ page }) 
 	await page.goto(`/people/${seed.slugs.margaret}/edit`);
 	const addRel = async (kind: string, personId: string) => {
 		await page.getByTestId('rel-kind').selectOption(kind);
-		await page.getByTestId('rel-person').selectOption(personId);
-		await page.getByTestId('rel-add').click();
+		await page.getByTestId('rel-person').click();
+		await page.getByTestId(`rel-option-${personId}`).click();
 		await page.waitForResponse((res) => res.url().includes('/relationships') && res.ok());
 	};
 	await addRel('spouse', seed.people.frank);
@@ -41,7 +41,9 @@ test('relationships derive family rows and year age captions', async ({ page }) 
 	await expect(page.getByTestId('year-meta-1993')).toHaveText(/Age 52 · 1 moment/);
 });
 
-test('album creation, item-room membership toggle, and comments work together', async ({ page }) => {
+test('album creation, item-room membership toggle, and comments work together', async ({
+	page
+}) => {
 	await page.goto('/albums');
 	await page.getByTestId('new-album').click();
 	await page.locator('input[name="title"]').fill('Summer at the Lake');

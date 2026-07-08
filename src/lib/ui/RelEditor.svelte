@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import Avatar from '$lib/ui/Avatar.svelte';
 	import { canonicalRel, type Rel } from '$lib/domain/relationships';
 	import type { FamilyRefs, PersonRef } from '$lib/domain/people-dto';
@@ -20,8 +21,14 @@
 	// svelte-ignore state_referenced_locally
 	let family = $state(initialFamily);
 	let kind = $state<Kind>('spouse');
-	let otherId = $state('');
+	let personQuery = $state('');
+	let showList = $state(false);
 	let relError = $state('');
+
+	const matches = $derived.by(() => {
+		const q = personQuery.trim().toLowerCase();
+		return others.filter((other) => !q || other.name.toLowerCase().includes(q)).slice(0, 20);
+	});
 
 	function relFor(k: Kind, other: string): Rel {
 		if (k === 'parent') return { personA: other, personB: personId, type: 'parent-of' };
@@ -50,11 +57,10 @@
 		family = ((await res.json()) as { family: FamilyRefs }).family;
 	}
 
-	async function add(event: SubmitEvent) {
-		event.preventDefault();
-		if (!otherId) return;
+	async function pick(otherId: string) {
 		await patch({ add: [relFor(kind, otherId)] });
-		otherId = '';
+		personQuery = '';
+		showList = false;
 	}
 
 	const rows = $derived(
@@ -70,22 +76,51 @@
 </script>
 
 <div class="releditor" data-testid="rel-editor">
-	<form class="addrow" onsubmit={add}>
+	<div class="addrow">
 		<select bind:value={kind} data-testid="rel-kind" aria-label="Relationship">
 			<option value="spouse">Spouse</option>
 			<option value="parent">Parent</option>
 			<option value="child">Child</option>
 			<option value="sibling">Sibling</option>
 		</select>
-		<select bind:value={otherId} data-testid="rel-person" aria-label="Person">
-			<option value="" disabled>Choose a person...</option>
-			{#each others as other (other.id)}
-				<option value={other.id}>{other.name}</option>
-			{/each}
-		</select>
-		<button type="submit" data-testid="rel-add">Add</button>
+		<div class="picker">
+			<input
+				bind:value={personQuery}
+				data-testid="rel-person"
+				aria-label="Person"
+				placeholder="Search people…"
+				autocomplete="off"
+				onfocus={() => (showList = true)}
+				onblur={() => setTimeout(() => (showList = false), 150)}
+			/>
+			{#if showList && matches.length}
+				<ul class="matches" data-testid="rel-matches">
+					{#each matches as other (other.id)}
+						<li>
+							<button
+								type="button"
+								data-testid={`rel-option-${other.id}`}
+								onmousedown={(event) => {
+									event.preventDefault();
+									void pick(other.id);
+								}}
+							>
+								<Avatar
+									name={other.name}
+									accentColor={other.accentColor}
+									size={19}
+									avatarUrl={other.avatarUrl}
+									avatarCrop={other.avatarCrop}
+								/>
+								<span>{other.name}</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
 		{#if relError}<span class="err" data-testid="rel-error">{relError}</span>{/if}
-	</form>
+	</div>
 
 	{#each rows as row (row.key)}
 		<div class="grp" data-testid={`rel-row-${row.key}`}>
@@ -100,7 +135,7 @@
 							avatarUrl={member.avatarUrl}
 							avatarCrop={member.avatarCrop}
 						/>
-						<a href={`/people/${member.slug}`}>{member.name}</a>
+						<a href={resolve(`/people/${member.slug}`)}>{member.name}</a>
 						{#if row.kind}
 							<button
 								type="button"
@@ -140,17 +175,60 @@
 		padding: 10px 2.2em 10px 12px;
 	}
 
-	.addrow button[type='submit'] {
+	.picker {
+		position: relative;
+		flex: 1 1 220px;
+		min-width: 200px;
+	}
+
+	.picker input {
+		width: 100%;
 		min-height: 44px;
 		border: 0;
-		background: var(--person-accent, var(--dawn));
-		color: var(--ink);
+		background-color: color-mix(in srgb, var(--cream) 12%, transparent);
+		color: var(--cream);
+		font-family: var(--font-serif);
+		font-size: 16px;
+		padding: 10px 12px;
+	}
+
+	.matches {
+		position: absolute;
+		z-index: 10;
+		top: calc(100% + 4px);
+		left: 0;
+		right: 0;
+		max-height: 280px;
+		margin: 0;
+		padding: 4px;
+		overflow-y: auto;
+		list-style: none;
+		background: var(--ink, #1a1714);
+		box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+	}
+
+	.matches li {
+		margin: 0;
+	}
+
+	.matches button {
+		display: flex;
+		gap: 10px;
+		align-items: center;
+		width: 100%;
+		min-height: 40px;
+		padding: 6px 10px;
+		border: 0;
+		background: none;
+		color: var(--cream);
 		cursor: pointer;
-		font-family: var(--font-sans);
-		font-size: 11px;
-		letter-spacing: 0.18em;
-		padding: 0 18px;
-		text-transform: uppercase;
+		font-family: var(--font-serif);
+		font-size: 16px;
+		text-align: left;
+	}
+
+	.matches button:hover {
+		background: color-mix(in srgb, var(--cream) 12%, transparent);
 	}
 
 	.grp {

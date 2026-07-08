@@ -291,10 +291,22 @@ async function avatarUrls(
 	const map = new Map<string, string>();
 	if (ids.length === 0) return map;
 	const rows = await db
-		.select({ itemId: itemFiles.itemId, key: itemFiles.storageKey })
+		.select({
+			itemId: itemFiles.itemId,
+			key: itemFiles.storageKey,
+			type: items.type,
+			posterTime: items.posterTime
+		})
 		.from(itemFiles)
+		.innerJoin(items, eq(items.id, itemFiles.itemId))
 		.where(and(inArray(itemFiles.itemId, ids), eq(itemFiles.kind, kind)));
-	for (const row of rows) map.set(row.itemId, await storage.mediaUrl(row.key));
+	for (const row of rows) {
+		// A video's thumbnails are overwritten in place when its poster frame is
+		// chosen, so bust the cache the same way item DTOs do — otherwise the saved
+		// avatar keeps showing the old frame under the new crop.
+		const bust = row.type === 'video' && row.posterTime != null ? `?v=${row.posterTime}` : '';
+		map.set(row.itemId, (await storage.mediaUrl(row.key)) + bust);
+	}
 	return map;
 }
 

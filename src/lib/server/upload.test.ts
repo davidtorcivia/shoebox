@@ -215,7 +215,8 @@ describe('completeUpload', () => {
 			sniffVideo
 		);
 
-		expect(dto.status).toBe('ready');
+		// Uploads land in arrivals for review before reaching the timeline.
+		expect(dto.status).toBe('needs_review');
 		expect(dto.urls.original).toBe(`/media/media/${dto.id}/original.mp4`);
 		const stored = await storage.get(`media/${dto.id}/original.mp4`);
 		expect(new Uint8Array(await new Response(stored!.stream).arrayBuffer())).toEqual(bytes);

@@ -451,6 +451,22 @@ async function commitUpload(
 		sizeHint: manifest.sizeBytes
 	});
 
+	// Video date priority: the title (parsed client-side) wins; if it found
+	// nothing we fall back to the container's embedded creation_time here.
+	let date = input.meta.date;
+	if (input.meta.type === 'video' && date.precision === 'unknown') {
+		try {
+			const { probeVideoCreationDate } = await import('$lib/server/media/probe');
+			const guessed = await probeVideoCreationDate({
+				mediaPath: process.env.MEDIA_PATH ?? './data/media',
+				originalKey
+			});
+			if (guessed) date = guessed;
+		} catch {
+			/* leave the date unknown; the item lands in arrivals for review */
+		}
+	}
+
 	const files: ItemFileInput[] = [
 		{
 			kind: 'original',
@@ -496,7 +512,7 @@ async function commitUpload(
 		title: input.meta.title,
 		description: input.meta.description,
 		tapeLabel: input.meta.tapeLabel,
-		date: input.meta.date,
+		date,
 		duration: input.meta.duration,
 		width: input.meta.width,
 		height: input.meta.height,

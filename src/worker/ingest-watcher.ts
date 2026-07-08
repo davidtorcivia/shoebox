@@ -43,6 +43,60 @@ export type IngestResult =
 	| { status: 'duplicate'; existingItemId: string }
 	| { status: 'failed'; reason: string };
 
+function envMs(name: string, fallback: number): number {
+	const value = Number(process.env[name]);
+	return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Wait for a video that may still be rendering straight into the ingest folder.
+ * We keep waiting as long as the file is still growing (an active encode), and
+ * only proceed once its size settles AND the container is fully probeable (a
+ * partial MP4 has no readable moov atom / duration). If the size settles but the
+ * file never becomes probeable within a grace window, we give up and let the
+ * normal path fail it. Returns false if the file disappeared while waiting.
+ */
+async function waitForCompleteVideo(absPath: string): Promise<boolean> {
+	const pollMs = envMs('INGEST_POLL_MS', 2_000);
+	// How long to keep retrying once the size has stopped changing before giving
+	// up and letting the normal path decide (a genuinely corrupt but stable file).
+	const gracePatienceMs = envMs('INGEST_VIDEO_SETTLE_MS', 60_000);
+	let lastSize = -1;
+	let stableSince = Date.now();
+
+	for (;;) {
+		let size: number;
+		try {
+			size = (await stat(absPath)).size;
+		} catch {
+			return false; // removed/renamed while we waited
+		}
+		const stable = size === lastSize;
+		if (!stable) {
+			lastSize = size;
+			stableSince = Date.now();
+		}
+
+		// Confirm completeness immediately so finished files incur no extra delay;
+		// a still-rendering clip has no readable duration yet and we keep waiting.
+		if (size > 0) {
+			try {
+				const probe = await probeVideo(absPath);
+				if (probe.duration > 0) return true;
+			} catch {
+				/* not complete yet */
+			}
+		}
+
+		if (stable && Date.now() - stableSince > gracePatienceMs) return true;
+		await delay(pollMs);
+	}
+}
+
 export function sha256File(filePath: string): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const hash = createHash('sha256');
@@ -80,8 +134,7 @@ async function moveAside(
 async function photoExifDate(absPath: string): Promise<string | null> {
 	try {
 		const exif = (await exifr.parse(absPath, ['DateTimeOriginal', 'CreateDate'])) as
-			| { DateTimeOriginal?: Date; CreateDate?: Date }
-			| undefined;
+			{ DateTimeOriginal?: Date; CreateDate?: Date } | undefined;
 		const date = exif?.DateTimeOriginal ?? exif?.CreateDate;
 		if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
 		const year = date.getFullYear();
@@ -93,12 +146,13 @@ async function photoExifDate(absPath: string): Promise<string | null> {
 	}
 }
 
-export async function processIngestFile(
-	deps: IngestDeps,
-	absPath: string
-): Promise<IngestResult> {
+export async function processIngestFile(deps: IngestDeps, absPath: string): Promise<IngestResult> {
 	const relPath = relative(deps.ingestPath, absPath).split(sep).join('/');
-	if (relPath.startsWith('_duplicates/') || relPath.startsWith('_failed/') || relPath.startsWith('..')) {
+	if (
+		relPath.startsWith('_duplicates/') ||
+		relPath.startsWith('_failed/') ||
+		relPath.startsWith('..')
+	) {
 		return { status: 'failed', reason: 'outside ingest scope' };
 	}
 
@@ -141,8 +195,17 @@ export async function processIngestFile(
 		return fail(`unreadable: ${err instanceof Error ? err.message : String(err)}`);
 	}
 	if (!sniffed) return fail('unrecognized file contents');
-	const contentsMatch = type === 'video' ? sniffed.mime.startsWith('video/') : sniffed.mime.startsWith('image/');
+	const contentsMatch =
+		type === 'video' ? sniffed.mime.startsWith('video/') : sniffed.mime.startsWith('image/');
 	if (!contentsMatch) return fail(`contents (${sniffed.mime}) do not match extension .${ext}`);
+
+	// The header sniffs as real video, so if it's still rendering straight into
+	// the folder, wait for the encode to finish before hashing/probing — that way
+	// we never ingest (or fail) a half-written clip.
+	if (type === 'video') {
+		const present = await waitForCompleteVideo(absPath);
+		if (!present) return { status: 'failed', reason: 'file disappeared while writing' };
+	}
 
 	const sha256 = await sha256File(absPath);
 	const existing = deps.db
@@ -237,10 +300,7 @@ export async function processIngestFile(
 				.from(schema.tags)
 				.where(eq(schema.tags.name, tagName))
 				.get()!;
-			tx.insert(schema.itemTags)
-				.values({ itemId: id, tagId: tag.id })
-				.onConflictDoNothing()
-				.run();
+			tx.insert(schema.itemTags).values({ itemId: id, tagId: tag.id }).onConflictDoNothing().run();
 		}
 	});
 
@@ -255,7 +315,7 @@ export function startIngestWatcher(
 	deps: IngestDeps,
 	opts: { stabilityMs?: number; usePolling?: boolean } = {}
 ): { idle(): Promise<void>; close(): Promise<void> } {
-	const stabilityMs = opts.stabilityMs ?? 2000;
+	const stabilityMs = opts.stabilityMs ?? envMs('INGEST_STABILITY_MS', 4000);
 	let queue: Promise<void> = Promise.resolve();
 	const watcher = chokidar.watch(deps.ingestPath, {
 		ignoreInitial: false,

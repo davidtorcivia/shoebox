@@ -21,7 +21,7 @@ import {
 } from '$lib/domain/dates';
 import { ageAt } from '$lib/domain/ages';
 import { HOLIDAYS, holidaysFor } from '$lib/domain/holidays';
-import { bumpYearCount } from '$lib/server/aggregates';
+import { recomputeYearCounts } from '$lib/server/aggregates';
 import { ROLE_RANK } from '$lib/server/roles';
 import { reindexItem } from '$lib/server/search';
 import type { JobQueueAdapter, StorageAdapter } from '$lib/server/platform/types';
@@ -128,7 +128,9 @@ export async function createItem(
 
 	const id = input.id ?? nanoid(12);
 	const sortDate = computeSortDate(input.date);
-	const status = input.date.precision === 'unknown' ? 'needs_review' : 'ready';
+	// Everything lands in arrivals for review first — nothing reaches the timeline
+	// until it's approved, regardless of whether we could guess a date.
+	const status = 'needs_review';
 	const personIds = [...new Set(input.people)];
 
 	if (personIds.length > 0) {
@@ -177,7 +179,7 @@ export async function createItem(
 
 	await setItemPeople(db, id, personIds, { reindex: false });
 	await setItemTags(db, id, input.tags, { reindex: false });
-	await bumpYearCount(db, yearOf(input.date), input.type, 1);
+	// Not counted toward the timeline until approved in arrivals.
 	await applyHolidayTags(db, id);
 	await reindexItem(db, id);
 
@@ -417,7 +419,9 @@ export async function listItems(
 	const conds: SQL[] = [isNull(items.deletedAt)];
 
 	if (query.type) conds.push(eq(items.type, query.type));
-	if (query.status) conds.push(eq(items.status, query.status));
+	// Default to approved-only so the timeline (and people/album views) never show
+	// items still waiting in arrivals; callers like arrivals pass status explicitly.
+	conds.push(eq(items.status, query.status ?? 'ready'));
 	if (query.year) {
 		const prefix = `${String(query.year).padStart(4, '0')}%`;
 		conds.push(sql`${items.sortDate} like ${prefix}`);
@@ -498,12 +502,6 @@ export async function updateItem(
 	};
 	if (!isValidItemDate(nextDate)) throw error(400, 'invalid date');
 	const afterYear = yearOf(nextDate);
-	const nextStatus =
-		nextDate.precision === 'unknown'
-			? 'needs_review'
-			: row.status === 'processing'
-				? 'processing'
-				: 'ready';
 
 	await db
 		.update(items)
@@ -514,15 +512,15 @@ export async function updateItem(
 			dateStart: nextDate.dateStart,
 			dateEnd: nextDate.dateEnd,
 			datePrecision: nextDate.precision,
-			sortDate: computeSortDate(nextDate),
-			status: nextStatus
+			sortDate: computeSortDate(nextDate)
+			// Status is left to the arrivals approval flow; editing metadata never
+			// silently pushes an unapproved item into the timeline.
 		})
 		.where(eq(items.id, id));
 
-	if (!row.deletedAt && beforeYear !== afterYear) {
-		await bumpYearCount(db, beforeYear, row.type, -1);
-		await bumpYearCount(db, afterYear, row.type, 1);
-	}
+	// Only approved items are counted, so a year change on a ready item must be
+	// reflected; recompute is authoritative regardless of the item's status.
+	if (!row.deletedAt && beforeYear !== afterYear) await recomputeYearCounts(db);
 	if (patch.people) await setItemPeople(db, id, patch.people, { reindex: false });
 	if (patch.tags) await setItemTags(db, id, patch.tags, { reindex: false });
 	await applyHolidayTags(db, id);
@@ -537,12 +535,7 @@ export async function deleteItem(db: Db, id: string): Promise<void> {
 	const row = await getItemRow(db, id);
 	if (!row) throw error(404, 'item not found');
 	await db.update(items).set({ deletedAt: new Date() }).where(eq(items.id, id));
-	await bumpYearCount(
-		db,
-		yearOf({ dateStart: row.dateStart, dateEnd: row.dateEnd, precision: row.datePrecision }),
-		row.type,
-		-1
-	);
+	if (row.status === 'ready') await recomputeYearCounts(db);
 	await applyHolidayTags(db, id);
 	await reindexItem(db, id);
 }
@@ -551,12 +544,7 @@ export async function restoreItem(db: Db, storage: StorageAdapter, id: string): 
 	const row = await getItemRow(db, id, { includeDeleted: true });
 	if (!row) throw error(404, 'item not found');
 	await db.update(items).set({ deletedAt: null }).where(eq(items.id, id));
-	await bumpYearCount(
-		db,
-		yearOf({ dateStart: row.dateStart, dateEnd: row.dateEnd, precision: row.datePrecision }),
-		row.type,
-		1
-	);
+	if (row.status === 'ready') await recomputeYearCounts(db);
 	await applyHolidayTags(db, id);
 	await reindexItem(db, id);
 	const dto = await getItemDTO(db, storage, id);

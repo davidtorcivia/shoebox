@@ -13,7 +13,11 @@ export async function recomputeYearCounts(db: Db): Promise<void> {
 			count: sql<number>`count(*)`
 		})
 		.from(items)
-		.where(and(isNull(items.deletedAt), sql`${items.sortDate} is not null`))
+		// Only approved items count toward the timeline; anything still awaiting
+		// review in arrivals stays out of the year rail until it's approved.
+		.where(
+			and(isNull(items.deletedAt), eq(items.status, 'ready'), sql`${items.sortDate} is not null`)
+		)
 		.groupBy(sql`substr(${items.sortDate}, 1, 4)`, items.type);
 
 	if (rows.length > 0) {
@@ -71,7 +75,9 @@ export async function timelineYears(
 		})
 		.from(items)
 		.leftJoin(itemPeople, eq(itemPeople.itemId, items.id))
-		.where(and(isNull(items.deletedAt), sql`${items.sortDate} is not null`))
+		.where(
+			and(isNull(items.deletedAt), eq(items.status, 'ready'), sql`${items.sortDate} is not null`)
+		)
 		.groupBy(sql`substr(${items.sortDate}, 1, 4)`);
 	const peopleByYear = new Map(peopleRows.map((row) => [row.year, row.people]));
 	const years = countRows.map((row) => ({

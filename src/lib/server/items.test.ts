@@ -21,8 +21,18 @@ import {
 	updateItem,
 	type CreateItemInput
 } from './items';
+import { recomputeYearCounts } from './aggregates';
 import { memoryDb, seedPerson, seedUser } from './testing/memory-db';
 import { MemoryQueue, MemoryStorage } from './testing/memory-platform';
+
+// Items now land in arrivals (needs_review); approve them so they behave like
+// items that have passed review and reached the timeline.
+async function approve(db: Db, ...ids: string[]): Promise<void> {
+	for (const id of ids) {
+		await db.update(itemsTable).set({ status: 'ready' }).where(eq(itemsTable.id, id));
+	}
+	await recomputeYearCounts(db);
+}
 
 type Db = App.Locals['db'];
 
@@ -99,7 +109,7 @@ beforeEach(async () => {
 });
 
 describe('createItem', () => {
-	it('creates a ready item with the full master DTO shape', async () => {
+	it('creates an item that lands in arrivals with the full master DTO shape', async () => {
 		const dto = await createItem(db, storage, queue, baseInput());
 		expect(dto).toMatchObject({
 			id: 'itm000000001',
@@ -112,7 +122,7 @@ describe('createItem', () => {
 			duration: 12.4,
 			width: 1440,
 			height: 1080,
-			status: 'ready',
+			status: 'needs_review',
 			blurhash: 'LKO2?U%2Tw=w]~RBVZRi};RPxuwH',
 			people: [],
 			tags: [],
@@ -154,8 +164,11 @@ describe('createItem', () => {
 		).rejects.toMatchObject({ status: 400 });
 	});
 
-	it('bumps year_counts and enqueues derivatives, sprite, and transcode for videos', async () => {
+	it('does not count toward year_counts until approved, and enqueues jobs for videos', async () => {
 		await createItem(db, storage, queue, baseInput());
+		// Awaiting review in arrivals — not yet on the timeline rail.
+		expect(await db.select().from(yearCounts)).toEqual([]);
+		await approve(db, 'itm000000001');
 		expect(await db.select().from(yearCounts)).toEqual([{ year: 1994, type: 'video', count: 1 }]);
 		expect(queue.enqueued).toEqual([
 			{ kind: 'derivatives', payload: { itemId: 'itm000000001' } },
@@ -295,11 +308,15 @@ describe('listItems', () => {
 		});
 		await mk('itm_a5', { date: { dateStart: null, dateEnd: null, precision: 'unknown' } });
 		await mk('itm_a6', { date: { dateStart: null, dateEnd: null, precision: 'unknown' } });
+		// Approve the dated four so they reach the timeline; the two undated ones
+		// stay in arrivals (needs_review) unless a test approves them too.
+		await approve(db, 'itm_a1', 'itm_a2', 'itm_a3', 'itm_a4');
 		return { mom, dad };
 	}
 
 	it('orders by sortDate asc, undated last, and paginates with a stable cursor', async () => {
 		await seedSix();
+		await approve(db, 'itm_a5', 'itm_a6');
 		const page1 = await listItems(db, storage, { limit: 3 });
 		expect(page1.items.map((item) => item.id)).toEqual(['itm_a1', 'itm_a2', 'itm_a3']);
 		expect(page1.nextCursor).not.toBeNull();
@@ -341,6 +358,7 @@ describe('listItems', () => {
 
 	it('clamps limit to 100', async () => {
 		await seedSix();
+		await approve(db, 'itm_a5', 'itm_a6');
 		const res = await listItems(db, storage, { limit: 5000 });
 		expect(res.items).toHaveLength(6);
 	});
@@ -356,9 +374,10 @@ describe('listItems', () => {
 });
 
 describe('update/delete/restore', () => {
-	it('updates editable fields, links, status and year counts', async () => {
+	it('updates editable fields, links, and moves year counts for approved items', async () => {
 		const mom = await seedPerson(db, { name: 'Mom' });
 		await createItem(db, storage, queue, baseInput({ tags: ['old'] }));
+		await approve(db, 'itm000000001');
 		const user = await seedUser(db, { id: 'u_owner', username: 'owner', role: 'owner' });
 
 		const updated = await updateItem(db, storage, user, 'itm000000001', {
@@ -372,10 +391,8 @@ describe('update/delete/restore', () => {
 		expect(updated.shortDate).toBe('c. 1995');
 		expect(updated.people.map((person) => person.id)).toEqual([mom.id]);
 		expect(updated.tags.map((tag) => tag.name)).toEqual(['new']);
-		expect(await db.select().from(yearCounts)).toEqual([
-			{ year: 1994, type: 'video', count: 0 },
-			{ year: 1995, type: 'video', count: 1 }
-		]);
+		// Recompute leaves only the years that still have approved items.
+		expect(await db.select().from(yearCounts)).toEqual([{ year: 1995, type: 'video', count: 1 }]);
 	});
 
 	it('lets uploaders edit only their own items', async () => {
@@ -388,11 +405,13 @@ describe('update/delete/restore', () => {
 		});
 	});
 
-	it('soft deletes and restores with year count changes', async () => {
+	it('soft deletes and restores an approved item with year count changes', async () => {
 		await createItem(db, storage, queue, baseInput());
+		await approve(db, 'itm000000001');
+		expect(await db.select().from(yearCounts)).toEqual([{ year: 1994, type: 'video', count: 1 }]);
 		await deleteItem(db, 'itm000000001');
 		expect(await getItemDTO(db, storage, 'itm000000001')).toBeNull();
-		expect(await db.select().from(yearCounts)).toEqual([{ year: 1994, type: 'video', count: 0 }]);
+		expect(await db.select().from(yearCounts)).toEqual([]);
 		const restored = await restoreItem(db, storage, 'itm000000001');
 		expect(restored.id).toBe('itm000000001');
 		expect(await db.select().from(yearCounts)).toEqual([{ year: 1994, type: 'video', count: 1 }]);

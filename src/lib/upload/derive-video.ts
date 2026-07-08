@@ -1,6 +1,6 @@
 import { fitWithin } from '$lib/domain/dims';
 import { type ItemDate } from '$lib/domain/dates';
-import { guessDateFromFile } from './date-guess';
+import { dateFromTitle } from './date-guess';
 
 export interface VideoDerivatives {
 	poster: Blob;
@@ -32,7 +32,11 @@ export async function deriveVideo(file: File): Promise<VideoDerivatives> {
 			width: video.videoWidth,
 			height: video.videoHeight,
 			duration: video.duration,
-			date: guessDateFromFile(file)
+			// Prefer the date in the title (film scans encode it there); the
+			// container's creation_time is used as a server-side fallback. We
+			// deliberately don't fall back to lastModified here — for a scan that's
+			// the scan date, not when the film was shot.
+			date: dateFromTitle(file.name)
 		};
 	} finally {
 		URL.revokeObjectURL(url);

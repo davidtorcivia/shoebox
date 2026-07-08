@@ -13,9 +13,12 @@
 
 	let { items, activeYear, motionDirection = 0, captionRightFor = null }: Props = $props();
 	let width = $state(1120);
-	const entries = $derived(buildGridEntries(items));
 	const columns = $derived(columnCount(width));
 	const columnWidth = $derived((width - 12 * (columns - 1)) / columns);
+	// Estimate item heights at the *actual* column width — otherwise tall images
+	// overflow their reserved cells and the next month header lands on top of the
+	// previous month's content.
+	const entries = $derived(buildGridEntries(items, columnWidth));
 	const layout = $derived(layoutMasonry(entries, columns, columnWidth, 12));
 </script>
 
