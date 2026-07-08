@@ -420,7 +420,10 @@
 		font-family: var(--font-serif);
 		font-size: clamp(1.4rem, 3vw, 2.8rem);
 		font-weight: 460;
-		line-height: 1.05;
+		/* Room for descenders (y, g, p): overflow:hidden clips the horizontal
+		   ellipsis, but a tight line-height would also crop the bottoms of glyphs. */
+		line-height: 1.3;
+		padding-bottom: 0.1em;
 		text-align: center;
 		text-overflow: ellipsis;
 		white-space: nowrap;
