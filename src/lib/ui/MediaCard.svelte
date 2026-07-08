@@ -7,15 +7,78 @@
 		item: ItemDTO;
 		activeYear: number;
 		captionRight?: string | null;
+		selecting?: boolean;
+		selected?: boolean;
+		onselect?: (id: string) => void;
+		onbeginselect?: (id: string) => void;
 	}
 
-	let { item, activeYear, captionRight = null }: Props = $props();
+	let {
+		item,
+		activeYear,
+		captionRight = null,
+		selecting = false,
+		selected = false,
+		onselect,
+		onbeginselect
+	}: Props = $props();
 	const duration = $derived(formatDuration(item.duration));
 	const right = $derived(defaultCaptionRight(item));
 	const sizes = '(max-width: 720px) 46vw, (max-width: 1100px) 30vw, 22vw';
 	let scrubPct = $state(0);
 	let scrubbing = $state(false);
 	let previewing = $state(false);
+
+	// Long-press (touch) or long mouse-hold begins multi-select on the timeline.
+	let pressTimer: ReturnType<typeof setTimeout> | null = null;
+	let pressX = 0;
+	let pressY = 0;
+	let longPressed = false;
+
+	function cancelPress(): void {
+		if (pressTimer) {
+			clearTimeout(pressTimer);
+			pressTimer = null;
+		}
+	}
+
+	function onPointerDown(event: PointerEvent): void {
+		if (event.pointerType === 'mouse' && event.button !== 0) return;
+		longPressed = false;
+		pressX = event.clientX;
+		pressY = event.clientY;
+		if (!onbeginselect) return;
+		pressTimer = setTimeout(() => {
+			pressTimer = null;
+			longPressed = true;
+			onbeginselect?.(item.id);
+		}, 450);
+	}
+
+	function onCardPointerMove(event: PointerEvent): void {
+		if (
+			pressTimer &&
+			(Math.abs(event.clientX - pressX) > 10 || Math.abs(event.clientY - pressY) > 10)
+		) {
+			cancelPress();
+		}
+		updateScrub(event);
+	}
+
+	function onOpen(event: MouseEvent): void {
+		// A completed long-press already selected the item; swallow the trailing click.
+		if (longPressed) {
+			longPressed = false;
+			event.preventDefault();
+			return;
+		}
+		if (selecting) {
+			event.preventDefault();
+			onselect?.(item.id);
+			return;
+		}
+		window.location.href = `/item/${item.id}?y=${activeYear}`;
+	}
 	const spriteFrame = $derived(Math.min(99, Math.max(0, Math.floor(scrubPct))));
 	const spriteVisible = $derived(scrubbing || previewing);
 	const spriteStyle = $derived.by(() => {
@@ -44,17 +107,32 @@
 	}
 </script>
 
-<article class="card" data-type={item.type}>
+<article class="card" class:selecting class:selected data-type={item.type}>
 	<div class="media-wrap">
 		<button
 			class="media"
 			type="button"
-			aria-label={`Open ${item.title ?? item.displayDate}`}
-			onclick={() => {
-				window.location.href = `/item/${item.id}?y=${activeYear}`;
+			aria-label={selecting
+				? `${selected ? 'Deselect' : 'Select'} ${item.title ?? item.displayDate}`
+				: `Open ${item.title ?? item.displayDate}`}
+			aria-pressed={selecting ? selected : undefined}
+			onclick={onOpen}
+			onpointerdown={onPointerDown}
+			onpointermove={onCardPointerMove}
+			onpointerup={() => {
+				cancelPress();
+				scrubbing = false;
 			}}
-			onpointermove={updateScrub}
-			onpointerleave={() => (scrubbing = false)}
+			onpointercancel={cancelPress}
+			onpointerleave={() => {
+				cancelPress();
+				scrubbing = false;
+			}}
+			oncontextmenu={(event) => {
+				// Long-press on touch often raises a context menu; suppress it while
+				// selection is available so the press reads as "start selecting".
+				if (onbeginselect) event.preventDefault();
+			}}
 		>
 			<img
 				src={item.urls.thumb800 || item.urls.poster}
@@ -63,6 +141,9 @@
 				alt={item.title ?? item.displayDate}
 				loading="lazy"
 			/>
+			{#if selecting}
+				<span class="select-tick" aria-hidden="true">{selected ? '✓' : ''}</span>
+			{/if}
 			{#if item.urls.sprite}
 				<span class="sprite" class:visible={spriteVisible} style={spriteStyle} aria-hidden="true"
 				></span>
@@ -92,6 +173,43 @@
 <style>
 	.card {
 		color: var(--timeline-chrome, var(--ink));
+	}
+
+	.card.selecting .media {
+		cursor: pointer;
+	}
+
+	.card.selecting .media img {
+		filter: brightness(0.82);
+	}
+
+	.card.selected .media {
+		outline: 3px solid var(--dawn, #fa7b62);
+		outline-offset: -3px;
+	}
+
+	.card.selected .media img {
+		filter: none;
+	}
+
+	.select-tick {
+		position: absolute;
+		top: 8px;
+		left: 8px;
+		display: grid;
+		place-items: center;
+		width: 24px;
+		height: 24px;
+		background: color-mix(in srgb, var(--ink, #171412) 55%, transparent);
+		color: var(--cream, #fff5e8);
+		font-size: 14px;
+		font-weight: 700;
+		line-height: 1;
+	}
+
+	.card.selected .select-tick {
+		background: var(--dawn, #fa7b62);
+		color: var(--ink, #171412);
 	}
 
 	.media-wrap {

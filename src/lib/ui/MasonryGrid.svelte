@@ -9,9 +9,22 @@
 		activeYear: number;
 		motionDirection?: number;
 		captionRightFor?: ((item: ItemDTO) => string | null) | null;
+		selecting?: boolean;
+		isSelected?: (id: string) => boolean;
+		onselect?: (id: string) => void;
+		onbeginselect?: (id: string) => void;
 	}
 
-	let { items, activeYear, motionDirection = 0, captionRightFor = null }: Props = $props();
+	let {
+		items,
+		activeYear,
+		motionDirection = 0,
+		captionRightFor = null,
+		selecting = false,
+		isSelected,
+		onselect,
+		onbeginselect
+	}: Props = $props();
 	let width = $state(1120);
 	const columns = $derived(columnCount(width));
 	const columnWidth = $derived((width - 12 * (columns - 1)) / columns);
@@ -42,6 +55,10 @@
 							item={positioned.entry.item}
 							{activeYear}
 							captionRight={captionRightFor ? captionRightFor(positioned.entry.item) : null}
+							{selecting}
+							selected={isSelected ? isSelected(positioned.entry.item.id) : false}
+							{onselect}
+							{onbeginselect}
 						/>
 					{/if}
 				</div>

@@ -1,10 +1,12 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { SvelteSet } from 'svelte/reactivity';
 	import CenturyRail from '$lib/ui/CenturyRail.svelte';
 	import DecadeRoom from '$lib/ui/DecadeRoom.svelte';
 	import MasonryGrid from '$lib/ui/MasonryGrid.svelte';
 	import MobileRail from '$lib/ui/MobileRail.svelte';
+	import SelectionBar from '$lib/ui/SelectionBar.svelte';
 	import YearBand from '$lib/ui/YearBand.svelte';
 	import type { PageData } from './$types';
 
@@ -12,6 +14,32 @@
 
 	const years = $derived(data.timeline.years);
 	const activeYear = $derived(data.activeYear);
+
+	// Long-press a card to start selecting; tap others to add/remove.
+	let selecting = $state(false);
+	const selectedIds = new SvelteSet<string>();
+	// Items deleted via the selection bar, hidden immediately without a reload.
+	const hiddenIds = new SvelteSet<string>();
+	const visibleItems = $derived(data.items.filter((item) => !hiddenIds.has(item.id)));
+
+	function beginSelect(id: string): void {
+		selecting = true;
+		selectedIds.add(id);
+	}
+	function toggleSelect(id: string): void {
+		if (selectedIds.has(id)) selectedIds.delete(id);
+		else selectedIds.add(id);
+		if (selectedIds.size === 0) selecting = false;
+	}
+	function exitSelection(): void {
+		selecting = false;
+		selectedIds.clear();
+	}
+	function onDeleted(ids: string[]): void {
+		for (const id of ids) hiddenIds.add(id);
+		exitSelection();
+		void invalidateAll();
+	}
 	let previousYear = $state<number | null>(null);
 	let motionDirection = $state(0);
 	let wheelDelta = 0;
@@ -82,7 +110,15 @@
 				<YearBand {activeYear} {years} now={data.now} onStep={jump} />
 				<CenturyRail {years} earliest={data.timeline.earliest} {activeYear} now={data.now} />
 			</div>
-			<MasonryGrid items={data.items} {activeYear} {motionDirection} />
+			<MasonryGrid
+				items={visibleItems}
+				{activeYear}
+				{motionDirection}
+				{selecting}
+				isSelected={(id) => selectedIds.has(id)}
+				onselect={toggleSelect}
+				onbeginselect={beginSelect}
+			/>
 		</div>
 	{/key}
 	<!-- Rendered outside .timeline-stage: that element's transform/will-change would
@@ -96,6 +132,15 @@
 		onselect={goToYear}
 	/>
 </DecadeRoom>
+
+{#if selecting}
+	<SelectionBar
+		selectedIds={[...selectedIds]}
+		canDelete={data.canDelete}
+		onexit={exitSelection}
+		ondeleted={onDeleted}
+	/>
+{/if}
 
 <style>
 	.timeline-stage {
