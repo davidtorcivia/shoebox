@@ -299,6 +299,8 @@ export interface PersonCard {
 	avatarItemId: string | null;
 	avatarCrop: string | null;
 	avatarStorageKey: string | null;
+	avatarType: string | null;
+	avatarPosterTime: number | null;
 }
 
 export interface AlbumCard {
@@ -326,9 +328,12 @@ export async function searchPeopleCards(db: Db, text: string, limit = 8): Promis
 		           p.accent_color AS accentColor,
 		           p.avatar_item_id AS avatarItemId,
 		           p.avatar_crop AS avatarCrop,
-		           f.storage_key AS avatarStorageKey
+		           f.storage_key AS avatarStorageKey,
+		           i.type AS avatarType,
+		           i.poster_time AS avatarPosterTime
 		    FROM people p
 		    LEFT JOIN item_files f ON f.item_id = p.avatar_item_id AND f.kind = 'thumb_400'
+		    LEFT JOIN items i ON i.id = p.avatar_item_id
 		    WHERE ${sql.join(likes, sql` OR `)}
 		    ORDER BY p.name
 		    LIMIT ${limit}`

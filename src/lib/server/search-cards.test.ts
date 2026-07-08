@@ -69,7 +69,9 @@ describe('searchPeopleCards', () => {
 			accentColor: '#A8D8EA',
 			avatarItemId: null,
 			avatarCrop: null,
-			avatarStorageKey: null
+			avatarStorageKey: null,
+			avatarType: null,
+			avatarPosterTime: null
 		});
 	});
 

@@ -26,11 +26,21 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 			])
 		: [[], []];
 	const people = await Promise.all(
-		peopleCards.map(async ({ avatarStorageKey, avatarCrop, ...person }) => ({
-			...person,
-			avatarUrl: avatarStorageKey ? await locals.platform.storage.mediaUrl(avatarStorageKey) : null,
-			avatarCrop: parseCrop(avatarCrop)
-		}))
+		peopleCards.map(
+			async ({ avatarStorageKey, avatarCrop, avatarType, avatarPosterTime, ...person }) => {
+				// Match the item/people DTOs: a video avatar's thumbnail is overwritten
+				// when its poster frame changes, so cache-bust by the chosen time.
+				const bust =
+					avatarType === 'video' && avatarPosterTime != null ? `?v=${avatarPosterTime}` : '';
+				return {
+					...person,
+					avatarUrl: avatarStorageKey
+						? (await locals.platform.storage.mediaUrl(avatarStorageKey)) + bust
+						: null,
+					avatarCrop: parseCrop(avatarCrop)
+				};
+			}
+		)
 	);
 	const albums = await Promise.all(
 		albumCards.map(async ({ coverStorageKey, ...album }) => ({
