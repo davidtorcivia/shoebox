@@ -50,8 +50,15 @@
 	const backLabel = $derived(data.backYear ?? year ?? 'Timeline');
 	const title = $derived(item.title);
 	const pageTitle = $derived(item.title ?? item.displayDate);
+	// HEIC/RAW originals can't be shown in the browser — fall back to the webp
+	// derivative for display while the original stays available for download.
+	const displayOriginal = $derived(item.originalWebSafe ? item.urls.original : undefined);
 	const mediaSrc = $derived(
-		item.urls.playback ?? item.urls.original ?? item.urls.thumb1600 ?? item.urls.poster
+		item.urls.playback ??
+			displayOriginal ??
+			item.urls.thumb1600 ??
+			item.urls.thumb800 ??
+			item.urls.poster
 	);
 	const poster = $derived(item.urls.poster || item.urls.thumb800 || item.urls.thumb1600);
 	const hasKnownDate = $derived(item.date.precision !== 'unknown');

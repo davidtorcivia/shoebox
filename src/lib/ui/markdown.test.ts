@@ -20,9 +20,7 @@ describe('renderMarkdown', () => {
 	});
 
 	it('drops data: URIs in href', () => {
-		expect(renderMarkdown('[x](data:text/html,<script>alert(1)</script>)')).not.toMatch(
-			/data:/i
-		);
+		expect(renderMarkdown('[x](data:text/html,<script>alert(1)</script>)')).not.toMatch(/data:/i);
 	});
 
 	it('renders lists', () => {

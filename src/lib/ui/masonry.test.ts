@@ -28,6 +28,7 @@ function item(
 		status: 'ready',
 		urls: { poster: '/p', thumb400: '/t400', thumb800: '/t800', thumb1600: '/t1600' },
 		blurhash: null,
+		originalWebSafe: true,
 		people: [],
 		tags: [],
 		albums: [],

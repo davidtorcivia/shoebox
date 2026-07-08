@@ -23,6 +23,7 @@ type Db = App.Locals['db'];
 
 const SHA = 'a'.repeat(64);
 const SHA_B = 'b'.repeat(64);
+const SHA_C = 'c'.repeat(64);
 
 let db: Db;
 let storage: MemoryStorage;
@@ -230,6 +231,43 @@ describe('completeUpload', () => {
 		expect(await storage.head(`tmp/${uploadId}/manifest.json`)).toBeNull();
 		expect(await storage.head(`tmp/${uploadId}/0`)).toBeNull();
 		expect(q.enqueued.map((job) => job.kind)).toEqual(['derivatives', 'sprite', 'transcode']);
+	});
+
+	it('accepts a photo with no client derivatives (HEIC/RAW) and defers to the worker', async () => {
+		// HEIC bytes the browser could not decode: only the original is uploaded.
+		const heic = new TextEncoder().encode('fake-heic-bytes');
+		const user = await seedUser(db, { id: 'u_heic', username: 'heic' });
+		const init = await initUpload(db, storage, user.id, {
+			sha256: SHA_C,
+			sizeBytes: heic.length,
+			mime: 'image/heic',
+			filename: 'IMG_0001.heic'
+		});
+		await saveChunk(storage, init.uploadId, 0, heic);
+		const q = queue();
+		const dto = await completeUpload(
+			db,
+			storage,
+			q,
+			user,
+			{
+				uploadId: init.uploadId,
+				allowDuplicate: false,
+				meta: meta({ type: 'photo', duration: null }),
+				blurhash: null,
+				derivatives: {}
+			},
+			async () => ({ mime: 'image/heic' })
+		);
+
+		expect(dto.status).toBe('needs_review');
+		expect(dto.originalWebSafe).toBe(false);
+		expect(await storage.head(`media/${dto.id}/original.heic`)).not.toBeNull();
+		// No client thumbnails were stored; the worker builds them.
+		for (const key of ['poster', 'thumb_400', 'thumb_800', 'thumb_1600']) {
+			expect(await storage.head(`media/${dto.id}/${key}.webp`)).toBeNull();
+		}
+		expect(q.enqueued.map((job) => job.kind)).toEqual(['derivatives']);
 	});
 
 	it('multi-chunk assembly preserves byte order', async () => {

@@ -23,6 +23,7 @@ const item: ItemDTO = {
 		sprite: '/sprite.webp'
 	},
 	blurhash: null,
+	originalWebSafe: true,
 	people: [{ id: 'p1', slug: 'dad', name: 'Dad', accentColor: '#FA7B62' }],
 	tags: [{ id: 't1', name: 'summer', kind: 'topic' }],
 	albums: [],

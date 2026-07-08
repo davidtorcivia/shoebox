@@ -1,8 +1,10 @@
 import { and, eq, inArray } from 'drizzle-orm';
+import { encode as blurhashEncode } from 'blurhash';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegPath from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
 import { nanoid } from 'nanoid';
+import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -165,7 +167,7 @@ function replaceItemFiles(db: WorkerDb, itemId: string, rows: DerivedRow[]): voi
 function loadItem(
 	db: WorkerDb,
 	itemId: string
-): { item: typeof schema.items.$inferSelect; originalKey: string } {
+): { item: typeof schema.items.$inferSelect; originalKey: string; originalMime: string } {
 	const item = db.select().from(schema.items).where(eq(schema.items.id, itemId)).get();
 	if (!item) throw new Error(`item ${itemId} not found`);
 
@@ -176,7 +178,73 @@ function loadItem(
 		.get();
 	if (!original) throw new Error(`item ${itemId} has no original file row`);
 
-	return { item, originalKey: original.storageKey };
+	return { item, originalKey: original.storageKey, originalMime: original.mime };
+}
+
+/** Camera RAW MIME types (as detected by file-type) whose pixels sharp cannot
+ * decode directly. We extract the embedded JPEG preview with exiftool instead. */
+const RAW_MIME = new Set([
+	'image/x-canon-cr2',
+	'image/x-canon-cr3',
+	'image/x-nikon-nef',
+	'image/x-sony-arw',
+	'image/x-adobe-dng',
+	'image/x-panasonic-rw2',
+	'image/x-fujifilm-raf',
+	'image/x-olympus-orf'
+]);
+
+export function isRawImage(mime: string): boolean {
+	return RAW_MIME.has(mime);
+}
+
+/**
+ * Returns a buffer sharp can decode. JPEG/PNG/WebP/AVIF/HEIC are read straight
+ * off disk (sharp's libheif handles HEIC). Camera RAW has no sharp decoder, so
+ * we pull the full-size JPEG preview every RAW embeds via exiftool.
+ */
+async function decodeToSharpSource(originalAbs: string, mime: string): Promise<Buffer> {
+	if (!isRawImage(mime)) return readFile(originalAbs);
+	return extractEmbeddedPreview(originalAbs);
+}
+
+async function extractEmbeddedPreview(originalAbs: string): Promise<Buffer> {
+	// Prefer the largest preview (JpgFromRaw is typically full resolution),
+	// falling back to progressively smaller embedded images.
+	for (const tag of ['-JpgFromRaw', '-PreviewImage', '-OtherImage', '-ThumbnailImage']) {
+		const out = await runExiftool(['-b', tag, originalAbs]).catch(() => null);
+		if (out && out.byteLength > 0) return out;
+	}
+	throw new Error(`no embedded preview found in RAW ${originalAbs}`);
+}
+
+function runExiftool(args: string[]): Promise<Buffer> {
+	return new Promise((resolve, reject) => {
+		execFile(
+			'exiftool',
+			args,
+			{ encoding: 'buffer', maxBuffer: 256 * 1024 * 1024, timeout: FFPROBE_TIMEOUT_MS },
+			(err, stdout) => {
+				if (err) reject(err);
+				else resolve(stdout as unknown as Buffer);
+			}
+		);
+	});
+}
+
+/** Small, cheap blurhash used as the timeline placeholder. Best-effort. */
+async function computeBlurhash(source: Buffer): Promise<string | null> {
+	try {
+		const { data, info } = await sharp(source)
+			.rotate()
+			.resize(32, 32, { fit: 'inside', withoutEnlargement: true })
+			.ensureAlpha()
+			.raw()
+			.toBuffer({ resolveWithObject: true });
+		return blurhashEncode(new Uint8ClampedArray(data), info.width, info.height, 4, 3);
+	} catch {
+		return null;
+	}
 }
 
 async function putWebp(
@@ -205,7 +273,7 @@ async function putWebp(
 
 export const derivativesHandler: JobHandler = async (payload, ctx) => {
 	const itemId = String(payload.itemId ?? '');
-	const { item, originalKey } = loadItem(ctx.db, itemId);
+	const { item, originalKey, originalMime } = loadItem(ctx.db, itemId);
 	const originalAbs = join(ctx.mediaPath, originalKey);
 	const tmp = await mkdtemp(join(tmpdir(), 'shoebox-deriv-'));
 
@@ -253,7 +321,9 @@ export const derivativesHandler: JobHandler = async (payload, ctx) => {
 			thumbSource = await readFile(framePng);
 			rows.push(await putWebp(ctx, itemId, 'poster', thumbSource, null));
 		} else {
-			thumbSource = await readFile(originalAbs);
+			// HEIC decodes through sharp's libheif; camera RAW is decoded from its
+			// embedded JPEG preview. Either way `thumbSource` is a sharp-readable buffer.
+			thumbSource = await decodeToSharpSource(originalAbs, originalMime);
 			const meta = await sharp(thumbSource).metadata();
 			let width = meta.width ?? 0;
 			let height = meta.height ?? 0;
@@ -262,6 +332,18 @@ export const derivativesHandler: JobHandler = async (payload, ctx) => {
 			}
 			if (width > 0 && height > 0 && (item.width !== width || item.height !== height)) {
 				ctx.db.update(schema.items).set({ width, height }).where(eq(schema.items.id, itemId)).run();
+			}
+			// The browser could not blurhash HEIC/RAW client-side; fill it in now so
+			// the timeline has a placeholder. Web-safe photos already carry one.
+			if (!item.blurhash) {
+				const hash = await computeBlurhash(thumbSource);
+				if (hash) {
+					ctx.db
+						.update(schema.items)
+						.set({ blurhash: hash })
+						.where(eq(schema.items.id, itemId))
+						.run();
+				}
 			}
 		}
 

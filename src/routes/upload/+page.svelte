@@ -27,7 +27,7 @@
 		]
 	};
 	const mediaAccept =
-		'image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,.heic,.heif,video/mp4,video/webm,video/quicktime,video/x-m4v,.mov,.m4v';
+		'image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,.heic,.heif,.cr2,.cr3,.nef,.arw,.dng,.rw2,.raf,.orf,video/mp4,video/webm,video/quicktime,video/x-m4v,.mov,.m4v';
 
 	let files = $state<File[]>([]);
 	let title = $state('');
@@ -187,6 +187,9 @@
 		if (name.endsWith('.heif')) return 'image/heif';
 		if (name.endsWith('.mov')) return 'video/quicktime';
 		if (name.endsWith('.m4v')) return 'video/x-m4v';
+		// Camera RAW rarely carries a browser MIME; route it to the image path so
+		// the server can sniff the exact format and build derivatives from it.
+		if (/\.(cr2|cr3|nef|arw|dng|rw2|raf|orf)$/.test(name)) return 'image/x-raw';
 		return 'application/octet-stream';
 	}
 

@@ -23,6 +23,10 @@ export interface ItemDTO {
 		playback?: string;
 		sprite?: string;
 	};
+	/** False when `urls.original` is a format the browser can't render (HEIC,
+	 * camera RAW): the detail view shows the webp derivative and offers the
+	 * original only for download. */
+	originalWebSafe: boolean;
 	blurhash: string | null;
 	people: {
 		id: string;

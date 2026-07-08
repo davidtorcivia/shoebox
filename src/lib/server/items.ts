@@ -38,6 +38,16 @@ export type { ItemDTO } from '$lib/types';
 export type FileKind =
 	'original' | 'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600' | 'sprite' | 'playback';
 
+/** Image MIME types a browser renders natively. An original outside this set
+ * (HEIC/HEIF, camera RAW) is shown via its webp derivative on the detail page. */
+const WEB_SAFE_IMAGE_MIME = new Set([
+	'image/jpeg',
+	'image/png',
+	'image/webp',
+	'image/gif',
+	'image/avif'
+]);
+
 export interface ItemFileInput {
 	kind: FileKind;
 	storageKey: string;
@@ -278,14 +288,19 @@ export async function buildItemDTOs(
 		// thumbnails in place (same keys), so bust their cache with the chosen time
 		// — otherwise the browser keeps showing the previously cached image.
 		const bust = row.type === 'video' && row.posterTime != null ? `?v=${row.posterTime}` : '';
+		let originalWebSafe = true;
 		for (const file of files.filter((file) => file.itemId === row.id)) {
 			const url = await storage.mediaUrl(file.storageKey);
 			if (file.kind === 'poster') urls.poster = url + bust;
 			else if (file.kind === 'thumb_400') urls.thumb400 = url + bust;
 			else if (file.kind === 'thumb_800') urls.thumb800 = url + bust;
 			else if (file.kind === 'thumb_1600') urls.thumb1600 = url + bust;
-			else if (file.kind === 'original') urls.original = url;
-			else if (file.kind === 'playback') urls.playback = url;
+			else if (file.kind === 'original') {
+				urls.original = url;
+				// HEIC/RAW originals aren't browser-renderable; the detail view must
+				// fall back to the webp derivative and only link them for download.
+				originalWebSafe = row.type === 'video' || WEB_SAFE_IMAGE_MIME.has(file.mime);
+			} else if (file.kind === 'playback') urls.playback = url;
 			else if (file.kind === 'sprite') urls.sprite = url;
 		}
 
@@ -303,6 +318,7 @@ export async function buildItemDTOs(
 			height: row.height,
 			status: row.status,
 			urls,
+			originalWebSafe,
 			blurhash: row.blurhash ?? null,
 			people: itemPeopleRows
 				.filter((person) => person.itemId === row.id)

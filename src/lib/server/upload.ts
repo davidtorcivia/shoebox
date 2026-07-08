@@ -30,8 +30,33 @@ export const ALLOWED_MIME: Record<string, { ext: string; type: 'video' | 'photo'
 	'image/jpeg': { ext: 'jpg', type: 'photo' },
 	'image/png': { ext: 'png', type: 'photo' },
 	'image/webp': { ext: 'webp', type: 'photo' },
-	'image/avif': { ext: 'avif', type: 'photo' }
+	'image/avif': { ext: 'avif', type: 'photo' },
+	// Camera RAW: stored as-is for download; the worker extracts an embedded
+	// preview (exiftool) to build web derivatives. The browser never sees these.
+	'image/x-canon-cr2': { ext: 'cr2', type: 'photo' },
+	'image/x-canon-cr3': { ext: 'cr3', type: 'photo' },
+	'image/x-nikon-nef': { ext: 'nef', type: 'photo' },
+	'image/x-sony-arw': { ext: 'arw', type: 'photo' },
+	'image/x-adobe-dng': { ext: 'dng', type: 'photo' },
+	'image/x-panasonic-rw2': { ext: 'rw2', type: 'photo' },
+	'image/x-fujifilm-raf': { ext: 'raf', type: 'photo' },
+	'image/x-olympus-orf': { ext: 'orf', type: 'photo' }
 };
+
+/** Image MIME types a browser can display directly. Photos in any other format
+ * (HEIC/HEIF, camera RAW) are shown via their server-built webp derivative and
+ * only offered as-is on the download link. */
+const WEB_DISPLAYABLE_IMAGE_MIME = new Set([
+	'image/jpeg',
+	'image/png',
+	'image/webp',
+	'image/gif',
+	'image/avif'
+]);
+
+export function isWebDisplayableImage(mime: string): boolean {
+	return WEB_DISPLAYABLE_IMAGE_MIME.has(mime);
+}
 
 export interface UploadManifest {
 	sha256: string;
@@ -204,12 +229,19 @@ export interface DerivativeBlob {
 	mime: string;
 }
 
+export type DerivativeField = 'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600';
+
 export interface CompleteUploadInput {
 	uploadId: string;
 	allowDuplicate: boolean;
 	meta: UploadMeta;
 	blurhash: string | null;
-	derivatives: Record<'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600', DerivativeBlob>;
+	/**
+	 * Client-rendered webp derivatives. Empty when the browser could not decode
+	 * the original (HEIC, camera RAW) — in that case the worker's derivatives job
+	 * is the sole source of thumbnails, dimensions and blurhash.
+	 */
+	derivatives: Partial<Record<DerivativeField, DerivativeBlob>>;
 }
 
 export function concatChunks(
@@ -435,7 +467,8 @@ async function commitUpload(
 	// Bound derivatives before storing anything so an abusive payload is rejected
 	// before the original is written.
 	for (const field of ['poster', 'thumb_400', 'thumb_800', 'thumb_1600'] as const) {
-		if (input.derivatives[field].data.byteLength > MAX_DERIVATIVE_BYTES) {
+		const derivative = input.derivatives[field];
+		if (derivative && derivative.data.byteLength > MAX_DERIVATIVE_BYTES) {
 			throw error(400, `${field} exceeds maximum derivative size`);
 		}
 	}
@@ -484,8 +517,12 @@ async function commitUpload(
 		{ field: 'thumb_1600', maxWidth: 1600 }
 	] as const;
 
+	// When the client could not decode the original (HEIC/RAW) it uploads no
+	// derivatives; the worker's derivatives job builds them from the stored
+	// original instead. Only persist the thumbnails the client actually sent.
 	for (const spec of derivativeSpecs) {
 		const derivative = input.derivatives[spec.field];
+		if (!derivative) continue;
 		const key = `media/${itemId}/${spec.field}.webp`;
 		// Derivatives are webp by contract; ignore the client-declared MIME so a
 		// spoofed content-type cannot turn a thumbnail into served HTML/SVG.

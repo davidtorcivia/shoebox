@@ -10,6 +10,7 @@ import * as schema from '../lib/server/db/schema';
 import { createFsStorage } from '../lib/server/platform/storage-fs';
 import {
 	derivativesHandler,
+	isRawImage,
 	needsTranscode,
 	probeVideo,
 	runFfmpeg,
@@ -149,6 +150,29 @@ describe('needsTranscode', () => {
 
 	it('skips when the codec is unknown', () => {
 		expect(needsTranscode(null)).toBe(false);
+	});
+});
+
+describe('isRawImage', () => {
+	it('flags camera RAW mimes that sharp cannot decode', () => {
+		for (const mime of [
+			'image/x-canon-cr2',
+			'image/x-canon-cr3',
+			'image/x-nikon-nef',
+			'image/x-sony-arw',
+			'image/x-adobe-dng',
+			'image/x-panasonic-rw2',
+			'image/x-fujifilm-raf',
+			'image/x-olympus-orf'
+		]) {
+			expect(isRawImage(mime)).toBe(true);
+		}
+	});
+
+	it('treats HEIC and web formats as sharp-decodable', () => {
+		for (const mime of ['image/heic', 'image/heif', 'image/jpeg', 'image/png', 'image/webp']) {
+			expect(isRawImage(mime)).toBe(false);
+		}
 	});
 });
 

@@ -61,7 +61,7 @@ export async function apiCompleteUpload(
 		allowDuplicate: boolean;
 		meta: UploadMeta;
 		blurhash: string | null;
-		derivatives: Record<'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600', Blob>;
+		derivatives: Partial<Record<'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600', Blob | null>>;
 	},
 	fetchFn: FetchLike = fetch
 ): Promise<{ item: ItemDTO }> {
@@ -70,8 +70,9 @@ export async function apiCompleteUpload(
 	form.set('allowDuplicate', String(params.allowDuplicate));
 	form.set('meta', JSON.stringify(params.meta));
 	if (params.blurhash) form.set('blurhash', params.blurhash);
+	// Derivatives may be absent (HEIC/RAW): the worker builds them server-side.
 	for (const [key, value] of Object.entries(params.derivatives)) {
-		form.set(key, value);
+		if (value) form.set(key, value);
 	}
 	const res = await fetchFn('/api/upload/complete', { method: 'POST', body: form });
 	if (!res.ok) throw new Error(await message(res));

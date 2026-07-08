@@ -24,6 +24,7 @@ const item: ItemDTO = {
 		original: '/original.mp4'
 	},
 	blurhash: null,
+	originalWebSafe: true,
 	people: [
 		{ id: 'p_mom', slug: 'mom', name: 'Mom', accentColor: '#FA7B62' },
 		{ id: 'p_dad', slug: 'dad', name: 'Dad', accentColor: '#C3272B' }

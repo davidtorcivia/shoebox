@@ -9,9 +9,7 @@ describe('cropStyle', () => {
 	});
 
 	it('is identity for the full-frame crop', () => {
-		expect(cropStyle({ x: 0, y: 0, w: 1, h: 1 })).toBe(
-			'width:100%;height:100%;left:0%;top:0%'
-		);
+		expect(cropStyle({ x: 0, y: 0, w: 1, h: 1 })).toBe('width:100%;height:100%;left:0%;top:0%');
 	});
 });
 

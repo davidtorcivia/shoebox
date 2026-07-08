@@ -23,6 +23,7 @@ const item: ItemDTO = {
 		thumb1600: '/thumb_1600.webp'
 	},
 	blurhash: null,
+	originalWebSafe: true,
 	people: [{ id: 'p1', slug: 'dad', name: 'Dad', accentColor: '#FA7B62' }],
 	tags: [],
 	albums: [],

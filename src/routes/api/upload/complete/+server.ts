@@ -1,6 +1,11 @@
 import { json } from '@sveltejs/kit';
 import { requireRole } from '$lib/server/roles';
-import { completeUpload, validateUploadMeta, MAX_DERIVATIVE_BYTES, type DerivativeBlob } from '$lib/server/upload';
+import {
+	completeUpload,
+	validateUploadMeta,
+	MAX_DERIVATIVE_BYTES,
+	type DerivativeBlob
+} from '$lib/server/upload';
 import type { RequestHandler } from './$types';
 
 const DERIVATIVE_FIELDS = ['poster', 'thumb_400', 'thumb_800', 'thumb_1600'] as const;
@@ -18,12 +23,17 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 	const meta = validateUploadMeta(metaRaw);
 	const blurhashRaw = form.get('blurhash');
-	const derivatives = {} as Record<(typeof DERIVATIVE_FIELDS)[number], DerivativeBlob>;
+	const derivatives: Partial<Record<(typeof DERIVATIVE_FIELDS)[number], DerivativeBlob>> = {};
 
+	// Derivatives are optional: HEIC/RAW uploads the browser can't decode arrive
+	// with none, and the worker builds them server-side from the original. Any
+	// that ARE present must be complete — a partial set would leave gaps the
+	// worker only fills on its next pass.
 	for (const field of DERIVATIVE_FIELDS) {
 		const value = form.get(field);
+		if (value == null) continue;
 		if (!(value instanceof File)) {
-			return json({ message: `${field} is required` }, { status: 400 });
+			return json({ message: `${field} must be a file` }, { status: 400 });
 		}
 		if (value.size > MAX_DERIVATIVE_BYTES) {
 			return json({ message: `${field} exceeds maximum derivative size` }, { status: 400 });
