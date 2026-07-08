@@ -125,6 +125,25 @@ export async function createPerson(
 	};
 }
 
+function ageRangeInYear(
+	birthdate: string | null,
+	year: number,
+	deathDate: string | null
+): { min: number; max: number } | null {
+	if (!birthdate) return null;
+	const yearStart = `${year}-01-01`;
+	const yearEnd = `${year}-12-31`;
+	// Clamp the window to when the person was actually alive during this year.
+	const from = yearStart < birthdate ? birthdate : yearStart;
+	const to = deathDate && deathDate < yearEnd ? deathDate : yearEnd;
+	const low = ageAt(birthdate, from, deathDate);
+	const high = ageAt(birthdate, to, deathDate);
+	if (low == null && high == null) return null;
+	const a = low ?? high!;
+	const b = high ?? low!;
+	return { min: Math.min(a, b), max: Math.max(a, b) };
+}
+
 export async function resolveFamily(
 	db: Db,
 	storage: StorageAdapter,
@@ -204,11 +223,16 @@ export async function getPersonDetail(
 		.where(and(liveTagged, sql`${items.sortDate} is not null`))
 		.groupBy(yearExpr)
 		.orderBy(yearExpr);
-	const years = yearRows.map((yearRow) => ({
-		year: Number(yearRow.year),
-		count: Number(yearRow.count),
-		age: row.birthdate ? ageAt(row.birthdate, `${yearRow.year}-07-01`, row.deathDate) : null
-	}));
+	const years = yearRows.map((yearRow) => {
+		const year = Number(yearRow.year);
+		return {
+			year,
+			count: Number(yearRow.count),
+			// The span of ages the person was during this calendar year (they cross a
+			// birthday most years), clamped to their lifetime.
+			age: ageRangeInYear(row.birthdate, year, row.deathDate)
+		};
+	});
 
 	const [{ moments }] = await db
 		.select({ moments: sql<number>`count(*)` })

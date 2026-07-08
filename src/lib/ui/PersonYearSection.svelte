@@ -8,12 +8,26 @@
 		year,
 		count,
 		age,
-		allYears
-	}: { personId: string; year: number; count: number; age: number | null; allYears: number[] } =
-		$props();
+		allYears,
+		descending = false
+	}: {
+		personId: string;
+		year: number;
+		count: number;
+		age: { min: number; max: number } | null;
+		allYears: number[];
+		descending?: boolean;
+	} = $props();
 
 	let items = $state<ItemDTO[]>([]);
 	let loaded = $state(false);
+
+	// The API returns oldest-first; flip to newest-first when sorting descending.
+	const orderedItems = $derived(descending ? [...items].reverse() : items);
+
+	const ageLabel = $derived(
+		age == null ? '' : age.min === age.max ? `Age ${age.min} · ` : `Age ${age.min}–${age.max} · `
+	);
 
 	$effect(() => {
 		let cancelled = false;
@@ -36,7 +50,8 @@
 	<header class="year-head">
 		<h3>{year}</h3>
 		<span class="age" data-testid={`year-meta-${year}`}>
-			{age != null ? `Age ${age} · ` : ''}{count} {count === 1 ? 'moment' : 'moments'}
+			{ageLabel}{count}
+			{count === 1 ? 'moment' : 'moments'}
 		</span>
 		<details class="jump">
 			<summary>All years ↓</summary>
@@ -49,7 +64,7 @@
 	</header>
 	{#if loaded}
 		<MasonryGrid
-			{items}
+			items={orderedItems}
 			activeYear={year}
 			captionRightFor={(item) => ageCaption(item, personId)}
 		/>

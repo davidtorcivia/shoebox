@@ -14,7 +14,11 @@
 	let bioDraft = $state('');
 	let bioSaving = $state(false);
 	let bioError = $state('');
+	// Media are grouped by year; default to oldest-first, with a toggle for newest.
+	let sortDesc = $state(false);
 	const person = $derived(data.person);
+	// `person.years` is oldest-first from the server.
+	const orderedYears = $derived(sortDesc ? [...person.years].reverse() : person.years);
 	const room = $derived(personRoomFor(person.accentColor));
 	const fallbackBackground = $derived(
 		[
@@ -177,19 +181,86 @@
 			</section>
 		</div>
 
-		{#each person.years as personYear (personYear.year)}
+		{#if person.years.length > 1}
+			<div class="sort-bar">
+				<span class="sort-label">Sort</span>
+				<div class="sort-toggle" role="group" aria-label="Sort media by date">
+					<button
+						type="button"
+						class:active={!sortDesc}
+						aria-pressed={!sortDesc}
+						data-testid="sort-oldest"
+						onclick={() => (sortDesc = false)}
+					>
+						Oldest
+					</button>
+					<button
+						type="button"
+						class:active={sortDesc}
+						aria-pressed={sortDesc}
+						data-testid="sort-newest"
+						onclick={() => (sortDesc = true)}
+					>
+						Newest
+					</button>
+				</div>
+			</div>
+		{/if}
+
+		{#each orderedYears as personYear (personYear.year)}
 			<PersonYearSection
 				personId={person.id}
 				year={personYear.year}
 				count={personYear.count}
 				age={personYear.age}
-				allYears={person.years.map((entry) => entry.year)}
+				descending={sortDesc}
+				allYears={orderedYears.map((entry) => entry.year)}
 			/>
 		{/each}
 	</section>
 </div>
 
 <style>
+	.sort-bar {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 12px;
+		padding: 34px 30px 0;
+	}
+
+	.sort-label {
+		font-family: var(--font-sans);
+		font-size: 11px;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		color: color-mix(in srgb, var(--cream) 55%, transparent);
+	}
+
+	.sort-toggle {
+		display: inline-flex;
+		border: 1px solid color-mix(in srgb, var(--cream) 24%, transparent);
+	}
+
+	.sort-toggle button {
+		min-height: 36px;
+		padding: 0 14px;
+		border: 0;
+		background: none;
+		color: color-mix(in srgb, var(--cream) 70%, transparent);
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: 11px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+
+	.sort-toggle button.active {
+		background: color-mix(in srgb, var(--cream) 16%, transparent);
+		color: var(--cream);
+		font-weight: 700;
+	}
+
 	.room {
 		position: relative;
 		min-height: 100vh;

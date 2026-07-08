@@ -36,7 +36,7 @@ export interface PersonDetailDTO extends PersonListDTO {
 	birthPlace: string | null;
 	bio: string | null;
 	family: FamilyRefs;
-	years: { year: number; count: number; age: number | null }[];
+	years: { year: number; count: number; age: { min: number; max: number } | null }[];
 	stats: {
 		moments: number;
 		onFilm: { from: number; to: number } | null;

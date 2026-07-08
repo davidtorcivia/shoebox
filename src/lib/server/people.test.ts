@@ -132,9 +132,10 @@ describe('getPersonDetail', () => {
 		await db.insert(schema.albumItems).values({ albumId, itemId: itemB.id, position: 0 });
 
 		const detail = (await getPersonDetail(db, stubStorage, meg.id))!;
+		// Born 1941-03-15, so each calendar year spans two ages.
 		expect(detail.years).toEqual([
-			{ year: 1993, count: 1, age: 52 },
-			{ year: 1994, count: 2, age: 53 }
+			{ year: 1993, count: 1, age: { min: 51, max: 52 } },
+			{ year: 1994, count: 2, age: { min: 52, max: 53 } }
 		]);
 		expect(detail.stats).toEqual({ moments: 4, onFilm: { from: 1993, to: 1994 }, albums: 1 });
 		expect(detail.family.spouses).toEqual([
