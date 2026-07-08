@@ -1,6 +1,13 @@
 import numpy as np
 
-from cluster import assign_stable_ids, centroid, cluster_labels, l2_normalize, recluster
+from cluster import (
+    assign_stable_ids,
+    centroid,
+    centroids_by_cluster,
+    cluster_labels,
+    l2_normalize,
+    recluster,
+)
 
 RNG = np.random.default_rng(42)
 
@@ -107,6 +114,72 @@ def test_recluster_end_to_end_stability():
     assert second["f0"] == first["f0"]
     assert second["f8"] == first["f0"]
     assert second["f4"] == first["f4"]
+
+
+def test_stable_ids_membership_vote_keeps_id_without_centroid_match():
+    # The prior centroid is deliberately elsewhere on the sphere, so only the
+    # membership vote can preserve the id. An unchanged group must not churn.
+    dim = 32
+    embs = l2_normalize(make_cluster(unit(dim, 0), 5))
+    prev_centroids = {"personA": centroid(l2_normalize(make_cluster(unit(dim, 7), 5)))}
+    ids = assign_stable_ids(
+        np.zeros(5, dtype=int),
+        embs,
+        prev_centroids,
+        make_id=lambda: "SHOULD_NOT_MINT",
+        previous_ids=["personA", "personA", "personA", None, None],
+    )
+    assert ids == {0: "personA"}
+
+
+def test_stable_ids_vote_beats_a_conflicting_centroid_match():
+    # Two new clusters; centroids say both look like "old", but the vote pins the
+    # id to the cluster whose members actually carried it. One-to-one holds.
+    dim = 32
+    anchor = unit(dim, 0)
+    close = l2_normalize(make_cluster(anchor, 4, jitter=0.005))
+    also_close = l2_normalize(make_cluster(anchor, 4, jitter=0.005))
+    embs = np.vstack([close, also_close])
+    labels = np.array([0] * 4 + [1] * 4)
+    prev = {"old": centroid(close)}
+    made = iter(["fresh1"])
+    ids = assign_stable_ids(
+        labels,
+        embs,
+        prev,
+        make_id=lambda: next(made),
+        # label 1 owns the "old" members; label 0's faces are all new.
+        previous_ids=[None, None, None, None, "old", "old", "old", "old"],
+    )
+    assert ids[1] == "old"
+    assert ids[0] == "fresh1"
+
+
+def test_recluster_reclaims_id_from_persisted_centroid_after_rescan():
+    # Simulate a rescan: an item's faces were re-inserted with cluster_id=None, so
+    # membership continuity is gone. The persisted centroid must reclaim the id.
+    dim = 512
+    first_rows = [
+        {"id": f"f{i}", "cluster_id": None, "embedding": e.astype(np.float32)}
+        for i, e in enumerate(make_cluster(unit(dim, 0), 4))
+    ]
+    first = recluster(first_rows, make_id=lambda: "personA")
+    assert set(first.values()) == {"personA"}
+
+    persisted = {cid: vec for cid, (vec, _count) in centroids_by_cluster(first_rows, first).items()}
+    assert set(persisted) == {"personA"}
+
+    # Fresh faces of the same person, all cluster_id=None (post-rescan state).
+    rescanned = [
+        {"id": f"g{i}", "cluster_id": None, "embedding": e.astype(np.float32)}
+        for i, e in enumerate(make_cluster(unit(dim, 0), 4))
+    ]
+    second = recluster(
+        rescanned,
+        make_id=lambda: "SHOULD_NOT_MINT",
+        prior_centroids=persisted,
+    )
+    assert set(second.values()) == {"personA"}
 
 
 def test_recluster_returns_none_for_noise():

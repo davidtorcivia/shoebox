@@ -147,3 +147,32 @@ def test_apply_cluster_assignments(db):
     dbq.apply_cluster_assignments(db, {"a": "c9", "b": None})
     rows = {r["id"]: r["cluster_id"] for r in db.execute("SELECT id, cluster_id FROM faces").fetchall()}
     assert rows == {"a": "c9", "b": None}
+
+
+def test_face_clusters_table_created_on_connect(db):
+    # connect() owns this Python-side table via CREATE TABLE IF NOT EXISTS.
+    row = db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='face_clusters'"
+    ).fetchone()
+    assert row is not None
+
+
+def test_cluster_centroids_roundtrip_and_upsert(db):
+    vec = np.full(512, 0.5, dtype=np.float64)
+    dbq.save_cluster_centroids(db, {"c1": (vec, 3)})
+    loaded = dbq.load_cluster_centroids(db)
+    assert set(loaded) == {"c1"}
+    assert loaded["c1"].dtype == np.float64
+    assert loaded["c1"].shape == (512,)
+    assert np.allclose(loaded["c1"], 0.5)
+
+    # Upsert replaces the row rather than duplicating the primary key.
+    dbq.save_cluster_centroids(db, {"c1": (np.full(512, 0.25, dtype=np.float64), 4)})
+    row = db.execute("SELECT count FROM face_clusters WHERE id='c1'").fetchone()
+    assert row["count"] == 4
+    assert db.execute("SELECT COUNT(*) AS n FROM face_clusters").fetchone()["n"] == 1
+
+
+def test_save_cluster_centroids_empty_is_noop(db):
+    dbq.save_cluster_centroids(db, {})
+    assert db.execute("SELECT COUNT(*) AS n FROM face_clusters").fetchone()["n"] == 0

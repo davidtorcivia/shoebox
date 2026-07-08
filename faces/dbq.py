@@ -23,7 +23,24 @@ def connect(db_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA busy_timeout = 5000")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA foreign_keys = ON")
+    ensure_face_clusters_table(conn)
     return conn
+
+
+def ensure_face_clusters_table(conn: sqlite3.Connection) -> None:
+    """Create the Python-owned centroid store if it is missing.
+
+    The Node/Drizzle side owns every table it knows about; this one is private to
+    the faces worker, which is why it lives behind ``CREATE TABLE IF NOT EXISTS``
+    here rather than in a shared migration. It stores the mean embedding per
+    stable cluster id so reclusters can rematch a cluster to its id even after all
+    of its member faces were replaced.
+    """
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS face_clusters ("
+        "id TEXT PRIMARY KEY, centroid BLOB NOT NULL, "
+        "count INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL)"
+    )
 
 
 def claim_face_scan_job(conn: sqlite3.Connection) -> dict | None:
@@ -127,6 +144,44 @@ def apply_cluster_assignments(conn: sqlite3.Connection, assignments: dict[str, s
     try:
         for face_id, cluster_id in assignments.items():
             conn.execute("UPDATE faces SET cluster_id = ? WHERE id = ?", (cluster_id, face_id))
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+
+
+def load_cluster_centroids(conn: sqlite3.Connection) -> dict[str, np.ndarray]:
+    """Stored centroid per stable cluster id, keyed for centroid rematching."""
+    rows = conn.execute("SELECT id, centroid FROM face_clusters").fetchall()
+    return {
+        row["id"]: np.frombuffer(row["centroid"], dtype="<f4").astype(np.float64)
+        for row in rows
+    }
+
+
+def save_cluster_centroids(
+    conn: sqlite3.Connection,
+    centroids: dict[str, tuple[np.ndarray, int]],
+) -> None:
+    """Upsert the current centroid fingerprint for each live cluster id.
+
+    Ids that no longer have faces are left in place on purpose: a person who
+    briefly drops below the clustering threshold can still reclaim their id when
+    they reappear.
+    """
+    if not centroids:
+        return
+    now = int(time.time())
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        for cluster_id, (vector, count) in centroids.items():
+            blob = np.asarray(vector, dtype="<f4").tobytes()
+            conn.execute(
+                "INSERT INTO face_clusters (id, centroid, count, updated_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET "
+                "centroid = excluded.centroid, count = excluded.count, updated_at = excluded.updated_at",
+                (cluster_id, blob, int(count), now),
+            )
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")

@@ -203,8 +203,11 @@ def process_job(conn, media_path: Path | str, analyzer, job: dict) -> bool:
             raise ValueError(f"unsupported item type {item_type}")
 
         dbq.replace_pending_faces(conn, item_id, detections)
-        assignments = cluster.recluster(dbq.load_embeddings_for_clustering(conn))
+        rows = dbq.load_embeddings_for_clustering(conn)
+        prior_centroids = dbq.load_cluster_centroids(conn)
+        assignments = cluster.recluster(rows, prior_centroids=prior_centroids)
         dbq.apply_cluster_assignments(conn, assignments)
+        dbq.save_cluster_centroids(conn, cluster.centroids_by_cluster(rows, assignments))
         dbq.complete_job(conn, job["id"])
         return True
     except Exception as exc:
