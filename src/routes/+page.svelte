@@ -103,6 +103,14 @@
 	}}
 />
 
+{#if data.onThisDayCount > 0}
+	<a class="on-this-day" href={resolve('/on-this-day')} data-testid="on-this-day-link">
+		<span class="otd-icon" aria-hidden="true">✶</span>
+		<span class="otd-text">On this day</span>
+		<span class="otd-count">{data.onThisDayCount}</span>
+	</a>
+{/if}
+
 <DecadeRoom year={activeYear} {motionDirection}>
 	{#key activeYear}
 		<div class="timeline-stage" data-direction={motionDirection}>
@@ -143,6 +151,69 @@
 {/if}
 
 <style>
+	/* "On this day" entry point — a quiet pill pinned below the nav, shown only
+	   when there's something to resurface today. */
+	.on-this-day {
+		position: fixed;
+		top: 68px;
+		right: 1.5rem;
+		z-index: 10;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.55rem;
+		padding: 0.5rem 0.85rem;
+		background: color-mix(in srgb, var(--ink) 78%, transparent);
+		border: 1px solid color-mix(in srgb, var(--dawn) 55%, transparent);
+		border-radius: 999px;
+		color: var(--cream);
+		font-family: var(--font-sans);
+		font-size: 0.7rem;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		text-decoration: none;
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+		box-shadow: 0 10px 30px rgb(0 0 0 / 0.28);
+		transition:
+			border-color 200ms ease,
+			transform 200ms ease;
+	}
+
+	.on-this-day:hover,
+	.on-this-day:focus-visible {
+		border-color: var(--dawn);
+		transform: translateY(-1px);
+	}
+
+	.otd-icon {
+		color: var(--dawn);
+		font-size: 0.85rem;
+	}
+
+	.otd-count {
+		display: inline-grid;
+		place-items: center;
+		min-width: 1.35rem;
+		height: 1.35rem;
+		padding: 0 0.35rem;
+		background: var(--dawn);
+		color: var(--ink);
+		border-radius: 999px;
+		font-weight: 700;
+	}
+
+	@media (max-width: 640px) {
+		.on-this-day {
+			top: auto;
+			bottom: 1rem;
+			right: 1rem;
+		}
+
+		.otd-text {
+			display: none;
+		}
+	}
+
 	.timeline-stage {
 		animation: year-arrive 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
 		transform-origin: 50% 16rem;

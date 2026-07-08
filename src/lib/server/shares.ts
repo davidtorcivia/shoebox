@@ -11,7 +11,7 @@ export const SHARE_COOKIE_MAX_AGE = 60 * 60 * 24;
 const RATE_CAPACITY = 5;
 const RATE_WINDOW_MS = 60_000;
 
-type TargetType = 'album' | 'item';
+type TargetType = 'album' | 'item' | 'favorites';
 type ShareRow = typeof shares.$inferSelect;
 
 type AttemptBucket = {

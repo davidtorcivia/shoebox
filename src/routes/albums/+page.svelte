@@ -58,6 +58,21 @@
 		</header>
 
 		<div class="grid" data-testid="albums-grid">
+			<a class="card saved-card" href={resolve('/favorites')} data-testid="saved-card">
+				<div class="cover">
+					{#if data.saved.coverUrl}
+						<img src={data.saved.coverUrl} alt="Saved" />
+					{:else}
+						<div class="fill saved-fill" aria-hidden="true">♥</div>
+					{/if}
+					<span class="saved-badge">Private</span>
+				</div>
+				<span class="title">Saved</span>
+				<span class="count">
+					{data.saved.count}
+					{data.saved.count === 1 ? 'moment' : 'moments'}
+				</span>
+			</a>
 			{#each data.albums as album (album.id)}
 				<a class="card" href={resolve(`/albums/${album.id}`)} data-testid="album-card">
 					<div class="cover">
@@ -165,6 +180,37 @@
 	.card {
 		color: var(--cream);
 		text-decoration: none;
+	}
+
+	.saved-card .cover {
+		position: relative;
+	}
+
+	.saved-fill {
+		display: grid;
+		place-items: center;
+		background: linear-gradient(
+			150deg,
+			color-mix(in srgb, var(--dawn) 55%, var(--ink)),
+			var(--ink)
+		);
+		color: var(--dawn);
+		font-size: 44px;
+	}
+
+	.saved-badge {
+		position: absolute;
+		top: 8px;
+		left: 8px;
+		padding: 3px 8px;
+		background: color-mix(in srgb, var(--ink) 72%, transparent);
+		border: 1px solid color-mix(in srgb, var(--dawn) 55%, transparent);
+		color: var(--cream);
+		font-family: var(--font-sans);
+		font-size: 9px;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		backdrop-filter: blur(6px);
 	}
 
 	.cover {

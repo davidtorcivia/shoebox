@@ -241,7 +241,7 @@ export const comments = sqliteTable(
 export const shares = sqliteTable('shares', {
 	id: text('id').primaryKey(),
 	token: text('token').notNull().unique(),
-	targetType: text('target_type', { enum: ['album', 'item'] }).notNull(),
+	targetType: text('target_type', { enum: ['album', 'item', 'favorites'] }).notNull(),
 	targetId: text('target_id').notNull(),
 	passwordHash: text('password_hash'),
 	expiresAt: integer('expires_at', { mode: 'timestamp' }),

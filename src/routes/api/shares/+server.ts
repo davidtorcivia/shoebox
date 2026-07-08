@@ -6,7 +6,7 @@ import { requireRole } from '$lib/server/roles';
 import { createShare, listShares } from '$lib/server/shares';
 import type { RequestHandler } from './$types';
 
-type ShareTarget = 'album' | 'item';
+type ShareTarget = 'album' | 'item' | 'favorites';
 
 function expiresAtFrom(expiry: string | undefined | null): Date | null {
 	if (!expiry || expiry === 'never') return null;
@@ -41,8 +41,16 @@ async function assertTargetExists(
 }
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-	requireRole(locals, 'editor');
 	const targetType = url.searchParams.get('targetType');
+	// Anyone may manage shares of their OWN saved collection; album/item shares
+	// remain editor-only. A favorites listing is always scoped to the caller.
+	if (targetType === 'favorites') {
+		const user = requireRole(locals, 'user');
+		return json({
+			shares: await listShares(locals.db, { targetType: 'favorites', targetId: user.id })
+		});
+	}
+	requireRole(locals, 'editor');
 	const targetId = url.searchParams.get('targetId');
 	const target: { targetType: ShareTarget; targetId: string } | undefined =
 		(targetType === 'album' || targetType === 'item') && targetId
@@ -52,7 +60,6 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-	const user = requireRole(locals, 'editor');
 	const body = (await request.json().catch(() => null)) as {
 		targetType?: unknown;
 		targetId?: unknown;
@@ -62,22 +69,37 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	} | null;
 
 	if (
-		!body ||
-		(body.targetType !== 'album' && body.targetType !== 'item') ||
-		typeof body.targetId !== 'string' ||
-		body.targetId.length === 0
+		body?.targetType !== 'album' &&
+		body?.targetType !== 'item' &&
+		body?.targetType !== 'favorites'
 	) {
-		error(400, 'targetType (album|item) and targetId are required');
+		error(400, 'targetType (album|item|favorites) and targetId are required');
 	}
 	if (body.expiry !== undefined && body.expiry !== null && typeof body.expiry !== 'string') {
 		error(400, 'expiry must be a string');
 	}
 
-	await assertTargetExists(locals.db, body.targetType, body.targetId);
+	// A saved-collection share is always the caller's own and needs no elevated
+	// role; its target is the user id, so a link can never expose someone else's
+	// saves. Album/item shares stay editor-gated and must point at a real row.
+	let user;
+	let targetId: string;
+	if (body.targetType === 'favorites') {
+		user = requireRole(locals, 'user');
+		targetId = user.id;
+	} else {
+		user = requireRole(locals, 'editor');
+		if (typeof body.targetId !== 'string' || body.targetId.length === 0) {
+			error(400, 'targetId is required');
+		}
+		await assertTargetExists(locals.db, body.targetType, body.targetId);
+		targetId = body.targetId;
+	}
+
 	const password = typeof body.password === 'string' && body.password.trim() ? body.password : null;
 	const share = await createShare(locals.db, {
 		targetType: body.targetType,
-		targetId: body.targetId,
+		targetId,
 		password,
 		expiresAt: expiresAtFrom(body.expiry),
 		allowDownload: body.allowDownload === true,

@@ -11,11 +11,13 @@
 	}
 	let {
 		user,
-		ingestion,
+		arrivalsCount = 0,
 		linkedPersonSlug = null
-	}: { user: NavUser; ingestion: boolean; linkedPersonSlug?: string | null } = $props();
+	}: { user: NavUser; arrivalsCount?: number; linkedPersonSlug?: string | null } = $props();
 
-	const showArrivals = $derived(ingestion && ['editor', 'admin', 'owner'].includes(user.role));
+	// Arrivals hides itself when the queue is empty (the count is already role- and
+	// feature-gated server-side).
+	const showArrivals = $derived(arrivalsCount > 0);
 	const showUpload = $derived(['uploader', 'editor', 'admin', 'owner'].includes(user.role));
 	const showAdmin = $derived(['admin', 'owner'].includes(user.role));
 	const accentOn = $derived(ACCENTS.find((accent) => accent.hex === user.accentColor)?.on ?? 'ink');
@@ -27,7 +29,13 @@
 </script>
 
 <header class="nav">
-	<a class="wordmark" href={resolve('/')}>Shoebox</a>
+	<!-- The wordmark doubles as the "You" shortcut: a linked account lands on its
+	     own person page, everyone else on the timeline. -->
+	<a
+		class="wordmark"
+		href={linkedPersonSlug ? resolve(`/people/${linkedPersonSlug}`) : resolve('/')}
+		data-testid="nav-you">Shoebox</a
+	>
 	<button
 		class="hamburger"
 		class:open={menuOpen}
@@ -44,17 +52,13 @@
 	<div class="nav-groups" class:open={menuOpen} id="primary-nav">
 		<nav aria-label="Primary">
 			<a href={resolve('/')}>Timeline</a>
-			<a href={resolve('/on-this-day')}>On This Day</a>
 			<a href={resolve('/people')}>People</a>
-			{#if linkedPersonSlug}
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- person slug is dynamic -->
-				<a href={`/people/${linkedPersonSlug}`} data-testid="nav-you">You</a>
-			{/if}
 			<a href={resolve('/albums')}>Albums</a>
 			<a href={resolve('/search')}>Search</a>
-			<a href={resolve('/favorites')}>Saved</a>
 			{#if showUpload}<a href={resolve('/upload')}>Upload</a>{/if}
-			{#if showArrivals}<a href={resolve('/arrivals')}>Arrivals</a>{/if}
+			{#if showArrivals}
+				<a href={resolve('/arrivals')} data-testid="nav-arrivals">Arrivals ({arrivalsCount})</a>
+			{/if}
 			{#if showAdmin}<a href={resolve('/admin')}>Admin</a>{/if}
 		</nav>
 		<div class="account">

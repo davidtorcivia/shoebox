@@ -9,7 +9,7 @@
 		open,
 		onClose
 	}: {
-		targetType: 'album' | 'item';
+		targetType: 'album' | 'item' | 'favorites';
 		targetId: string;
 		open: boolean;
 		onClose: () => void;

@@ -51,10 +51,12 @@
 			<p class="sub">Ask whoever sent it for a fresh link.</p>
 		</section>
 	</main>
-{:else if data.share.targetType === 'album'}
+{:else if data.share.targetType === 'album' || data.share.targetType === 'favorites'}
 	<ShareRoom stops={paletteFor(albumYear).stops}>
 		<header class="album-head">
-			<p class="eyebrow">A shared album</p>
+			<p class="eyebrow">
+				{data.share.targetType === 'favorites' ? 'A shared collection' : 'A shared album'}
+			</p>
 			<h1>{data.album?.title}</h1>
 			{#if data.album?.description}<p class="desc">{data.album.description}</p>{/if}
 		</header>

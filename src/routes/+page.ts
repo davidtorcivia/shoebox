@@ -4,7 +4,7 @@ import type { YearCount } from '$lib/ui/rail-math';
 import type { PageLoad } from './$types';
 
 export const load: PageLoad = async ({ fetch, url, parent }) => {
-	const { user } = await parent();
+	const { user, onThisDayCount } = await parent();
 	const canDelete = user ? ['admin', 'owner'].includes(user.role) : false;
 	const timelineRes = await fetch('/api/timeline');
 	if (!timelineRes.ok) throw error(timelineRes.status, 'Timeline unavailable');
@@ -30,6 +30,7 @@ export const load: PageLoad = async ({ fetch, url, parent }) => {
 		items: items.items,
 		nextCursor: items.nextCursor,
 		now,
-		canDelete
+		canDelete,
+		onThisDayCount
 	};
 };

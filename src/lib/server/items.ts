@@ -438,6 +438,15 @@ export function decodeCursor(cursor: string): Cursor {
 	return parsed;
 }
 
+/** How many items are waiting in arrivals (needs_review, not trashed). */
+export async function countNeedsReview(db: Db): Promise<number> {
+	const [row] = await db
+		.select({ n: sql<number>`count(*)` })
+		.from(items)
+		.where(and(isNull(items.deletedAt), eq(items.status, 'needs_review')));
+	return row?.n ?? 0;
+}
+
 export async function listItems(
 	db: Db,
 	storage: StorageAdapter,

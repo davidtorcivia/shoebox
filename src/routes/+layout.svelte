@@ -20,7 +20,7 @@
 {#if data.user && !data.pathname.startsWith('/share')}
 	<Nav
 		user={data.user}
-		ingestion={data.features.ingestion}
+		arrivalsCount={data.arrivalsCount}
 		linkedPersonSlug={data.linkedPersonSlug}
 	/>
 {/if}

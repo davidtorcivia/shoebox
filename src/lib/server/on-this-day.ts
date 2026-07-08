@@ -63,3 +63,26 @@ export async function onThisDay(
 		.sort((a, b) => b[0] - a[0])
 		.map(([year, groupItems]) => ({ year, yearsAgo: thisYear - year, items: groupItems }));
 }
+
+/**
+ * Cheap existence check for the timeline: how many approved day-precision items
+ * from earlier years land on today's calendar day. Used to decide whether to
+ * surface the "On This Day" entry point at all.
+ */
+export async function countOnThisDay(db: Db, now: Date): Promise<number> {
+	const monthDay = `${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+	const thisYear = now.getFullYear();
+	const [row] = await db
+		.select({ n: sql<number>`count(*)` })
+		.from(items)
+		.where(
+			and(
+				isNull(items.deletedAt),
+				eq(items.status, 'ready'),
+				eq(items.datePrecision, 'day'),
+				sql`substr(${items.sortDate}, 6, 5) = ${monthDay}`,
+				sql`cast(substr(${items.sortDate}, 1, 4) as integer) < ${thisYear}`
+			)
+		);
+	return row?.n ?? 0;
+}

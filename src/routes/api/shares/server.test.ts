@@ -90,6 +90,19 @@ describe('POST /api/shares', () => {
 		expect(days).toBeLessThan(7.1);
 	});
 
+	it('lets any user share their own saved collection, scoped to their id', async () => {
+		// No editor role, and the client-supplied targetId is ignored in favour of
+		// the caller's own id — a link can never expose someone else's saves.
+		const res = await POST(
+			event(viewer, { body: { targetType: 'favorites', targetId: 'not-mine' } })
+		);
+		expect(res.status).toBe(201);
+		const { share } = await res.json();
+		const stored = await getShareByToken(db, share.token);
+		expect(stored?.targetType).toBe('favorites');
+		expect(stored?.targetId).toBe(viewer.id);
+	});
+
 	it('accepts a custom ISO date expiry and never-expiry', async () => {
 		const past = await POST(
 			event(editor, { body: { targetType: 'item', targetId: 'it_1', expiry: '2000-01-01' } })

@@ -1,6 +1,7 @@
 import { error, fail, redirect, type Actions, type Cookies } from '@sveltejs/kit';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { getItemDTO, getItemDTOsByIds } from '$lib/server/items';
+import { listFavorites } from '$lib/server/favorites';
 import { albumItems, albums } from '$lib/server/db/schema';
 import {
 	SHARE_COOKIE_MAX_AGE,
@@ -41,6 +42,17 @@ export const load: PageServerLoad = async ({ locals, params, cookies, url }) => 
 	if (!authorized) return { state: 'password' as const };
 
 	await setShareCookie(cookies, token, url.protocol === 'https:');
+
+	if (share.targetType === 'favorites') {
+		// targetId is the owner's user id; render their saved collection read-only.
+		const items = await listFavorites(locals.db, locals.platform.storage, share.targetId);
+		return {
+			state: 'ok' as const,
+			share: { token, targetType: 'favorites' as const, allowDownload: share.allowDownload },
+			album: { id: 'saved', title: 'Saved', description: null },
+			items
+		};
+	}
 
 	if (share.targetType === 'album') {
 		const album = (

@@ -1,10 +1,32 @@
 import { error } from '@sveltejs/kit';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { favorites, items } from '$lib/server/db/schema';
 import { getItemDTOsByIds } from '$lib/server/items';
 import type { Db } from '$lib/server/db';
 import type { StorageAdapter } from '$lib/server/platform/types';
 import type { ItemDTO } from '$lib/types';
+
+/** Count + newest cover for a user's Saved collection — feeds the albums-page card. */
+export async function favoritesSummary(
+	db: Db,
+	storage: StorageAdapter,
+	userId: string
+): Promise<{ count: number; coverUrl: string | null }> {
+	const [row] = await db
+		.select({ n: sql<number>`count(*)` })
+		.from(favorites)
+		.where(eq(favorites.userId, userId));
+	const count = row?.n ?? 0;
+	if (count === 0) return { count: 0, coverUrl: null };
+	const [newest] = await db
+		.select({ itemId: favorites.itemId })
+		.from(favorites)
+		.where(eq(favorites.userId, userId))
+		.orderBy(desc(favorites.createdAt))
+		.limit(1);
+	const [dto] = newest ? await getItemDTOsByIds(db, storage, [newest.itemId]) : [];
+	return { count, coverUrl: dto?.urls.thumb800 || dto?.urls.thumb400 || null };
+}
 
 export async function isFavorited(db: Db, userId: string, itemId: string): Promise<boolean> {
 	const row = (

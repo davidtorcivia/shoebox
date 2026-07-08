@@ -100,6 +100,13 @@
 			{#if form?.saved}<p class="ok" data-testid="profile-saved">Saved.</p>{/if}
 
 			<section>
+				<div class="label">Collection</div>
+				<p class="linked">
+					<a href={resolve('/favorites')} data-testid="profile-saved-link">Saved moments →</a>
+				</p>
+			</section>
+
+			<section>
 				<div class="label">Account</div>
 				<form method="POST" action="?/account">
 					<label class="field">

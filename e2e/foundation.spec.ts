@@ -7,7 +7,6 @@ import { FIXTURE_MP4 } from './fixtures/generate';
 
 test.describe.configure({ mode: 'serial' });
 
-
 test('fresh instance redirects unauthenticated traffic to /setup', async ({ page }) => {
 	await page.goto('/albums');
 	// On a fresh database this is /setup; if another suite already created the
@@ -22,7 +21,10 @@ test('owner setup, invite creation, redemption as user, role-gated nav', async (
 
 	const ownerNav = owner.getByRole('navigation', { name: 'Primary' });
 	await expect(ownerNav.getByRole('link', { name: 'Timeline' })).toBeVisible();
-	await expect(ownerNav.getByRole('link', { name: 'Arrivals' })).toBeVisible();
+	await expect(ownerNav.getByRole('link', { name: 'Upload' })).toBeVisible();
+	// Arrivals is count-gated now: a fresh library has an empty queue, so the
+	// entry hides itself (the ingestion spec covers the populated case).
+	await expect(ownerNav.getByRole('link', { name: /^Arrivals/ })).toHaveCount(0);
 	await expect(owner.getByText(OWNER.username)).toBeVisible();
 
 	await owner.goto('/setup');
