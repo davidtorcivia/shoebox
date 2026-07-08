@@ -150,6 +150,21 @@
 		}
 	}
 
+	function selectAll(): void {
+		selectedIds = queue.map((item) => item.id);
+		anchorIndex = queue.length > 0 ? 0 : null;
+	}
+
+	async function approveAll(): Promise<void> {
+		const ids = queue.map((item) => item.id);
+		if (ids.length === 0) return;
+		if (await postArrivals(ids, true)) {
+			approvedIds = [...new Set([...approvedIds, ...ids])];
+			addedCount += ids.length;
+			removeFromQueue(ids);
+		}
+	}
+
 	async function applyToSelection(): Promise<void> {
 		const ids = targetIds();
 		if (ids.length === 0) return;
@@ -255,6 +270,21 @@
 					<p class="count added-count" role="status" aria-live="polite">{addedCount} added</p>
 				{/if}
 				<p class="count">{queue.length} waiting</p>
+				{#if queue.length > 0}
+					<div class="bulk">
+						<button type="button" class="bulk-btn" data-testid="select-all" onclick={selectAll}>
+							Select all
+						</button>
+						<button
+							type="button"
+							class="bulk-btn primary"
+							data-testid="approve-all"
+							onclick={() => void approveAll()}
+						>
+							Approve all {queue.length}
+						</button>
+					</div>
+				{/if}
 			</div>
 		</header>
 
@@ -492,6 +522,31 @@
 		display: flex;
 		align-items: baseline;
 		gap: 14px;
+	}
+
+	.bulk {
+		display: flex;
+		gap: 8px;
+	}
+
+	.bulk-btn {
+		min-height: 36px;
+		padding: 0 14px;
+		border: 1px solid color-mix(in srgb, var(--cream) 30%, transparent);
+		background: color-mix(in srgb, var(--cream) 8%, transparent);
+		color: var(--cream);
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: 11px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+
+	.bulk-btn.primary {
+		border-color: transparent;
+		background: var(--dawn, #fa7b62);
+		color: var(--ink);
+		font-weight: 700;
 	}
 
 	.added-count {
