@@ -7,11 +7,13 @@
 # this list instead of the plain onnxruntime when built with
 # `--build-arg FACE_GPU=openvino`.
 #
-# onnxruntime-openvino 1.18.x matches the onnxruntime 1.18.1 that insightface
-# 0.7.3 is validated against; it bundles the OpenVINO 2024.x runtime.
+# onnxruntime-openvino 1.20.x is the earliest build published for Python 3.12
+# (the Ubuntu GPU base ships 3.12); it stays ABI-compatible with insightface
+# 0.7.3 and bundles the OpenVINO 2024.x runtime. The embedding format is
+# unchanged, so GPU-scanned faces cluster against existing CPU-scanned ones.
 numpy==1.26.4
 opencv-python-headless==4.10.0.84
-onnxruntime-openvino==1.18.0
+onnxruntime-openvino==1.20.0
 insightface==0.7.3
 hdbscan==0.8.40
 scikit-learn==1.5.1
