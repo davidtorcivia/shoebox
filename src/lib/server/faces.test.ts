@@ -257,7 +257,7 @@ describe('faces service', () => {
 		await addFace(db, { id: 'f1', itemId: 'it1', clusterId: 'c1' });
 		await addFace(db, { id: 'f2', itemId: 'it2', clusterId: 'c1' });
 
-		const newClusterId = await splitCluster(db, 'c1', ['f2'], () => 'c2');
+		const newClusterId = await splitCluster(db, ['f2'], () => 'c2');
 
 		expect(newClusterId).toBe('c2');
 		const rows = await db.select().from(schema.faces);
@@ -276,20 +276,33 @@ describe('faces service', () => {
 		await addFace(db, { id: 'f2', itemId: 'it2', clusterId: 'c1' });
 		const reindex = vi.fn(async (_db: ReturnType<typeof makeTestDb>, _itemId: string) => undefined);
 
-		await splitCluster(db, 'c1', ['f1', 'f2'], () => 'c2', { reindex });
+		await splitCluster(db, ['f1', 'f2'], () => 'c2', { reindex });
 
 		expect(reindex.mock.calls.map((call) => call[1]).sort()).toEqual(['it1', 'it2']);
 	});
 
-	it('refuses empty or mismatched split requests', async () => {
+	it('refuses empty or unknown-face split requests', async () => {
 		const db = makeTestDb();
 		const owner = await makeUser(db);
 		await addReadyItem(db, 'it1', owner.id);
 		await addFace(db, { id: 'f1', itemId: 'it1', clusterId: 'c1' });
 
-		await expect(splitCluster(db, 'c1', [])).rejects.toMatchObject({ status: 400 });
-		await expect(splitCluster(db, 'c1', ['missing'])).rejects.toMatchObject({ status: 404 });
-		await expect(splitCluster(db, 'other', ['f1'])).rejects.toMatchObject({ status: 404 });
+		await expect(splitCluster(db, [])).rejects.toMatchObject({ status: 400 });
+		await expect(splitCluster(db, ['missing'])).rejects.toMatchObject({ status: 404 });
+	});
+
+	it('splits by face id regardless of the current cluster id', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		await addReadyItem(db, 'it1', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', clusterId: 'c1' });
+		// A background recluster renamed the cluster; split still works by face id.
+		await db.update(schema.faces).set({ clusterId: 'c1-renamed' }).where(eq(schema.faces.id, 'f1'));
+
+		const next = await splitCluster(db, ['f1'], () => 'c2', { reindex: async () => undefined });
+		expect(next).toBe('c2');
+		const face = (await db.select().from(schema.faces).where(eq(schema.faces.id, 'f1')))[0];
+		expect(face.clusterId).toBe('c2');
 	});
 
 	it('validates and patches face boxes', async () => {

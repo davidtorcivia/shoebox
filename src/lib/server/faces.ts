@@ -249,9 +249,11 @@ export async function rejectFace(db: Db, faceId: string, opts: WriteOptions = {}
 	await reindex(db, face.itemId);
 }
 
+// Move the given faces into a fresh pending cluster. Keyed on stable face ids
+// (not the source cluster id) so it survives a background recluster the same way
+// assign/reject do.
 export async function splitCluster(
 	db: Db,
-	clusterId: string,
 	faceIds: string[],
 	makeId = () => nanoid(12),
 	opts: WriteOptions = {}
@@ -259,10 +261,7 @@ export async function splitCluster(
 	const reindex = opts.reindex ?? reindexItem;
 	const ids = [...new Set(faceIds)];
 	if (ids.length === 0) error(400, 'faceIds required');
-	const rows = await db
-		.select()
-		.from(faces)
-		.where(and(eq(faces.clusterId, clusterId), inArray(faces.id, ids)));
+	const rows = await db.select().from(faces).where(inArray(faces.id, ids));
 	if (rows.length !== ids.length) error(404, 'face not found');
 	await assertItemsExist(
 		db,
@@ -272,7 +271,7 @@ export async function splitCluster(
 	await db
 		.update(faces)
 		.set({ clusterId: nextClusterId, status: 'pending', personId: null })
-		.where(and(eq(faces.clusterId, clusterId), inArray(faces.id, ids)));
+		.where(inArray(faces.id, ids));
 	await reindexAffected(
 		db,
 		rows.map((row) => row.itemId),

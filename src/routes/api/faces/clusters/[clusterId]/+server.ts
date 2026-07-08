@@ -24,7 +24,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		if (!Array.isArray(faceIds) || !faceIds.every((id) => typeof id === 'string')) {
 			error(400, 'faceIds is required');
 		}
-		return json({ clusterId: await splitCluster(locals.db, params.clusterId, faceIds) });
+		return json({ clusterId: await splitCluster(locals.db, faceIds) });
 	}
 
 	error(400, 'unknown action');

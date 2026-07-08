@@ -19,26 +19,44 @@
 	style:--serif={FONT.serif}
 	style:--sans={FONT.sans}
 >
-	{#if tags.length === 0 && albums.length === 0}
-		<span class="empty">None</span>
-	{:else}
-		{#each tags as tag (tag.id)}
-			<a href={resolve(`/?tags=${tag.id}`)}>{tag.name}</a>
-		{/each}
-		{#each albums as album (album.id)}
-			<a href={resolve(`/albums?album=${album.id}`)}>{album.title}</a>
-		{/each}
-	{/if}
+	<span class="label">Tags</span>
+	<div class="content">
+		{#if tags.length === 0 && albums.length === 0}
+			<span class="empty">None</span>
+		{:else}
+			{#each tags as tag (tag.id)}
+				<a href={resolve(`/?tags=${tag.id}`)}>{tag.name}</a>
+			{/each}
+			{#each albums as album (album.id)}
+				<a href={resolve(`/albums?album=${album.id}`)}>{album.title}</a>
+			{/each}
+		{/if}
+	</div>
 </section>
 
 <style>
 	.social-row {
+		display: grid;
+		grid-template-columns: 5rem 1fr;
+		gap: 1rem;
+		align-items: center;
+		min-height: 19px;
+		color: var(--cream);
+	}
+
+	.label {
+		font-family: var(--sans);
+		font-size: 0.68rem;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		opacity: 0.62;
+	}
+
+	.content {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.5rem 0.85rem;
 		align-items: center;
-		min-height: 19px;
-		color: var(--cream);
 	}
 
 	a {
@@ -52,5 +70,16 @@
 		font-family: var(--sans);
 		font-size: 0.72rem;
 		color: color-mix(in srgb, var(--cream) 62%, transparent);
+	}
+
+	/* Mobile: drop the label and let the tags fill the row. */
+	@media (max-width: 760px) {
+		.social-row {
+			display: block;
+		}
+
+		.label {
+			display: none;
+		}
 	}
 </style>

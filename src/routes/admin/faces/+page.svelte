@@ -37,7 +37,11 @@
 		};
 	}
 
-	async function mutate(key: string, url: string, init: RequestInit): Promise<boolean> {
+	async function mutate(
+		key: string,
+		url: string,
+		init: Parameters<typeof fetch>[1]
+	): Promise<boolean> {
 		busy = key;
 		notice = '';
 		const res = await fetch(url, init);
@@ -232,7 +236,8 @@
 									></span>
 								</button>
 								<div class="face-meta">
-									<a href={`/items/${face.itemId}`}>{face.itemType}</a>
+									<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- item id is dynamic -->
+									<a href={`/item/${face.itemId}`}>{face.itemType}</a>
 									<span>{face.frameTime == null ? 'still' : `${face.frameTime.toFixed(1)}s`}</span>
 								</div>
 								<label>
