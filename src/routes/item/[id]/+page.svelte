@@ -14,6 +14,7 @@
 	import PeopleRow from '$lib/ui/PeopleRow.svelte';
 	import Player from '$lib/ui/Player.svelte';
 	import Reactions from '$lib/ui/Reactions.svelte';
+	import VoiceMemories from '$lib/ui/VoiceMemories.svelte';
 	import ShareDialog from '$lib/ui/ShareDialog.svelte';
 	import TagsRow from '$lib/ui/TagsRow.svelte';
 	import ThumbnailPicker from '$lib/ui/ThumbnailPicker.svelte';
@@ -349,6 +350,10 @@
 				<Reactions itemId={item.id} reactions={data.reactions} />
 			</div>
 
+			<div class="voice-slot">
+				<VoiceMemories itemId={item.id} notes={data.voiceNotes} />
+			</div>
+
 			<div data-testid="comments-slot">
 				<Comments itemId={item.id} currentUser={data.me} />
 			</div>
@@ -643,6 +648,11 @@
 	}
 
 	.reactions-slot {
+		padding: 1rem 0;
+		border-top: 1px solid color-mix(in srgb, var(--cream) 24%, transparent);
+	}
+
+	.voice-slot {
 		padding: 1rem 0;
 		border-top: 1px solid color-mix(in srgb, var(--cream) 24%, transparent);
 	}

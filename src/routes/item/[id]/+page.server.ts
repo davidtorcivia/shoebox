@@ -4,6 +4,7 @@ import { contextFromParams, neighborsOf } from '$lib/server/neighbors';
 import { items } from '$lib/server/db/schema';
 import { isFavorited } from '$lib/server/favorites';
 import { listReactions } from '$lib/server/reactions';
+import { listVoiceNotes } from '$lib/server/voice';
 import { confirmedFacesForItem } from '$lib/server/faces';
 import { listPeople } from '$lib/server/people';
 import { requireRole, ROLE_RANK } from '$lib/server/roles';
@@ -45,6 +46,7 @@ export const load: PageServerLoad = async ({ fetch, locals, params, url }) => {
 		faces: facesEnabled ? await confirmedFacesForItem(locals.db, item.id) : [],
 		favorited: await isFavorited(locals.db, me.id, item.id),
 		reactions: await listReactions(locals.db, item.id, me.id),
+		voiceNotes: await listVoiceNotes(locals.db, locals.platform.storage, item.id, me.id),
 		people: await listPeople(locals.db, locals.platform.storage),
 		backYear,
 		contextQuery: url.searchParams.toString()
