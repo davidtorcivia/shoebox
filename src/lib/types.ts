@@ -38,6 +38,7 @@ export interface ItemDTO {
 	albums: { id: string; title: string }[];
 	uploadedBy: string;
 	tapeLabel: string | null;
+	location: string | null;
 }
 
 export interface UploadMeta {

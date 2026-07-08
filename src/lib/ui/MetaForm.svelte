@@ -8,6 +8,7 @@
 		dateEnd: string | null;
 		datePrecision: ItemDate['precision'];
 		tapeLabel: string | null;
+		location: string | null;
 		people: string[];
 		tags: string[];
 	};
@@ -17,6 +18,7 @@
 		description: string;
 		date: ItemDate;
 		tapeLabel: string;
+		location: string;
 		peopleText?: string;
 		peopleIds?: string[];
 		tagsText: string;
@@ -28,6 +30,7 @@
 			dateEnd: input.date.dateEnd,
 			datePrecision: input.date.precision,
 			tapeLabel: input.tapeLabel.trim() || null,
+			location: input.location.trim() || null,
 			people: input.peopleIds ? [...new Set(input.peopleIds)] : csv(input.peopleText ?? ''),
 			tags: [...new Set(csv(input.tagsText).map((tag) => tag.toLowerCase()))]
 		};
@@ -65,6 +68,7 @@
 	let title = $state('');
 	let description = $state('');
 	let tapeLabel = $state('');
+	let location = $state('');
 	let date = $state<ItemDTO['date']>({ dateStart: null, dateEnd: null, precision: 'unknown' });
 	let selectedPeople = $state<string[]>([]);
 	let personQuery = $state('');
@@ -80,6 +84,7 @@
 		title = item.title ?? '';
 		description = item.description ?? '';
 		tapeLabel = item.tapeLabel ?? '';
+		location = item.location ?? '';
 		date = item.date;
 		selectedPeople = item.people.map((person) => person.id);
 		tagsText = item.tags.map((tag) => tag.name).join(', ');
@@ -101,7 +106,15 @@
 			.slice(0, query.length === 0 ? 8 : 14);
 	});
 	const payload = $derived(
-		buildMetaPayload({ title, description, date, tapeLabel, peopleIds: selectedPeople, tagsText })
+		buildMetaPayload({
+			title,
+			description,
+			date,
+			tapeLabel,
+			location,
+			peopleIds: selectedPeople,
+			tagsText
+		})
 	);
 
 	function selectPerson(id: string): void {
@@ -159,6 +172,11 @@
 			<input name="tapeLabel" bind:value={tapeLabel} />
 		</label>
 	</div>
+
+	<label>
+		<span>Location</span>
+		<input name="location" bind:value={location} placeholder="e.g. Big Sur, California" />
+	</label>
 
 	<label>
 		<span>Description</span>

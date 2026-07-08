@@ -31,7 +31,8 @@ const item: ItemDTO = {
 	tags: [{ id: 't1', name: 'Summer', kind: 'topic' }],
 	albums: [],
 	uploadedBy: 'u1',
-	tapeLabel: 'Tape 04'
+	tapeLabel: 'Tape 04',
+	location: null
 };
 
 describe('MetaForm', () => {
@@ -44,6 +45,7 @@ describe('MetaForm', () => {
 			'dateEnd',
 			'datePrecision',
 			'tapeLabel',
+			'location',
 			'people',
 			'tags'
 		]) {
@@ -58,6 +60,7 @@ describe('MetaForm', () => {
 				description: ' Updated ',
 				date: { dateStart: '1995-01-01', dateEnd: '1995-12-31', precision: 'year' },
 				tapeLabel: ' Tape 05 ',
+				location: ' Big Sur ',
 				peopleText: 'p_mom, p_dad',
 				tagsText: ' Summer, CHRISTMAS, summer '
 			})
@@ -68,6 +71,7 @@ describe('MetaForm', () => {
 			dateEnd: '1995-12-31',
 			datePrecision: 'year',
 			tapeLabel: 'Tape 05',
+			location: 'Big Sur',
 			people: ['p_mom', 'p_dad'],
 			tags: ['summer', 'christmas']
 		});

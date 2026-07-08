@@ -27,7 +27,8 @@ const item: ItemDTO = {
 	tags: [],
 	albums: [],
 	uploadedBy: 'u1',
-	tapeLabel: null
+	tapeLabel: null,
+	location: null
 };
 
 describe('MediaCard', () => {

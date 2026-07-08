@@ -32,7 +32,8 @@ function item(
 		tags: [],
 		albums: [],
 		uploadedBy: 'u1',
-		tapeLabel: null
+		tapeLabel: null,
+		location: null
 	};
 }
 

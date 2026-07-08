@@ -27,7 +27,8 @@ const item: ItemDTO = {
 	tags: [{ id: 't1', name: 'summer', kind: 'topic' }],
 	albums: [],
 	uploadedBy: 'u1',
-	tapeLabel: null
+	tapeLabel: null,
+	location: null
 };
 
 describe('formatDuration', () => {

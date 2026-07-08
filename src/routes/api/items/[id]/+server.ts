@@ -70,6 +70,7 @@ type FlatUpdateItemInput = {
 	title?: string | null;
 	description?: string | null;
 	tapeLabel?: string | null;
+	location?: string | null;
 	dateStart?: string | null;
 	dateEnd?: string | null;
 	datePrecision?: ItemDate['precision'];
@@ -84,6 +85,7 @@ function normalizeUpdatePatch(input: FlatUpdateItemInput | UpdateItemInput): Upd
 		title: flat.title,
 		description: flat.description,
 		tapeLabel: flat.tapeLabel,
+		location: flat.location,
 		people: flat.people,
 		tags: flat.tags
 	};

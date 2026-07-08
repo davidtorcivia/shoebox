@@ -151,6 +151,23 @@ async function photoExifDate(absPath: string): Promise<string | null> {
 	}
 }
 
+// GPS coordinates from a photo's EXIF, if present and sane. Plumbing for a map;
+// the human-readable place stays a user-editable text field.
+async function photoExifGps(absPath: string): Promise<{ lat: number; lng: number } | null> {
+	try {
+		const gps = (await exifr.gps(absPath)) as { latitude?: number; longitude?: number } | undefined;
+		const lat = gps?.latitude;
+		const lng = gps?.longitude;
+		if (typeof lat !== 'number' || typeof lng !== 'number') return null;
+		if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+		if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+		if (lat === 0 && lng === 0) return null;
+		return { lat, lng };
+	} catch {
+		return null;
+	}
+}
+
 export async function processIngestFile(deps: IngestDeps, absPath: string): Promise<IngestResult> {
 	const relPath = relative(deps.ingestPath, absPath).split(sep).join('/');
 	if (
@@ -234,6 +251,7 @@ export async function processIngestFile(deps: IngestDeps, absPath: string): Prom
 	let height = 0;
 	let duration: number | null = null;
 	let mediaDate: string | null = null;
+	let gps: { lat: number; lng: number } | null = null;
 
 	try {
 		if (type === 'video') {
@@ -251,6 +269,7 @@ export async function processIngestFile(deps: IngestDeps, absPath: string): Prom
 				[width, height] = [height, width];
 			}
 			mediaDate = await photoExifDate(absPath);
+			gps = await photoExifGps(absPath);
 		}
 	} catch (err) {
 		return fail(`could not read media: ${err instanceof Error ? err.message : String(err)}`);
@@ -273,6 +292,8 @@ export async function processIngestFile(deps: IngestDeps, absPath: string): Prom
 				dateStart: date.dateStart,
 				dateEnd: date.dateEnd,
 				datePrecision: date.precision,
+				lat: gps?.lat ?? null,
+				lng: gps?.lng ?? null,
 				sortDate: sortDate({
 					dateStart: date.dateStart,
 					dateEnd: date.dateEnd,

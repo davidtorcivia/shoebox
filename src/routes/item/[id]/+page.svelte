@@ -248,6 +248,9 @@
 			{#if hasKnownDate}
 				<p class="date">{item.displayDate}</p>
 			{/if}
+			{#if item.location}
+				<p class="place" data-testid="item-location">{item.location}</p>
+			{/if}
 			{#if item.description}
 				<p class="story">{item.description}</p>
 			{/if}
@@ -625,6 +628,18 @@
 		font-weight: 800;
 		text-decoration: underline;
 		text-underline-offset: 5px;
+	}
+
+	.place {
+		font-family: var(--font-sans);
+		font-size: 0.8rem;
+		letter-spacing: 0.08em;
+		color: color-mix(in srgb, var(--cream) 68%, transparent);
+	}
+
+	.place::before {
+		content: '⚲ ';
+		opacity: 0.7;
 	}
 
 	.reactions-slot {

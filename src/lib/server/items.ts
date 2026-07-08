@@ -52,6 +52,9 @@ export interface CreateItemInput {
 	title: string | null;
 	description: string | null;
 	tapeLabel: string | null;
+	location?: string | null;
+	lat?: number | null;
+	lng?: number | null;
 	date: ItemDate;
 	duration: number | null;
 	width: number;
@@ -158,6 +161,9 @@ export async function createItem(
 		blurhash: input.blurhash,
 		source: input.source,
 		tapeLabel: input.tapeLabel,
+		location: input.location ?? null,
+		lat: input.lat ?? null,
+		lng: input.lng ?? null,
 		status,
 		uploadedBy: input.uploadedBy,
 		createdAt: new Date()
@@ -328,7 +334,8 @@ export async function buildItemDTOs(
 				.filter((album) => album.itemId === row.id)
 				.map((album) => ({ id: album.id, title: album.title })),
 			uploadedBy: row.uploadedBy,
-			tapeLabel: row.tapeLabel
+			tapeLabel: row.tapeLabel,
+			location: row.location
 		});
 	}
 
@@ -391,6 +398,7 @@ export interface UpdateItemInput {
 	title?: string | null;
 	description?: string | null;
 	tapeLabel?: string | null;
+	location?: string | null;
 	date?: ItemDate;
 	people?: string[];
 	tags?: string[];
@@ -509,6 +517,7 @@ export async function updateItem(
 			title: patch.title === undefined ? row.title : patch.title,
 			description: patch.description === undefined ? row.description : patch.description,
 			tapeLabel: patch.tapeLabel === undefined ? row.tapeLabel : patch.tapeLabel,
+			location: patch.location === undefined ? row.location : patch.location,
 			dateStart: nextDate.dateStart,
 			dateEnd: nextDate.dateEnd,
 			datePrecision: nextDate.precision,
