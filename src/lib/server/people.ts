@@ -22,6 +22,7 @@ import type { Db } from '$lib/server/db';
 import {
 	albumItems,
 	albums,
+	faces,
 	itemFiles,
 	itemPeople,
 	items,
@@ -420,6 +421,83 @@ export async function deletePersonGuarded(
 	// Removing this person's manual edges may orphan inferred edges elsewhere.
 	await recomputeFamilyInference(db);
 	return { ok: true };
+}
+
+/**
+ * Fold `sourceId` into `targetId`: reassign the source person's tags, faces,
+ * relationships, linked account and (if the target has none) avatar, then delete
+ * the source. Duplicate tags/relationships collapse. This cleans up the
+ * duplicate people that accumulate from typos and ingest.
+ */
+export async function mergePeople(db: Db, sourceId: string, targetId: string): Promise<void> {
+	if (sourceId === targetId) error(400, 'cannot merge a person into themselves');
+	const source = (await db.select().from(people).where(eq(people.id, sourceId)).limit(1))[0];
+	if (!source) error(404, 'source person not found');
+	const target = (await db.select().from(people).where(eq(people.id, targetId)).limit(1))[0];
+	if (!target) error(404, 'target person not found');
+
+	// item_people: move source tags to target, skipping items already tagged with
+	// target (the composite PK forbids two rows for the same item+person).
+	const targetItemIds = new Set(
+		(
+			await db
+				.select({ itemId: itemPeople.itemId })
+				.from(itemPeople)
+				.where(eq(itemPeople.personId, targetId))
+		).map((row) => row.itemId)
+	);
+	const sourceTags = await db
+		.select({ itemId: itemPeople.itemId })
+		.from(itemPeople)
+		.where(eq(itemPeople.personId, sourceId));
+	for (const tag of sourceTags) {
+		if (targetItemIds.has(tag.itemId)) continue;
+		await db
+			.update(itemPeople)
+			.set({ personId: targetId })
+			.where(and(eq(itemPeople.itemId, tag.itemId), eq(itemPeople.personId, sourceId)));
+	}
+	await db.delete(itemPeople).where(eq(itemPeople.personId, sourceId));
+
+	// Faces have no per-person uniqueness, so a straight reassign is safe.
+	await db.update(faces).set({ personId: targetId }).where(eq(faces.personId, sourceId));
+
+	// Relationships: rewrite source→target, drop self-relations and duplicates.
+	const sourceRels = await db
+		.select()
+		.from(relationships)
+		.where(or(eq(relationships.personA, sourceId), eq(relationships.personB, sourceId)));
+	await db
+		.delete(relationships)
+		.where(or(eq(relationships.personA, sourceId), eq(relationships.personB, sourceId)));
+	const seen = new Set((await db.select().from(relationships)).map(relKey));
+	for (const rel of sourceRels) {
+		const rewritten = canonicalRel({
+			personA: rel.personA === sourceId ? targetId : rel.personA,
+			personB: rel.personB === sourceId ? targetId : rel.personB,
+			type: rel.type
+		});
+		if (rewritten.personA === rewritten.personB) continue;
+		const key = relKey(rewritten);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		await db.insert(relationships).values({ id: nanoid(12), ...rewritten, source: rel.source });
+	}
+
+	// Linked account follows the surviving person.
+	await db.update(users).set({ personId: targetId }).where(eq(users.personId, sourceId));
+
+	// Adopt the source avatar only if the target doesn't already have one.
+	if (!target.avatarItemId && source.avatarItemId) {
+		await db
+			.update(people)
+			.set({ avatarItemId: source.avatarItemId, avatarCrop: source.avatarCrop })
+			.where(eq(people.id, targetId));
+	}
+
+	await db.delete(people).where(eq(people.id, sourceId));
+	await recomputeFamilyInference(db);
+	await reindexItemsForPerson(db, targetId);
 }
 
 export async function applyRelationshipChanges(

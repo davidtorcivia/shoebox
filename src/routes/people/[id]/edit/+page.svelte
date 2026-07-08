@@ -23,6 +23,34 @@
 	let saveError = $state('');
 	let deleteError = $state('');
 	let taggedItems = $state<ItemDTO[]>([]);
+	let mergeQuery = $state('');
+	let mergeError = $state('');
+	const mergeMatches = $derived.by(() => {
+		const q = mergeQuery.trim().toLowerCase();
+		if (!q) return [];
+		return data.others.filter((other) => other.name.toLowerCase().includes(q)).slice(0, 8);
+	});
+
+	async function mergeInto(target: { id: string; slug: string; name: string }): Promise<void> {
+		mergeError = '';
+		if (
+			!confirm(
+				`Merge ${person.name} into ${target.name}? ${person.name} will be deleted and all their photos, faces and relationships move to ${target.name}. This cannot be undone.`
+			)
+		) {
+			return;
+		}
+		const res = await fetch(`/api/people/${person.id}/merge`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ into: target.id })
+		});
+		if (!res.ok) {
+			mergeError = 'Could not merge.';
+			return;
+		}
+		await goto(resolve(`/people/${target.slug}`));
+	}
 	const activeAccent = $derived(accentColor);
 	const room = $derived(personRoomFor(activeAccent));
 
@@ -166,6 +194,39 @@
 				<div class="label">Family</div>
 				<RelEditor personId={person.id} others={data.others} family={person.family} />
 			</section>
+
+			{#if data.isEditor}
+				<section class="merge">
+					<div class="label">Merge duplicate</div>
+					<p class="merge-hint">
+						Fold this person into another — their photos, faces and relationships move over and this
+						entry is deleted.
+					</p>
+					<input
+						class="merge-input"
+						bind:value={mergeQuery}
+						placeholder="Search the person to merge into…"
+						aria-label="Merge into person"
+						autocomplete="off"
+					/>
+					{#if mergeMatches.length}
+						<ul class="merge-list" data-testid="merge-matches">
+							{#each mergeMatches as other (other.id)}
+								<li>
+									<button
+										type="button"
+										data-testid={`merge-into-${other.id}`}
+										onclick={() => void mergeInto(other)}
+									>
+										Merge into {other.name}
+									</button>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+					{#if mergeError}<span class="err">{mergeError}</span>{/if}
+				</section>
+			{/if}
 
 			<div class="actions">
 				<button class="save" data-testid="save-person" onclick={save}>Save</button>
@@ -344,6 +405,50 @@
 		color: var(--person-accent);
 		font-family: var(--font-sans);
 		font-size: 11px;
+	}
+
+	.merge-hint {
+		margin-bottom: 12px;
+		color: color-mix(in srgb, var(--cream) 62%, transparent);
+		font-family: var(--font-serif);
+		font-size: 15px;
+	}
+
+	.merge-input {
+		width: 100%;
+		min-height: 44px;
+		border: 0;
+		background: color-mix(in srgb, var(--cream) 12%, transparent);
+		color: var(--cream);
+		font-family: var(--font-serif);
+		font-size: 16px;
+		padding: 10px 14px;
+	}
+
+	.merge-list {
+		list-style: none;
+		margin: 8px 0 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.merge-list button {
+		width: 100%;
+		min-height: 40px;
+		border: 0;
+		background: color-mix(in srgb, var(--cream) 6%, transparent);
+		color: var(--cream);
+		cursor: pointer;
+		font-family: var(--font-serif);
+		font-size: 15px;
+		text-align: left;
+		padding: 0 12px;
+	}
+
+	.merge-list button:hover {
+		background: color-mix(in srgb, var(--dawn) 22%, transparent);
 	}
 
 	@media (max-width: 640px) {
