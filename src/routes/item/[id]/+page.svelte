@@ -32,6 +32,8 @@
 	let player = $state<PlayerHandle | null>(null);
 	let saveState = $state('');
 	let shareOpen = $state(false);
+	// svelte-ignore state_referenced_locally
+	let favorited = $state(data.favorited);
 	let thumbPickerOpen = $state(false);
 	let thumbState = $state('');
 	let savingThumb = $state(false);
@@ -64,6 +66,7 @@
 		loadedItemId = data.item.id;
 		item = data.item;
 		saveState = '';
+		favorited = data.favorited;
 		facesVisible = data.item.type === 'photo' && data.faces.length > 0;
 	});
 
@@ -124,6 +127,14 @@
 		const body = (await res.json()) as { item: ItemDTO };
 		item = body.item;
 		saveState = 'Saved';
+	}
+
+	async function toggleFavorite() {
+		// Optimistic; the toggle endpoint returns the authoritative state.
+		favorited = !favorited;
+		const res = await fetch(`/api/items/${item.id}/favorite`, { method: 'POST' });
+		if (res.ok) favorited = ((await res.json()) as { favorited: boolean }).favorited;
+		else favorited = !favorited;
 	}
 
 	async function chooseThumbnail(posterTime: number) {
@@ -255,6 +266,17 @@
 			{/if}
 
 			<div class="rail-actions">
+				<button
+					class="fav-action"
+					class:on={favorited}
+					type="button"
+					data-testid="favorite-button"
+					aria-pressed={favorited}
+					aria-label={favorited ? 'Remove from saved' : 'Save'}
+					onclick={() => void toggleFavorite()}
+				>
+					{favorited ? '♥ Saved' : '♡ Save'}
+				</button>
 				{#if item.urls.original}
 					<!-- eslint-disable svelte/no-navigation-without-resolve -- storage adapters return media URLs, not app routes -->
 					<a
@@ -550,8 +572,14 @@
 		text-underline-offset: 4px;
 	}
 
+	.fav-action.on {
+		color: var(--dawn);
+		font-weight: 800;
+	}
+
 	.download-original,
 	.share-action,
+	.fav-action,
 	.thumb-action,
 	.face-toggle,
 	.delete-action {

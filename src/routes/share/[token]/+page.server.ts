@@ -9,7 +9,14 @@ import {
 	resolveShare,
 	shareCookieValue
 } from '$lib/server/shares';
+import { rateLimit, resetRateLimit } from '$lib/server/rate-limit';
 import type { PageServerLoad } from './$types';
+
+// Per token+IP cap layered on top of the per-token limiter inside resolveShare:
+// throttles a single host guessing one share's password. Counts every attempt
+// and clears on success so a correct password never leaves the visitor locked out.
+const SHARE_IP_LIMIT = 10;
+const SHARE_IP_WINDOW_MS = 5 * 60_000;
 
 async function setShareCookie(cookies: Cookies, token: string, secure: boolean): Promise<void> {
 	cookies.set(SHARE_COOKIE_PREFIX + token, await shareCookieValue(token), {
@@ -75,13 +82,18 @@ export const load: PageServerLoad = async ({ locals, params, cookies, url }) => 
 };
 
 export const actions: Actions = {
-	unlock: async ({ locals, params, request, cookies, url }) => {
+	unlock: async ({ locals, params, request, cookies, url, getClientAddress }) => {
 		const token = params.token;
 		if (!token) error(404, 'This share link does not exist.');
 		const form = await request.formData();
 		const password = String(form.get('password') ?? '');
+		const ipKey = `share:${token}:${getClientAddress()}`;
+		if (!rateLimit(ipKey, { limit: SHARE_IP_LIMIT, windowMs: SHARE_IP_WINDOW_MS }).ok) {
+			return fail(429, { message: 'Too many tries. Wait a few minutes, then try again.' });
+		}
 		const result = await resolveShare(locals.db, token, password);
 		if (result.ok) {
+			resetRateLimit(ipKey);
 			await setShareCookie(cookies, token, url.protocol === 'https:');
 			redirect(303, `/share/${token}`);
 		}

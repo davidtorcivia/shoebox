@@ -51,6 +51,7 @@
 			{/if}
 			<a href={resolve('/albums')}>Albums</a>
 			<a href={resolve('/search')}>Search</a>
+			<a href={resolve('/favorites')}>Saved</a>
 			{#if showUpload}<a href={resolve('/upload')}>Upload</a>{/if}
 			{#if showArrivals}<a href={resolve('/arrivals')}>Arrivals</a>{/if}
 			{#if showAdmin}<a href={resolve('/admin')}>Admin</a>{/if}

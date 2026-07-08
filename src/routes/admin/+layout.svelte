@@ -13,6 +13,7 @@
 		{ href: '/admin/trash', label: 'Trash' },
 		{ href: '/admin/settings', label: 'Settings' },
 		{ href: '/admin/jobs', label: 'Jobs' },
+		{ href: '/admin/health', label: 'Health' },
 		...(data.features.faces ? [{ href: '/admin/faces', label: 'Faces' }] : [])
 	]);
 </script>
