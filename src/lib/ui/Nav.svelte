@@ -125,18 +125,31 @@
 		padding: 0;
 		border: 0;
 		background: transparent;
+		color: #fff5e8;
 		cursor: pointer;
 	}
 
 	.hamburger span {
 		display: block;
-		width: 22px;
-		height: 2px;
+		width: 24px;
+		height: 2.5px;
 		margin: 0 auto;
-		background: var(--cream);
+		/* Literal light fill (never a maybe-unresolved custom property that can fall
+		   back to black) with a soft dark halo so the bars read on any backdrop. */
+		background: #fff5e8;
+		box-shadow: 0 0 2px rgb(0 0 0 / 0.55);
 		transition:
 			transform 200ms ease,
 			opacity 200ms ease;
+	}
+
+	/* Windows High Contrast / forced-colors: use a system color so the icon
+	   stays visible instead of being flattened to the page background. */
+	@media (forced-colors: active) {
+		.hamburger span {
+			background: CanvasText;
+			box-shadow: none;
+		}
 	}
 
 	.hamburger.open span:nth-child(1) {
