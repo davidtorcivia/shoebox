@@ -4,10 +4,12 @@ import * as schema from '$lib/server/db/schema';
 import { makeItem, makePerson, makeTestDb, makeUser, stubStorage } from '$lib/server/testing/db';
 import {
 	assignCluster,
+	assignFaces,
 	confirmedFacesForItem,
 	listSuggestions,
 	rejectCluster,
 	rejectFace,
+	rejectFaces,
 	splitCluster,
 	updateFaceBox
 } from './faces';
@@ -143,10 +145,7 @@ describe('faces service', () => {
 		await addReadyItem(db, 'gone', owner.id);
 		await addFace(db, { id: 'f-live', itemId: 'live', clusterId: 'c1' });
 		await addFace(db, { id: 'f-gone', itemId: 'gone', clusterId: 'c1' });
-		await db
-			.update(schema.items)
-			.set({ deletedAt: new Date() })
-			.where(eq(schema.items.id, 'gone'));
+		await db.update(schema.items).set({ deletedAt: new Date() }).where(eq(schema.items.id, 'gone'));
 
 		// The deleted-item face must not block assigning the rest of the cluster.
 		await assignCluster(db, 'c1', person.id, { reindex: async () => undefined });
@@ -177,9 +176,38 @@ describe('faces service', () => {
 		expect(good.clusterId).toBe('c1');
 		// The rejected box drops out of future suggestions; its mate remains.
 		const suggestions = await listSuggestions(db, stubStorage);
-		expect(suggestions).toEqual([
-			expect.objectContaining({ clusterId: 'c1', count: 1 })
-		]);
+		expect(suggestions).toEqual([expect.objectContaining({ clusterId: 'c1', count: 1 })]);
+	});
+
+	it('assignFaces confirms by face id even after the cluster was renamed', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		const person = await makePerson(db);
+		await addReadyItem(db, 'it1', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', clusterId: 'c1' });
+		// Simulate the worker reclustering and renaming the cluster after the admin
+		// loaded the suggestion but before they clicked Assign.
+		await db.update(schema.faces).set({ clusterId: 'c1-renamed' }).where(eq(schema.faces.id, 'f1'));
+
+		await assignFaces(db, ['f1'], person.id, { reindex: async () => undefined });
+
+		const face = (await db.select().from(schema.faces).where(eq(schema.faces.id, 'f1')))[0];
+		expect(face.status).toBe('confirmed');
+		expect(face.personId).toBe(person.id);
+	});
+
+	it('rejectFaces rejects by face id regardless of current cluster', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		await addReadyItem(db, 'it1', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', clusterId: 'c1' });
+		await db.update(schema.faces).set({ clusterId: 'c1-renamed' }).where(eq(schema.faces.id, 'f1'));
+
+		await rejectFaces(db, ['f1'], { reindex: async () => undefined });
+
+		const face = (await db.select().from(schema.faces).where(eq(schema.faces.id, 'f1')))[0];
+		expect(face.status).toBe('rejected');
+		expect(face.clusterId).toBeNull();
 	});
 
 	it('rejects a cluster and clears its cluster id', async () => {

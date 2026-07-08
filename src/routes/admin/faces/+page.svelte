@@ -51,6 +51,17 @@
 		return true;
 	}
 
+	// The stable face ids the admin is looking at. Sending these (rather than
+	// relying on the cluster id) keeps assign/reject working even if the worker
+	// reclusters and renames the cluster between page load and the click.
+	function faceIdsFor(clusterId: string): string[] {
+		return (
+			suggestions
+				.find((cluster) => cluster.clusterId === clusterId)
+				?.faces.map((face) => face.id) ?? []
+		);
+	}
+
 	async function assign(clusterId: string): Promise<void> {
 		const personId = personSelections[clusterId];
 		if (!personId) {
@@ -61,7 +72,7 @@
 			await mutate(`assign-${clusterId}`, `/api/admin/faces/clusters/${clusterId}/assign`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ personId })
+				body: JSON.stringify({ personId, faceIds: faceIdsFor(clusterId) })
 			})
 		) {
 			suggestions = suggestions.filter((cluster) => cluster.clusterId !== clusterId);
@@ -71,7 +82,9 @@
 	async function reject(clusterId: string): Promise<void> {
 		if (
 			await mutate(`reject-${clusterId}`, `/api/admin/faces/clusters/${clusterId}/reject`, {
-				method: 'POST'
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ faceIds: faceIdsFor(clusterId) })
 			})
 		) {
 			suggestions = suggestions.filter((cluster) => cluster.clusterId !== clusterId);

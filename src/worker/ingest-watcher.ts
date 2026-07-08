@@ -13,7 +13,7 @@ import * as schema from '../lib/server/db/schema';
 import { applyHolidayTags } from '../lib/server/items';
 import type { StorageAdapter } from '../lib/server/platform/types';
 import { parseConventions, resolveItemDate, titleFromFilename } from './conventions';
-import { probeVideo } from './derivatives';
+import { probeVideo, type VideoProbe } from './derivatives';
 import { logIngestFailure, type WorkerDb } from './jobs';
 
 export const SUPPORTED_EXTENSIONS: Record<string, 'video' | 'photo'> = {
@@ -52,15 +52,20 @@ function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+type VideoReady =
+	{ status: 'ready'; probe: VideoProbe } | { status: 'gone' } | { status: 'incomplete' };
+
 /**
  * Wait for a video that may still be rendering straight into the ingest folder.
  * We keep waiting as long as the file is still growing (an active encode), and
  * only proceed once its size settles AND the container is fully probeable (a
  * partial MP4 has no readable moov atom / duration). If the size settles but the
- * file never becomes probeable within a grace window, we give up and let the
- * normal path fail it. Returns false if the file disappeared while waiting.
+ * file never becomes probeable within a grace window, we give up.
+ *
+ * On success the probe is returned so the caller can reuse it instead of
+ * spawning ffprobe a second time.
  */
-async function waitForCompleteVideo(absPath: string): Promise<boolean> {
+async function waitForCompleteVideo(absPath: string): Promise<VideoReady> {
 	const pollMs = envMs('INGEST_POLL_MS', 2_000);
 	// How long to keep retrying once the size has stopped changing before giving
 	// up and letting the normal path decide (a genuinely corrupt but stable file).
@@ -73,7 +78,7 @@ async function waitForCompleteVideo(absPath: string): Promise<boolean> {
 		try {
 			size = (await stat(absPath)).size;
 		} catch {
-			return false; // removed/renamed while we waited
+			return { status: 'gone' }; // removed/renamed while we waited
 		}
 		const stable = size === lastSize;
 		if (!stable) {
@@ -86,13 +91,13 @@ async function waitForCompleteVideo(absPath: string): Promise<boolean> {
 		if (size > 0) {
 			try {
 				const probe = await probeVideo(absPath);
-				if (probe.duration > 0) return true;
+				if (probe.duration > 0) return { status: 'ready', probe };
 			} catch {
 				/* not complete yet */
 			}
 		}
 
-		if (stable && Date.now() - stableSince > gracePatienceMs) return true;
+		if (stable && Date.now() - stableSince > gracePatienceMs) return { status: 'incomplete' };
 		await delay(pollMs);
 	}
 }
@@ -201,10 +206,15 @@ export async function processIngestFile(deps: IngestDeps, absPath: string): Prom
 
 	// The header sniffs as real video, so if it's still rendering straight into
 	// the folder, wait for the encode to finish before hashing/probing — that way
-	// we never ingest (or fail) a half-written clip.
+	// we never ingest (or fail) a half-written clip. Reuse the probe it produces
+	// so we don't spawn ffprobe twice.
+	let videoProbe: VideoProbe | undefined;
 	if (type === 'video') {
-		const present = await waitForCompleteVideo(absPath);
-		if (!present) return { status: 'failed', reason: 'file disappeared while writing' };
+		const ready = await waitForCompleteVideo(absPath);
+		if (ready.status === 'gone') {
+			return { status: 'failed', reason: 'file disappeared while writing' };
+		}
+		if (ready.status === 'ready') videoProbe = ready.probe;
 	}
 
 	const sha256 = await sha256File(absPath);
@@ -227,7 +237,8 @@ export async function processIngestFile(deps: IngestDeps, absPath: string): Prom
 
 	try {
 		if (type === 'video') {
-			const probe = await probeVideo(absPath);
+			// Reuse the completeness probe; only re-probe if we gave up waiting.
+			const probe = videoProbe ?? (await probeVideo(absPath));
 			width = probe.width;
 			height = probe.height;
 			duration = probe.duration;

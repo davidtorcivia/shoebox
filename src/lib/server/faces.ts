@@ -125,9 +125,26 @@ async function liveClusterFaces(
 		.where(and(eq(faces.clusterId, clusterId), isNull(items.deletedAt)));
 }
 
-export async function assignCluster(
+// Live faces (item not soft-deleted) among the given ids.
+async function liveFacesByIds(
 	db: Db,
-	clusterId: string,
+	faceIds: string[]
+): Promise<Array<{ id: string; itemId: string; box: string }>> {
+	const ids = [...new Set(faceIds)];
+	if (ids.length === 0) return [];
+	return db
+		.select({ id: faces.id, itemId: faces.itemId, box: faces.box })
+		.from(faces)
+		.innerJoin(items, eq(items.id, faces.itemId))
+		.where(and(inArray(faces.id, ids), isNull(items.deletedAt)));
+}
+
+// Confirm a set of faces as a person. Operating on stable face ids (not the
+// cluster id) makes this immune to the worker reclustering — and renaming
+// cluster ids — between when the admin loads suggestions and clicks Assign.
+export async function assignFaces(
+	db: Db,
+	faceIds: string[],
 	personId: string,
 	opts: WriteOptions = {}
 ): Promise<void> {
@@ -137,11 +154,18 @@ export async function assignCluster(
 	)[0];
 	if (!person) error(404, 'person not found');
 
-	const rows = await liveClusterFaces(db, clusterId);
-	if (rows.length === 0) error(404, 'cluster not found');
-	const faceIds = rows.map((row) => row.id);
+	const rows = await liveFacesByIds(db, faceIds);
+	if (rows.length === 0) error(404, 'no faces to assign');
 
-	await db.update(faces).set({ status: 'confirmed', personId }).where(inArray(faces.id, faceIds));
+	await db
+		.update(faces)
+		.set({ status: 'confirmed', personId })
+		.where(
+			inArray(
+				faces.id,
+				rows.map((row) => row.id)
+			)
+		);
 	for (const face of rows) {
 		await db
 			.insert(itemPeople)
@@ -158,14 +182,14 @@ export async function assignCluster(
 	);
 }
 
-export async function rejectCluster(
+export async function rejectFaces(
 	db: Db,
-	clusterId: string,
+	faceIds: string[],
 	opts: WriteOptions = {}
 ): Promise<void> {
 	const reindex = opts.reindex ?? reindexItem;
-	const rows = await liveClusterFaces(db, clusterId);
-	if (rows.length === 0) error(404, 'cluster not found');
+	const rows = await liveFacesByIds(db, faceIds);
+	if (rows.length === 0) error(404, 'no faces to reject');
 	await db
 		.update(faces)
 		.set({ status: 'rejected', clusterId: null, personId: null })
@@ -179,6 +203,36 @@ export async function rejectCluster(
 		db,
 		rows.map((row) => row.itemId),
 		reindex
+	);
+}
+
+export async function assignCluster(
+	db: Db,
+	clusterId: string,
+	personId: string,
+	opts: WriteOptions = {}
+): Promise<void> {
+	const rows = await liveClusterFaces(db, clusterId);
+	if (rows.length === 0) error(404, 'cluster not found');
+	await assignFaces(
+		db,
+		rows.map((row) => row.id),
+		personId,
+		opts
+	);
+}
+
+export async function rejectCluster(
+	db: Db,
+	clusterId: string,
+	opts: WriteOptions = {}
+): Promise<void> {
+	const rows = await liveClusterFaces(db, clusterId);
+	if (rows.length === 0) error(404, 'cluster not found');
+	await rejectFaces(
+		db,
+		rows.map((row) => row.id),
+		opts
 	);
 }
 
