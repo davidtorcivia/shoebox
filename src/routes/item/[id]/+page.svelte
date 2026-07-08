@@ -13,6 +13,7 @@
 	import MetaForm, { type MetaPatchPayload } from '$lib/ui/MetaForm.svelte';
 	import PeopleRow from '$lib/ui/PeopleRow.svelte';
 	import Player from '$lib/ui/Player.svelte';
+	import Reactions from '$lib/ui/Reactions.svelte';
 	import ShareDialog from '$lib/ui/ShareDialog.svelte';
 	import TagsRow from '$lib/ui/TagsRow.svelte';
 	import ThumbnailPicker from '$lib/ui/ThumbnailPicker.svelte';
@@ -341,6 +342,10 @@
 				{/if}
 			</div>
 
+			<div class="reactions-slot">
+				<Reactions itemId={item.id} reactions={data.reactions} />
+			</div>
+
 			<div data-testid="comments-slot">
 				<Comments itemId={item.id} currentUser={data.me} />
 			</div>
@@ -620,6 +625,11 @@
 		font-weight: 800;
 		text-decoration: underline;
 		text-underline-offset: 5px;
+	}
+
+	.reactions-slot {
+		padding: 1rem 0;
+		border-top: 1px solid color-mix(in srgb, var(--cream) 24%, transparent);
 	}
 
 	[data-testid='comments-slot'] {
