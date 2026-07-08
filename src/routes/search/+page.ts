@@ -1,3 +1,4 @@
+import type { CropRect } from '$lib/domain/people-dto';
 import type { SearchQuery } from '$lib/domain/search-query';
 import type { ItemDTO } from '$lib/types';
 import type { PageLoad } from './$types';
@@ -8,6 +9,8 @@ export interface SearchPersonCard {
 	name: string;
 	accentColor: string;
 	avatarItemId: string | null;
+	avatarUrl: string | null;
+	avatarCrop: CropRect | null;
 }
 
 export interface SearchAlbumCard {

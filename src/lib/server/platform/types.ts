@@ -16,7 +16,7 @@ export interface StorageAdapter {
 
 export interface JobQueueAdapter {
 	enqueue(
-		kind: 'derivatives' | 'sprite' | 'ingest_scan' | 'face_scan',
+		kind: 'derivatives' | 'sprite' | 'ingest_scan' | 'face_scan' | 'transcode',
 		payload: Record<string, unknown>,
 		runAfter?: Date
 	): Promise<void>;

@@ -10,7 +10,13 @@ import type {
 	PersonListDTO,
 	PersonRef
 } from '$lib/domain/people-dto';
-import { canonicalRel, familyOf, type Rel, type RelType } from '$lib/domain/relationships';
+import {
+	canonicalRel,
+	familyOf,
+	inferRelationships,
+	type Rel,
+	type RelType
+} from '$lib/domain/relationships';
 import { ACCENTS } from '$lib/ui/tokens';
 import type { Db } from '$lib/server/db';
 import {
@@ -119,7 +125,11 @@ export async function createPerson(
 	};
 }
 
-export async function resolveFamily(db: Db, personId: string): Promise<FamilyRefs> {
+export async function resolveFamily(
+	db: Db,
+	storage: StorageAdapter,
+	personId: string
+): Promise<FamilyRefs> {
 	const relRows = await db.select().from(relationships);
 	const ids = familyOf(
 		personId,
@@ -133,11 +143,28 @@ export async function resolveFamily(db: Db, personId: string): Promise<FamilyRef
 				id: people.id,
 				slug: people.slug,
 				name: people.name,
-				accentColor: people.accentColor
+				accentColor: people.accentColor,
+				avatarItemId: people.avatarItemId,
+				avatarCrop: people.avatarCrop
 			})
 			.from(people)
 			.where(inArray(people.id, all));
-		for (const row of rows) refs.set(row.id, row);
+		const urls = await avatarUrls(
+			db,
+			storage,
+			rows.map((row) => row.avatarItemId).filter((id): id is string => Boolean(id)),
+			'thumb_400'
+		);
+		for (const row of rows) {
+			refs.set(row.id, {
+				id: row.id,
+				slug: row.slug,
+				name: row.name,
+				accentColor: row.accentColor,
+				avatarUrl: row.avatarItemId ? (urls.get(row.avatarItemId) ?? null) : null,
+				avatarCrop: parseCrop(row.avatarCrop)
+			});
+		}
 	}
 
 	const pick = (list: string[]) =>
@@ -217,7 +244,7 @@ export async function getPersonDetail(
 		avatarCrop: parseCrop(row.avatarCrop),
 		avatarUrl: row.avatarItemId ? (urls.get(row.avatarItemId) ?? null) : null,
 		itemCount: momentCount,
-		family: await resolveFamily(db, id),
+		family: await resolveFamily(db, storage, id),
 		years,
 		stats: {
 			moments: momentCount,
@@ -239,7 +266,7 @@ export async function resolvePersonId(db: Db, idOrSlug: string): Promise<string 
 	return row?.id ?? null;
 }
 
-function parseCrop(raw: string | null): CropRect | null {
+export function parseCrop(raw: string | null): CropRect | null {
 	if (!raw) return null;
 	try {
 		const crop = JSON.parse(raw) as Partial<CropRect>;
@@ -354,11 +381,14 @@ export async function deletePersonGuarded(
 		.where(or(eq(relationships.personA, id), eq(relationships.personB, id)));
 	await db.update(users).set({ personId: null }).where(eq(users.personId, id));
 	await db.delete(people).where(eq(people.id, id));
+	// Removing this person's manual edges may orphan inferred edges elsewhere.
+	await recomputeFamilyInference(db);
 	return { ok: true };
 }
 
 export async function applyRelationshipChanges(
 	db: Db,
+	storage: StorageAdapter,
 	personId: string,
 	changes: { add: Rel[]; remove: Rel[] }
 ): Promise<FamilyRefs> {
@@ -391,7 +421,11 @@ export async function applyRelationshipChanges(
 
 	const adds = changes.add.map(canonicalRel);
 	const removes = changes.remove.map(canonicalRel);
-	const existing = new Set((await db.select().from(relationships)).map(relKey));
+	// Only hand-set (manual) edges count as duplicates: an add that merely
+	// matches an inferred edge is a legitimate promotion to manual.
+	const existing = new Set(
+		(await db.select().from(relationships)).filter((row) => row.source === 'manual').map(relKey)
+	);
 	for (const rel of removes) existing.delete(relKey(rel));
 	const batch = new Set<string>();
 	for (const rel of adds) {
@@ -412,10 +446,45 @@ export async function applyRelationshipChanges(
 			);
 	}
 	if (adds.length > 0) {
-		await db.insert(relationships).values(adds.map((rel) => ({ id: nanoid(12), ...rel })));
+		// Drop any inferred edge the add duplicates so the unique index doesn't
+		// reject the manual row, then insert the manual edge.
+		for (const rel of adds) {
+			await db
+				.delete(relationships)
+				.where(
+					and(
+						eq(relationships.personA, rel.personA),
+						eq(relationships.personB, rel.personB),
+						eq(relationships.type, rel.type)
+					)
+				);
+		}
+		await db
+			.insert(relationships)
+			.values(adds.map((rel) => ({ id: nanoid(12), ...rel, source: 'manual' as const })));
 	}
 
-	return resolveFamily(db, personId);
+	await recomputeFamilyInference(db);
+	return resolveFamily(db, storage, personId);
+}
+
+/**
+ * Rebuild the inferred relationship edges from the manual ones. Inferred edges
+ * are fully derived, so we can drop and regenerate them wholesale on any change.
+ */
+export async function recomputeFamilyInference(db: Db): Promise<void> {
+	await db.delete(relationships).where(eq(relationships.source, 'inferred'));
+	const manual = (await db.select().from(relationships)).map((row): Rel => ({
+		personA: row.personA,
+		personB: row.personB,
+		type: row.type
+	}));
+	const derived = inferRelationships(manual);
+	if (derived.length > 0) {
+		await db
+			.insert(relationships)
+			.values(derived.map((rel) => ({ id: nanoid(12), ...rel, source: 'inferred' as const })));
+	}
 }
 
 const REL_TYPES: RelType[] = ['parent-of', 'spouse-of', 'sibling-of'];

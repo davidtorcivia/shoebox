@@ -1,5 +1,10 @@
 numpy==1.26.4
 opencv-python-headless==4.10.0.84
+# Default CPU-only ONNX Runtime. For Intel GPU (ARC) acceleration do NOT edit
+# this line: onnxruntime and onnxruntime-openvino provide the same `onnxruntime`
+# package and cannot coexist. Instead build the image with FACE_GPU=openvino,
+# which installs faces/requirements-openvino.txt (onnxruntime-openvino) in place
+# of this file. See README-deploy.md "GPU acceleration for face recognition".
 onnxruntime==1.18.1
 insightface==0.7.3
 hdbscan==0.8.40

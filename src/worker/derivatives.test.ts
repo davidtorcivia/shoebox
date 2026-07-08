@@ -8,7 +8,13 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { FIXTURE_JPG, FIXTURE_MP4, generateFixtures } from '../../e2e/fixtures/generate';
 import * as schema from '../lib/server/db/schema';
 import { createFsStorage } from '../lib/server/platform/storage-fs';
-import { derivativesHandler, probeVideo, runFfmpeg } from './derivatives';
+import {
+	derivativesHandler,
+	needsTranscode,
+	probeVideo,
+	runFfmpeg,
+	transcodeHandler
+} from './derivatives';
 import type { WorkerContext } from './jobs';
 import { createTestDb, seedItem, seedOwner } from './test-helpers';
 
@@ -72,7 +78,11 @@ describe('derivativesHandler for photos', () => {
 			expect(meta.format).toBe('webp');
 		}
 
-		const rows = ctx.db.select().from(schema.itemFiles).where(eq(schema.itemFiles.itemId, itemId)).all();
+		const rows = ctx.db
+			.select()
+			.from(schema.itemFiles)
+			.where(eq(schema.itemFiles.itemId, itemId))
+			.all();
 		const kinds = rows.map((row) => row.kind).sort();
 		expect(kinds).toEqual(['original', 'thumb_1600', 'thumb_400', 'thumb_800']);
 
@@ -107,18 +117,114 @@ describe('derivativesHandler for photos', () => {
 
 	it('throws so the job retries when the item does not exist', async () => {
 		const { ctx } = await setupPhoto();
-		await expect(derivativesHandler({ itemId: 'nope' }, ctx)).rejects.toThrow(/item nope not found/);
+		await expect(derivativesHandler({ itemId: 'nope' }, ctx)).rejects.toThrow(
+			/item nope not found/
+		);
 	});
 });
 
 describe('probeVideo', () => {
-	it('reads duration and dimensions from the fixture', async () => {
+	it('reads duration, dimensions, and codec from the fixture', async () => {
 		const probe = await probeVideo(FIXTURE_MP4);
 		expect(Math.abs(probe.duration - 2)).toBeLessThan(0.5);
 		expect(probe.width).toBe(320);
 		expect(probe.height).toBe(180);
 		expect(probe.creationTime).toBeNull();
+		expect(probe.codec).toBe('h264');
 	}, 10_000);
+});
+
+describe('needsTranscode', () => {
+	it('leaves browser-playable codecs untouched', () => {
+		for (const codec of ['h264', 'H264', 'vp8', 'vp9', 'av1']) {
+			expect(needsTranscode(codec)).toBe(false);
+		}
+	});
+
+	it('flags HEVC and other archival codecs for transcoding', () => {
+		for (const codec of ['hevc', 'h265', 'mpeg2video', 'dvvideo', 'mpeg4', 'prores']) {
+			expect(needsTranscode(codec)).toBe(true);
+		}
+	});
+
+	it('skips when the codec is unknown', () => {
+		expect(needsTranscode(null)).toBe(false);
+	});
+});
+
+describe('transcodeHandler', () => {
+	it('does not write a playback derivative for a browser-playable video', async () => {
+		const { ctx, itemId } = await setupVideo();
+		await transcodeHandler({ itemId }, ctx);
+
+		const rows = ctx.db
+			.select()
+			.from(schema.itemFiles)
+			.where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'playback')))
+			.all();
+		expect(rows).toHaveLength(0);
+	}, 20_000);
+
+	it('replaces an HEVC original in place with a playable H.264 mp4', async () => {
+		const { ctx, itemId } = await setupVideo();
+		// Re-encode the fixture as HEVC in place so the original is a codec browsers
+		// cannot play, reproducing the real-world case.
+		const key = `media/${itemId}/original.mp4`;
+		const originalAbs = join(ctx.mediaPath, key);
+		const hevcAbs = join(ctx.mediaPath, 'media', itemId, 'hevc.mp4');
+		await runFfmpeg(
+			(cmd) => cmd.outputOptions(['-c:v libx265', '-preset ultrafast', '-crf 30', '-tag:v hvc1']),
+			originalAbs,
+			hevcAbs
+		);
+		await copyFile(hevcAbs, originalAbs);
+		expect((await probeVideo(originalAbs)).codec).toBe('hevc');
+
+		await transcodeHandler({ itemId }, ctx);
+
+		// The original file is overwritten with H.264 (replace policy) — no separate
+		// playback derivative, and the single `original` row now describes the H.264.
+		expect((await probeVideo(originalAbs)).codec).toBe('h264');
+		const rows = ctx.db
+			.select()
+			.from(schema.itemFiles)
+			.where(eq(schema.itemFiles.itemId, itemId))
+			.all();
+		expect(rows.filter((row) => row.kind === 'playback')).toHaveLength(0);
+		const original = rows.find((row) => row.kind === 'original')!;
+		expect(original.mime).toBe('video/mp4');
+		expect(original.width).toBeGreaterThan(0);
+	}, 30_000);
+
+	it('deletes a stale playback derivative left by the old keep-both policy', async () => {
+		const { ctx, itemId } = await setupVideo();
+		// Simulate a prior keep-both run: a playback row + file exists alongside a
+		// now web-safe (h264) original. The replace policy should clean it up.
+		const staleKey = `media/${itemId}/playback.mp4`;
+		await ctx.storage.put(staleKey, new Uint8Array([1, 2, 3]), { contentType: 'video/mp4' });
+		ctx.db
+			.insert(schema.itemFiles)
+			.values({
+				id: 'stale-pb',
+				itemId,
+				kind: 'playback',
+				storageKey: staleKey,
+				mime: 'video/mp4',
+				width: 320,
+				height: 180
+			})
+			.run();
+
+		await transcodeHandler({ itemId }, ctx);
+
+		const rows = ctx.db
+			.select()
+			.from(schema.itemFiles)
+			.where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'playback')))
+			.all();
+		expect(rows).toHaveLength(0);
+		expect(await ctx.storage.head(staleKey)).toBeNull();
+	}, 20_000);
 });
 
 describe('derivativesHandler for videos', () => {
@@ -131,7 +237,11 @@ describe('derivativesHandler for videos', () => {
 		expect(posterMeta.format).toBe('webp');
 		expect(posterMeta.width).toBe(320);
 
-		const rows = ctx.db.select().from(schema.itemFiles).where(eq(schema.itemFiles.itemId, itemId)).all();
+		const rows = ctx.db
+			.select()
+			.from(schema.itemFiles)
+			.where(eq(schema.itemFiles.itemId, itemId))
+			.all();
 		expect(rows.map((row) => row.kind).sort()).toEqual([
 			'original',
 			'poster',
@@ -157,7 +267,7 @@ describe('ffmpeg / ffprobe timeouts', () => {
 		const out = join(tmp, 'poster.png');
 		await expect(
 			runFfmpeg(
-				(cmd) => cmd.seekInput(0.05).outputOptions(['-frames:v 1', "-vf scale=160:-2"]),
+				(cmd) => cmd.seekInput(0.05).outputOptions(['-frames:v 1', '-vf scale=160:-2']),
 				FIXTURE_MP4,
 				out,
 				1

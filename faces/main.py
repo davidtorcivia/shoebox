@@ -10,6 +10,7 @@ import os
 import time
 import sys
 from pathlib import Path
+from typing import Mapping
 
 import numpy as np
 
@@ -45,13 +46,99 @@ def load_cv2():
     return cv2
 
 
-def create_analyzer():
+def _env(env: Mapping[str, str] | None) -> Mapping[str, str]:
+    return os.environ if env is None else env
+
+
+def parse_providers(env: Mapping[str, str] | None = None) -> list[str]:
+    """Read the ORT execution provider list from ``FACE_PROVIDERS``.
+
+    Comma-separated, whitespace trimmed, empties dropped. Defaults to the
+    CPU-only behavior the service has always shipped.
+    """
+    raw = _env(env).get("FACE_PROVIDERS", "CPUExecutionProvider")
+    providers = [part.strip() for part in raw.split(",") if part.strip()]
+    return providers or ["CPUExecutionProvider"]
+
+
+def parse_model_pack(env: Mapping[str, str] | None = None) -> str:
+    """InsightFace model pack name from ``FACE_MODEL_PACK`` (default buffalo_l)."""
+    pack = _env(env).get("FACE_MODEL_PACK", "buffalo_l").strip()
+    return pack or "buffalo_l"
+
+
+def parse_det_size(env: Mapping[str, str] | None = None) -> tuple[int, int]:
+    """Square detection size ``(n, n)`` from ``FACE_DET_SIZE`` (default 640)."""
+    raw = _env(env).get("FACE_DET_SIZE", "640")
+    try:
+        n = int(str(raw).strip())
+    except (TypeError, ValueError):
+        n = 640
+    if n <= 0:
+        n = 640
+    return (n, n)
+
+
+def parse_det_thresh(env: Mapping[str, str] | None = None) -> float | None:
+    """Optional detection threshold from ``FACE_DET_THRESH``.
+
+    Returns ``None`` when unset/blank/invalid so the InsightFace default stands.
+    """
+    raw = _env(env).get("FACE_DET_THRESH")
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        return float(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def build_provider_options(providers: list[str], env: Mapping[str, str] | None = None) -> list[dict]:
+    """Build an onnxruntime ``provider_options`` list aligned with ``providers``.
+
+    Only the OpenVINO entry receives a ``device_type`` (from
+    ``FACE_OPENVINO_DEVICE``, default ``GPU``); every other provider gets ``{}``.
+    """
+    device = (_env(env).get("FACE_OPENVINO_DEVICE", "GPU") or "GPU").strip() or "GPU"
+    return [
+        {"device_type": device} if p == "OpenVINOExecutionProvider" else {}
+        for p in providers
+    ]
+
+
+def create_analyzer(env: Mapping[str, str] | None = None):
     from insightface.app import FaceAnalysis
 
-    root = os.environ.get("INSIGHTFACE_HOME", "/models")
-    analyzer = FaceAnalysis(name="buffalo_l", root=root, providers=["CPUExecutionProvider"])
-    analyzer.prepare(ctx_id=0, det_size=(640, 640))
-    return analyzer
+    env = _env(env)
+    root = env.get("INSIGHTFACE_HOME", "/models")
+    model_pack = parse_model_pack(env)
+    det_size = parse_det_size(env)
+    det_thresh = parse_det_thresh(env)
+    providers = parse_providers(env)
+
+    def _prepare(analyzer):
+        prepare_kwargs: dict = {"ctx_id": 0, "det_size": det_size}
+        if det_thresh is not None:
+            prepare_kwargs["det_thresh"] = det_thresh
+        analyzer.prepare(**prepare_kwargs)
+        return analyzer
+
+    try:
+        analysis_kwargs: dict = {"name": model_pack, "root": root, "providers": providers}
+        # Only attach provider_options when OpenVINO is requested so the plain
+        # CPU path stays byte-for-byte identical to the historical default.
+        if "OpenVINOExecutionProvider" in providers:
+            analysis_kwargs["provider_options"] = build_provider_options(providers, env)
+        analyzer = FaceAnalysis(**analysis_kwargs)
+        return _prepare(analyzer)
+    except Exception as exc:
+        print(
+            f"[faces] analyzer init failed for providers={providers} "
+            f"pack={model_pack}: {exc}; falling back to CPUExecutionProvider",
+            file=sys.stderr,
+        )
+        analyzer = FaceAnalysis(name=model_pack, root=root, providers=["CPUExecutionProvider"])
+        return _prepare(analyzer)
 
 
 def _detection(face, frame_time: float | None, img_w: int, img_h: int) -> dict:

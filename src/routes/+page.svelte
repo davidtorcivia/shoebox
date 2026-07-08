@@ -34,6 +34,13 @@
 		void goto(resolve(`/?y=${year}`));
 	}
 
+	function goToYear(year: number) {
+		const target = Math.min(data.now, Math.max(1, year));
+		if (target === activeYear) return;
+		motionDirection = target > activeYear ? 1 : -1;
+		void goto(resolve(`/?y=${target}`));
+	}
+
 	function scrollYear(event: WheelEvent) {
 		if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
 		const axisDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
@@ -76,9 +83,18 @@
 				<CenturyRail {years} earliest={data.timeline.earliest} {activeYear} now={data.now} />
 			</div>
 			<MasonryGrid items={data.items} {activeYear} {motionDirection} />
-			<MobileRail {years} earliest={data.timeline.earliest} {activeYear} now={data.now} />
 		</div>
 	{/key}
+	<!-- Rendered outside .timeline-stage: that element's transform/will-change would
+	     otherwise become the containing block for this position:fixed rail, leaving
+	     it floating mid-page instead of pinned to the viewport bottom. -->
+	<MobileRail
+		{years}
+		earliest={data.timeline.earliest}
+		{activeYear}
+		now={data.now}
+		onselect={goToYear}
+	/>
 </DecadeRoom>
 
 <style>

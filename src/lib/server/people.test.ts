@@ -138,7 +138,14 @@ describe('getPersonDetail', () => {
 		]);
 		expect(detail.stats).toEqual({ moments: 4, onFilm: { from: 1993, to: 1994 }, albums: 1 });
 		expect(detail.family.spouses).toEqual([
-			{ id: frank.id, slug: frank.slug, name: 'Frank', accentColor: frank.accentColor }
+			{
+				id: frank.id,
+				slug: frank.slug,
+				name: 'Frank',
+				accentColor: frank.accentColor,
+				avatarUrl: null,
+				avatarCrop: null
+			}
 		]);
 		expect(detail.linkedUsername).toBeNull();
 	});
@@ -250,7 +257,7 @@ describe('applyRelationshipChanges', () => {
 	it('canonicalizes symmetric rels at write time', async () => {
 		const meg = await makePerson(db, { id: 'p-meg' });
 		await makePerson(db, { id: 'p-frank' });
-		await applyRelationshipChanges(db, meg.id, {
+		await applyRelationshipChanges(db, stubStorage, meg.id, {
 			add: [{ personA: 'p-meg', personB: 'p-frank', type: 'spouse-of' }],
 			remove: []
 		});
@@ -264,7 +271,7 @@ describe('applyRelationshipChanges', () => {
 		const other = await makePerson(db, {});
 		const third = await makePerson(db, {});
 		const bad = (add: object) =>
-			applyRelationshipChanges(db, meg.id, { add: [add as never], remove: [] });
+			applyRelationshipChanges(db, stubStorage, meg.id, { add: [add as never], remove: [] });
 		await expect(
 			bad({ personA: meg.id, personB: meg.id, type: 'spouse-of' })
 		).rejects.toMatchObject({ status: 400 });
@@ -282,12 +289,12 @@ describe('applyRelationshipChanges', () => {
 	it('409s on duplicates in either input order', async () => {
 		const meg = await makePerson(db, { id: 'p-meg' });
 		await makePerson(db, { id: 'p-frank' });
-		await applyRelationshipChanges(db, meg.id, {
+		await applyRelationshipChanges(db, stubStorage, meg.id, {
 			add: [{ personA: 'p-frank', personB: 'p-meg', type: 'spouse-of' }],
 			remove: []
 		});
 		await expect(
-			applyRelationshipChanges(db, meg.id, {
+			applyRelationshipChanges(db, stubStorage, meg.id, {
 				add: [{ personA: 'p-meg', personB: 'p-frank', type: 'spouse-of' }],
 				remove: []
 			})
@@ -297,12 +304,12 @@ describe('applyRelationshipChanges', () => {
 	it('allows replacing a relationship removed in the same change set', async () => {
 		const meg = await makePerson(db, { id: 'p-meg' });
 		await makePerson(db, { id: 'p-frank' });
-		await applyRelationshipChanges(db, meg.id, {
+		await applyRelationshipChanges(db, stubStorage, meg.id, {
 			add: [{ personA: 'p-meg', personB: 'p-frank', type: 'spouse-of' }],
 			remove: []
 		});
 		await expect(
-			applyRelationshipChanges(db, meg.id, {
+			applyRelationshipChanges(db, stubStorage, meg.id, {
 				add: [{ personA: 'p-frank', personB: 'p-meg', type: 'spouse-of' }],
 				remove: [{ personA: 'p-meg', personB: 'p-frank', type: 'spouse-of' }]
 			})
@@ -313,7 +320,7 @@ describe('applyRelationshipChanges', () => {
 		const meg = await makePerson(db, { id: 'p-meg', name: 'Margaret' });
 		const frank = await makePerson(db, { id: 'p-frank', name: 'Frank' });
 		const carol = await makePerson(db, { id: 'p-carol', name: 'Carol' });
-		let family = await applyRelationshipChanges(db, meg.id, {
+		let family = await applyRelationshipChanges(db, stubStorage, meg.id, {
 			add: [
 				{ personA: 'p-meg', personB: 'p-frank', type: 'spouse-of' },
 				{ personA: 'p-meg', personB: 'p-carol', type: 'parent-of' }
@@ -322,11 +329,52 @@ describe('applyRelationshipChanges', () => {
 		});
 		expect(family.spouses.map((person) => person.id)).toEqual([frank.id]);
 		expect(family.children.map((person) => person.id)).toEqual([carol.id]);
-		family = await applyRelationshipChanges(db, meg.id, {
+		family = await applyRelationshipChanges(db, stubStorage, meg.id, {
 			add: [],
 			remove: [{ personA: 'p-meg', personB: 'p-frank', type: 'spouse-of' }]
 		});
 		expect(family.spouses).toEqual([]);
 		expect(family.children.map((person) => person.id)).toEqual([carol.id]);
+	});
+
+	it('shares a parent added to one sibling with the other, for both people', async () => {
+		const meg = await makePerson(db, { id: 'p-meg', name: 'Margaret' });
+		const rose = await makePerson(db, { id: 'p-rose', name: 'Rose' });
+		const dad = await makePerson(db, { id: 'p-dad', name: 'Dad' });
+		await applyRelationshipChanges(db, stubStorage, meg.id, {
+			add: [{ personA: 'p-meg', personB: 'p-rose', type: 'sibling-of' }],
+			remove: []
+		});
+		const family = await applyRelationshipChanges(db, stubStorage, meg.id, {
+			add: [{ personA: 'p-dad', personB: 'p-meg', type: 'parent-of' }],
+			remove: []
+		});
+		expect(family.parents.map((p) => p.id)).toEqual([dad.id]);
+		// The inferred parent shows up when viewing the sibling too.
+		const roseFamily = await getPersonDetail(db, stubStorage, rose.id);
+		expect(roseFamily?.family.parents.map((p) => p.id)).toEqual([dad.id]);
+	});
+
+	it('regenerates inferred edges when the manual edge behind them is removed', async () => {
+		const meg = await makePerson(db, { id: 'p-meg', name: 'Margaret' });
+		await makePerson(db, { id: 'p-rose', name: 'Rose' });
+		await makePerson(db, { id: 'p-dad', name: 'Dad' });
+		await applyRelationshipChanges(db, stubStorage, meg.id, {
+			add: [{ personA: 'p-meg', personB: 'p-rose', type: 'sibling-of' }],
+			remove: []
+		});
+		await applyRelationshipChanges(db, stubStorage, meg.id, {
+			add: [{ personA: 'p-dad', personB: 'p-meg', type: 'parent-of' }],
+			remove: []
+		});
+		// Removing the sibling link drops the inferred parent-of dad->rose edge.
+		await applyRelationshipChanges(db, stubStorage, meg.id, {
+			add: [],
+			remove: [{ personA: 'p-meg', personB: 'p-rose', type: 'sibling-of' }]
+		});
+		const inferred = (await db.select().from(schema.relationships)).filter(
+			(r) => r.source === 'inferred'
+		);
+		expect(inferred).toEqual([]);
 	});
 });

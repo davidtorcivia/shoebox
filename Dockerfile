@@ -38,9 +38,12 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/scripts/migrate.mjs /app/scripts/db-backup.mjs /app/scripts/trash-sweep.mjs ./scripts/
 COPY --from=build /app/src/lib/server/db/migrations ./migrations
 COPY docker/entrypoint.sh /entrypoint.sh
+# node runs unprivileged and only reads /app (root-owned, world-readable), so we
+# skip the expensive `chown -R /app` over node_modules — that recursive chown was
+# the dominant build cost. Only the writable mount points need node ownership.
 RUN chmod +x /entrypoint.sh \
 	&& mkdir -p /data /media \
-	&& chown -R node:node /app /data /media
+	&& chown node:node /data /media
 USER node
 EXPOSE 3000
 VOLUME ["/data", "/media"]

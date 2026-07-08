@@ -111,6 +111,20 @@ export async function listSuggestions(db: Db, storage: StorageAdapter): Promise<
 	);
 }
 
+// Cluster members whose item is still live. Suggestions only surface clusters
+// by their live-item faces, so assign/reject must act on exactly that set — a
+// stray face on a soft-deleted item must not block the whole cluster.
+async function liveClusterFaces(
+	db: Db,
+	clusterId: string
+): Promise<Array<{ id: string; itemId: string; box: string }>> {
+	return db
+		.select({ id: faces.id, itemId: faces.itemId, box: faces.box })
+		.from(faces)
+		.innerJoin(items, eq(items.id, faces.itemId))
+		.where(and(eq(faces.clusterId, clusterId), isNull(items.deletedAt)));
+}
+
 export async function assignCluster(
 	db: Db,
 	clusterId: string,
@@ -123,17 +137,11 @@ export async function assignCluster(
 	)[0];
 	if (!person) error(404, 'person not found');
 
-	const rows = await db.select().from(faces).where(eq(faces.clusterId, clusterId));
+	const rows = await liveClusterFaces(db, clusterId);
 	if (rows.length === 0) error(404, 'cluster not found');
-	await assertItemsExist(
-		db,
-		rows.map((row) => row.itemId)
-	);
+	const faceIds = rows.map((row) => row.id);
 
-	await db
-		.update(faces)
-		.set({ status: 'confirmed', personId })
-		.where(eq(faces.clusterId, clusterId));
+	await db.update(faces).set({ status: 'confirmed', personId }).where(inArray(faces.id, faceIds));
 	for (const face of rows) {
 		await db
 			.insert(itemPeople)
@@ -156,21 +164,35 @@ export async function rejectCluster(
 	opts: WriteOptions = {}
 ): Promise<void> {
 	const reindex = opts.reindex ?? reindexItem;
-	const rows = await db.select().from(faces).where(eq(faces.clusterId, clusterId));
+	const rows = await liveClusterFaces(db, clusterId);
 	if (rows.length === 0) error(404, 'cluster not found');
-	await assertItemsExist(
-		db,
-		rows.map((row) => row.itemId)
-	);
 	await db
 		.update(faces)
 		.set({ status: 'rejected', clusterId: null, personId: null })
-		.where(eq(faces.clusterId, clusterId));
+		.where(
+			inArray(
+				faces.id,
+				rows.map((row) => row.id)
+			)
+		);
 	await reindexAffected(
 		db,
 		rows.map((row) => row.itemId),
 		reindex
 	);
+}
+
+// Reject a single bad face box, removing it from its cluster without touching
+// the rest of the group.
+export async function rejectFace(db: Db, faceId: string, opts: WriteOptions = {}): Promise<void> {
+	const reindex = opts.reindex ?? reindexItem;
+	const face = (await db.select().from(faces).where(eq(faces.id, faceId)).limit(1))[0];
+	if (!face) error(404, 'face not found');
+	await db
+		.update(faces)
+		.set({ status: 'rejected', clusterId: null, personId: null })
+		.where(eq(faces.id, faceId));
+	await reindex(db, face.itemId);
 }
 
 export async function splitCluster(

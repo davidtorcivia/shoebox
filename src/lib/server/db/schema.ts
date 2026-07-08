@@ -59,6 +59,8 @@ export const items = sqliteTable(
 			.default('unknown'),
 		sortDate: text('sort_date'),
 		duration: real('duration'),
+		// Chosen poster frame timestamp (seconds) for videos; null = auto (10% in).
+		posterTime: real('poster_time'),
 		width: integer('width').notNull(),
 		height: integer('height').notNull(),
 		sizeBytes: integer('size_bytes').notNull(),
@@ -88,7 +90,7 @@ export const itemFiles = sqliteTable(
 			.notNull()
 			.references(() => items.id),
 		kind: text('kind', {
-			enum: ['original', 'poster', 'thumb_400', 'thumb_800', 'thumb_1600', 'sprite']
+			enum: ['original', 'poster', 'thumb_400', 'thumb_800', 'thumb_1600', 'sprite', 'playback']
 		}).notNull(),
 		storageKey: text('storage_key').notNull(),
 		mime: text('mime').notNull(),
@@ -127,7 +129,10 @@ export const relationships = sqliteTable(
 		personB: text('person_b')
 			.notNull()
 			.references(() => people.id),
-		type: text('type', { enum: ['parent-of', 'spouse-of', 'sibling-of'] }).notNull()
+		type: text('type', { enum: ['parent-of', 'spouse-of', 'sibling-of'] }).notNull(),
+		source: text('source', { enum: ['manual', 'inferred'] })
+			.notNull()
+			.default('manual')
 	},
 	(t) => [uniqueIndex('rel_unique').on(t.personA, t.personB, t.type)]
 );
@@ -146,7 +151,10 @@ export const itemPeople = sqliteTable(
 			.notNull()
 			.default('manual')
 	},
-	(t) => [primaryKey({ columns: [t.itemId, t.personId] }), index('item_people_person').on(t.personId)]
+	(t) => [
+		primaryKey({ columns: [t.itemId, t.personId] }),
+		index('item_people_person').on(t.personId)
+	]
 );
 
 export const tags = sqliteTable('tags', {
@@ -193,21 +201,28 @@ export const albumItems = sqliteTable(
 			.references(() => items.id),
 		position: integer('position').notNull()
 	},
-	(t) => [primaryKey({ columns: [t.albumId, t.itemId] }), index('album_items_album_position').on(t.albumId, t.position)]
+	(t) => [
+		primaryKey({ columns: [t.albumId, t.itemId] }),
+		index('album_items_album_position').on(t.albumId, t.position)
+	]
 );
 
-export const comments = sqliteTable('comments', {
-	id: text('id').primaryKey(),
-	itemId: text('item_id')
-		.notNull()
-		.references(() => items.id),
-	userId: text('user_id')
-		.notNull()
-		.references(() => users.id),
-	body: text('body').notNull(),
-	createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-	deletedAt: integer('deleted_at', { mode: 'timestamp' })
-}, (t) => [index('comments_item').on(t.itemId)]);
+export const comments = sqliteTable(
+	'comments',
+	{
+		id: text('id').primaryKey(),
+		itemId: text('item_id')
+			.notNull()
+			.references(() => items.id),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id),
+		body: text('body').notNull(),
+		createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+		deletedAt: integer('deleted_at', { mode: 'timestamp' })
+	},
+	(t) => [index('comments_item').on(t.itemId)]
+);
 
 export const shares = sqliteTable('shares', {
 	id: text('id').primaryKey(),
@@ -222,26 +237,32 @@ export const shares = sqliteTable('shares', {
 		.references(() => users.id)
 });
 
-export const faces = sqliteTable('faces', {
-	id: text('id').primaryKey(),
-	itemId: text('item_id')
-		.notNull()
-		.references(() => items.id),
-	frameTime: real('frame_time'),
-	box: text('box').notNull(),
-	embedding: blob('embedding', { mode: 'buffer' }).notNull(),
-	clusterId: text('cluster_id'),
-	personId: text('person_id'),
-	status: text('status', { enum: ['pending', 'confirmed', 'rejected'] })
-		.notNull()
-		.default('pending')
-}, (t) => [index('faces_item').on(t.itemId)]);
+export const faces = sqliteTable(
+	'faces',
+	{
+		id: text('id').primaryKey(),
+		itemId: text('item_id')
+			.notNull()
+			.references(() => items.id),
+		frameTime: real('frame_time'),
+		box: text('box').notNull(),
+		embedding: blob('embedding', { mode: 'buffer' }).notNull(),
+		clusterId: text('cluster_id'),
+		personId: text('person_id'),
+		status: text('status', { enum: ['pending', 'confirmed', 'rejected'] })
+			.notNull()
+			.default('pending')
+	},
+	(t) => [index('faces_item').on(t.itemId)]
+);
 
 export const jobs = sqliteTable(
 	'jobs',
 	{
 		id: text('id').primaryKey(),
-		kind: text('kind', { enum: ['derivatives', 'sprite', 'ingest_scan', 'face_scan'] }).notNull(),
+		kind: text('kind', {
+			enum: ['derivatives', 'sprite', 'ingest_scan', 'face_scan', 'transcode']
+		}).notNull(),
 		payload: text('payload').notNull(),
 		status: text('status', { enum: ['pending', 'running', 'done', 'failed'] })
 			.notNull()

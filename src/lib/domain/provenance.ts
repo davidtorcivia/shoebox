@@ -9,13 +9,7 @@ export function weekdayOf(d: ItemDate): string | null {
 	return WEEKDAYS[date.getUTCDay()];
 }
 
-export function eyebrowFor(
-	d: ItemDate,
-	source: 'upload' | 'ingest',
-	tapeLabel: string | null
-): string {
-	const parts = [weekdayOf(d), source === 'ingest' ? 'Ingest' : 'Upload', tapeLabel].filter(
-		(value): value is string => Boolean(value)
-	);
+export function eyebrowFor(d: ItemDate, tapeLabel: string | null): string {
+	const parts = [weekdayOf(d), tapeLabel].filter((value): value is string => Boolean(value));
 	return parts.join(' · ');
 }

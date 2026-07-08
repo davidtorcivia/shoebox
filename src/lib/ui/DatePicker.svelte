@@ -29,27 +29,67 @@
 	let rangeEndYear = $state(value.dateEnd?.slice(0, 4) ?? '');
 	let rangeEndMonth = $state(value.dateEnd?.slice(5, 7) ?? '12');
 	let lastPrecision = $state<DatePrecision>('unknown');
+	// The last value this picker itself produced. Lets the sync effect tell an
+	// external update (a different item loaded, or a parent resetting the field)
+	// apart from our own writes, so it re-hydrates the editing state instead of
+	// clobbering the parent's value back to stale internal state — the bug that
+	// made saved dates/precision silently revert to "unknown".
+	// svelte-ignore state_referenced_locally
+	let emitted = $state<ItemDate>(value);
 
+	function sameDate(a: ItemDate, b: ItemDate): boolean {
+		return a.precision === b.precision && a.dateStart === b.dateStart && a.dateEnd === b.dateEnd;
+	}
+
+	function computeValue(): ItemDate {
+		try {
+			if (precision === 'day') return itemDateFrom({ precision, day });
+			if (precision === 'month')
+				return itemDateFrom({ precision, year: Number(year), month: Number(month) });
+			if (precision === 'year') return itemDateFrom({ precision, year: Number(year) });
+			if (precision === 'range')
+				return itemDateFrom({ precision, start: boundaryDate('start'), end: boundaryDate('end') });
+			return itemDateFrom({ precision: 'unknown' });
+		} catch {
+			return { dateStart: null, dateEnd: null, precision: 'unknown' };
+		}
+	}
+
+	function hydrate(v: ItemDate): void {
+		precision = v.precision;
+		day = v.dateStart ?? '';
+		year = v.dateStart?.slice(0, 4) ?? '';
+		month = v.dateStart?.slice(5, 7) ?? '01';
+		rangeStartPrecision = boundaryPrecision(v.dateStart, 'start');
+		rangeEndPrecision = boundaryPrecision(v.dateEnd, 'end');
+		rangeStartDay = v.dateStart ?? '';
+		rangeStartYear = v.dateStart?.slice(0, 4) ?? '';
+		rangeStartMonth = v.dateStart?.slice(5, 7) ?? '01';
+		rangeEndDay = v.dateEnd ?? '';
+		rangeEndYear = v.dateEnd?.slice(0, 4) ?? '';
+		rangeEndMonth = v.dateEnd?.slice(5, 7) ?? '12';
+		lastPrecision = v.precision;
+	}
+
+	// Absorb external value changes: a value we didn't emit means the parent set
+	// it (new item, reset), so rebuild the editing state from it.
+	$effect(() => {
+		if (!sameDate(value, emitted)) {
+			hydrate(value);
+			emitted = value;
+		}
+	});
+
+	// Emit the value derived from the internal editing state on user changes.
 	$effect(() => {
 		if (precision !== lastPrecision) {
 			prepopulatePrecision(precision);
 			lastPrecision = precision;
 		}
-
-		try {
-			if (precision === 'day') value = itemDateFrom({ precision, day });
-			else if (precision === 'month') {
-				value = itemDateFrom({ precision, year: Number(year), month: Number(month) });
-			} else if (precision === 'year') value = itemDateFrom({ precision, year: Number(year) });
-			else if (precision === 'range') {
-				value = itemDateFrom({
-					precision,
-					start: boundaryDate('start'),
-					end: boundaryDate('end')
-				});
-			} else value = itemDateFrom({ precision: 'unknown' });
-		} catch {
-			value = { dateStart: null, dateEnd: null, precision: 'unknown' };
+		const next = computeValue();
+		if (!sameDate(next, emitted)) {
+			emitted = next;
+			value = next;
 		}
 	});
 
@@ -332,7 +372,7 @@
 	.year-box button {
 		min-height: 48px;
 		border: 0;
-		background: color-mix(in srgb, var(--cream) 13%, transparent);
+		background-color: color-mix(in srgb, var(--cream) 13%, transparent);
 		color: var(--cream);
 		color-scheme: dark;
 		font-family: var(--font-serif);
@@ -347,6 +387,8 @@
 
 	select {
 		cursor: pointer;
+		/* Room for the global chevron so it doesn't overlap the value. */
+		padding-right: 2.2em;
 	}
 
 	input[type='number'] {

@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalRel, familyOf, type Rel } from './relationships';
+import { canonicalRel, familyOf, inferRelationships, type Rel } from './relationships';
 
 const rel = (personA: string, personB: string, type: Rel['type']): Rel => ({
 	personA,
 	personB,
 	type
 });
+
+const relKey = (r: Rel) => `${r.personA}|${r.personB}|${r.type}`;
+const relSet = (rels: Rel[]) => new Set(rels.map(relKey));
 
 describe('canonicalRel', () => {
 	it('leaves parent-of untouched even when personA is greater than personB', () => {
@@ -115,5 +118,54 @@ describe('familyOf', () => {
 				grandchildren: []
 			}
 		);
+	});
+});
+
+describe('inferRelationships', () => {
+	it('shares a newly added parent across declared siblings', () => {
+		// meg and rose are siblings; adding dad as meg's parent makes him rose's too.
+		const manual = [rel('meg', 'rose', 'sibling-of'), rel('dad', 'meg', 'parent-of')];
+		const derived = relSet(inferRelationships(manual));
+		expect(derived.has(relKey(rel('dad', 'rose', 'parent-of')))).toBe(true);
+	});
+
+	it('propagates parents in both directions and along sibling chains', () => {
+		const manual = [
+			rel('meg', 'rose', 'sibling-of'),
+			rel('rose', 'sam', 'sibling-of'),
+			rel('mom', 'rose', 'parent-of')
+		];
+		const derived = relSet(inferRelationships(manual));
+		expect(derived.has(relKey(rel('mom', 'meg', 'parent-of')))).toBe(true);
+		expect(derived.has(relKey(rel('mom', 'sam', 'parent-of')))).toBe(true);
+	});
+
+	it('infers siblinghood from a shared parent', () => {
+		const manual = [rel('dad', 'meg', 'parent-of'), rel('dad', 'rose', 'parent-of')];
+		const derived = relSet(inferRelationships(manual));
+		expect(derived.has(relKey(canonicalRel(rel('meg', 'rose', 'sibling-of'))))).toBe(true);
+	});
+
+	it('does not merge the distinct parents of half-siblings', () => {
+		// meg and rose share only dad; a shared parent makes them siblings, but
+		// rose's mom must not become meg's parent (and vice versa).
+		const manual = [
+			rel('dad', 'meg', 'parent-of'),
+			rel('dad', 'rose', 'parent-of'),
+			rel('mom', 'rose', 'parent-of')
+		];
+		const derived = relSet(inferRelationships(manual));
+		expect(derived.has(relKey(canonicalRel(rel('meg', 'rose', 'sibling-of'))))).toBe(true);
+		expect(derived.has(relKey(rel('mom', 'meg', 'parent-of')))).toBe(false);
+	});
+
+	it('never re-emits an edge already set manually', () => {
+		const manual = [rel('dad', 'meg', 'parent-of'), rel('dad', 'rose', 'parent-of')];
+		const derived = inferRelationships(manual);
+		for (const d of derived) expect(relSet(manual).has(relKey(d))).toBe(false);
+	});
+
+	it('returns nothing for spouse-only graphs', () => {
+		expect(inferRelationships([rel('ann', 'bob', 'spouse-of')])).toEqual([]);
 	});
 });

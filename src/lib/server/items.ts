@@ -19,11 +19,13 @@ import {
 	yearOf,
 	type ItemDate
 } from '$lib/domain/dates';
+import { ageAt } from '$lib/domain/ages';
 import { HOLIDAYS, holidaysFor } from '$lib/domain/holidays';
 import { bumpYearCount } from '$lib/server/aggregates';
 import { ROLE_RANK } from '$lib/server/roles';
 import { reindexItem } from '$lib/server/search';
 import type { JobQueueAdapter, StorageAdapter } from '$lib/server/platform/types';
+import type { CropRect } from '$lib/domain/people-dto';
 import type { ItemDTO } from '$lib/types';
 
 type Db = App.Locals['db'];
@@ -33,7 +35,8 @@ type LinkOptions = { reindex?: boolean };
 
 export type { ItemDTO } from '$lib/types';
 
-export type FileKind = 'original' | 'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600' | 'sprite';
+export type FileKind =
+	'original' | 'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600' | 'sprite' | 'playback';
 
 export interface ItemFileInput {
 	kind: FileKind;
@@ -181,11 +184,24 @@ export async function createItem(
 	await queue.enqueue('derivatives', { itemId: id });
 	if (input.type === 'video') {
 		await queue.enqueue('sprite', { itemId: id });
+		await queue.enqueue('transcode', { itemId: id });
 	}
 
 	const dto = await getItemDTO(db, storage, id);
 	if (!dto) throw error(500, 'item creation failed');
 	return dto;
+}
+
+function parsePersonCrop(raw: string | null): CropRect | null {
+	if (!raw) return null;
+	try {
+		const crop = JSON.parse(raw) as CropRect;
+		return [crop?.x, crop?.y, crop?.w, crop?.h].every((n) => typeof n === 'number')
+			? { x: crop.x, y: crop.y, w: crop.w, h: crop.h }
+			: null;
+	} catch {
+		return null;
+	}
 }
 
 export async function buildItemDTOs(
@@ -203,11 +219,33 @@ export async function buildItemDTOs(
 			id: people.id,
 			slug: people.slug,
 			name: people.name,
-			accentColor: people.accentColor
+			accentColor: people.accentColor,
+			birthdate: people.birthdate,
+			deathDate: people.deathDate,
+			avatarItemId: people.avatarItemId,
+			avatarCrop: people.avatarCrop
 		})
 		.from(itemPeople)
 		.innerJoin(people, eq(itemPeople.personId, people.id))
 		.where(inArray(itemPeople.itemId, ids));
+
+	// Resolve each tagged person's own avatar thumbnail (a different item's
+	// derivative) so People chips can show a face instead of a letter.
+	const avatarItemIds = [
+		...new Set(
+			itemPeopleRows.map((person) => person.avatarItemId).filter((id): id is string => Boolean(id))
+		)
+	];
+	const avatarUrlByItem = new Map<string, string>();
+	if (avatarItemIds.length > 0) {
+		const avatarFiles = await db
+			.select({ itemId: itemFiles.itemId, key: itemFiles.storageKey })
+			.from(itemFiles)
+			.where(and(inArray(itemFiles.itemId, avatarItemIds), eq(itemFiles.kind, 'thumb_400')));
+		for (const file of avatarFiles) {
+			avatarUrlByItem.set(file.itemId, await storage.mediaUrl(file.key));
+		}
+	}
 	const itemTagRows = await db
 		.select({ itemId: itemTags.itemId, id: tags.id, name: tags.name, kind: tags.kind })
 		.from(itemTags)
@@ -235,6 +273,7 @@ export async function buildItemDTOs(
 			else if (file.kind === 'thumb_800') urls.thumb800 = url;
 			else if (file.kind === 'thumb_1600') urls.thumb1600 = url;
 			else if (file.kind === 'original') urls.original = url;
+			else if (file.kind === 'playback') urls.playback = url;
 			else if (file.kind === 'sprite') urls.sprite = url;
 		}
 
@@ -247,6 +286,7 @@ export async function buildItemDTOs(
 			displayDate: displayDate(date),
 			shortDate: shortDate(date),
 			duration: row.duration,
+			posterTime: row.posterTime,
 			width: row.width,
 			height: row.height,
 			status: row.status,
@@ -254,12 +294,27 @@ export async function buildItemDTOs(
 			blurhash: row.blurhash ?? null,
 			people: itemPeopleRows
 				.filter((person) => person.itemId === row.id)
-				.map((person) => ({
-					id: person.id,
-					slug: person.slug,
-					name: person.name,
-					accentColor: person.accentColor
-				})),
+				.map((person) => {
+					// Age at the item's date. Only "day" precision is exact; broader
+					// precisions (month/year/range) yield an approximate "circa" age.
+					const age =
+						date.dateStart && person.birthdate
+							? ageAt(person.birthdate, date.dateStart, person.deathDate)
+							: null;
+					const avatarUrl = person.avatarItemId
+						? (avatarUrlByItem.get(person.avatarItemId) ?? null)
+						: null;
+					const avatarCrop = parsePersonCrop(person.avatarCrop);
+					return {
+						id: person.id,
+						slug: person.slug,
+						name: person.name,
+						accentColor: person.accentColor,
+						avatarUrl: avatarUrl && avatarCrop ? avatarUrl : null,
+						avatarCrop: avatarUrl && avatarCrop ? avatarCrop : null,
+						...(age != null ? { age, ageApprox: date.precision !== 'day' } : {})
+					};
+				}),
 			tags: itemTagRows
 				.filter((tag) => tag.itemId === row.id)
 				.map((tag) => ({ id: tag.id, name: tag.name, kind: tag.kind })),
@@ -380,9 +435,7 @@ export async function listItems(
 		);
 	}
 	for (const personId of query.people ?? []) {
-		conds.push(
-			sql`${items.id} in (select item_id from item_people where person_id = ${personId})`
-		);
+		conds.push(sql`${items.id} in (select item_id from item_people where person_id = ${personId})`);
 	}
 	if (query.tags?.length) {
 		for (const name of query.tags.map(normalizeTagName).filter(Boolean)) {
@@ -504,6 +557,35 @@ export async function restoreItem(db: Db, storage: StorageAdapter, id: string): 
 	await reindexItem(db, id);
 	const dto = await getItemDTO(db, storage, id);
 	if (!dto) throw error(500, 'item restore failed');
+	return dto;
+}
+
+/**
+ * Set a video's poster frame to `posterTime` seconds and re-run the derivatives
+ * job so the poster (and the thumbnails derived from it) reflect the choice.
+ */
+export async function setItemPoster(
+	db: Db,
+	storage: StorageAdapter,
+	queue: JobQueueAdapter,
+	user: SessionUser,
+	id: string,
+	posterTime: number
+): Promise<ItemDTO> {
+	const row = await getItemRow(db, id);
+	if (!row) throw error(404, 'item not found');
+	if (!canModifyItem(user, row)) throw error(403, 'cannot modify item');
+	if (row.type !== 'video') throw error(400, 'poster frames only apply to videos');
+	if (!Number.isFinite(posterTime) || posterTime < 0) throw error(400, 'invalid poster time');
+	if (row.duration != null && posterTime > row.duration + 0.5) {
+		throw error(400, 'poster time is past the end of the video');
+	}
+
+	await db.update(items).set({ posterTime }).where(eq(items.id, id));
+	await queue.enqueue('derivatives', { itemId: id });
+
+	const dto = await getItemDTO(db, storage, id);
+	if (!dto) throw error(500, 'item not found after poster update');
 	return dto;
 }
 

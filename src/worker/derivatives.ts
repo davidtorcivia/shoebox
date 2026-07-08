@@ -25,9 +25,25 @@ export interface VideoProbe {
 	width: number;
 	height: number;
 	creationTime: string | null;
+	/** ffprobe `codec_name` of the first video stream, lowercased (e.g. 'hevc'). */
+	codec: string | null;
 }
 
-type DerivedKind = 'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600' | 'sprite';
+type DerivedKind = 'poster' | 'thumb_400' | 'thumb_800' | 'thumb_1600' | 'sprite' | 'playback';
+
+/** Video codecs browsers decode natively across Chrome/Firefox/Safari. Anything
+ * else (HEVC/H.265, MPEG-2, DV, MPEG-4 ASP, ProRes, …) is served as-is today and
+ * silently fails to play, so we transcode it to H.264 for a playback derivative. */
+const WEB_SAFE_VIDEO_CODECS = new Set(['h264', 'vp8', 'vp9', 'av1']);
+
+/** The full re-encode is the heaviest job; give it a much longer leash than the
+ * poster/thumbnail pass while still bounding a wedged ffmpeg. */
+const TRANSCODE_TIMEOUT_MS = 20 * 60_000;
+
+export function needsTranscode(codec: string | null): boolean {
+	if (!codec) return false;
+	return !WEB_SAFE_VIDEO_CODECS.has(codec.toLowerCase());
+}
 
 interface DerivedRow {
 	kind: DerivedKind;
@@ -77,7 +93,8 @@ export function probeVideo(filePath: string, timeoutMs = FFPROBE_TIMEOUT_MS): Pr
 			height: stream.height ?? 0,
 			creationTime: normalizeCreationTime(
 				(data.format.tags?.creation_time as string | undefined) ?? null
-			)
+			),
+			codec: stream.codec_name ? stream.codec_name.toLowerCase() : null
 		});
 	});
 	return promise;
@@ -102,12 +119,13 @@ export function runFfmpeg(
 		}
 		reject(new Error(`ffmpeg timed out after ${timeoutMs}ms (input: ${input})`));
 	}, timeoutMs);
-	cmd.on('end', () => {
-		if (settled) return;
-		settled = true;
-		clearTimeout(timer);
-		resolve();
-	})
+	cmd
+		.on('end', () => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			resolve();
+		})
 		.on('error', (err) => {
 			if (settled) return;
 			settled = true;
@@ -198,7 +216,10 @@ export const derivativesHandler: JobHandler = async (payload, ctx) => {
 		if (item.type === 'video') {
 			const probe = await probeVideo(originalAbs);
 			const updates: Partial<typeof schema.items.$inferInsert> = {};
-			if (probe.duration > 0 && (item.duration == null || Math.abs(item.duration - probe.duration) > 0.5)) {
+			if (
+				probe.duration > 0 &&
+				(item.duration == null || Math.abs(item.duration - probe.duration) > 0.5)
+			) {
 				updates.duration = probe.duration;
 			}
 			if (
@@ -213,11 +234,18 @@ export const derivativesHandler: JobHandler = async (payload, ctx) => {
 				ctx.db.update(schema.items).set(updates).where(eq(schema.items.id, itemId)).run();
 			}
 
+			// Honor a user-chosen poster frame; fall back to 10% into the clip. A
+			// payload override (from an immediate "set thumbnail" request) wins over
+			// the stored value so re-runs and one-off regenerations agree.
+			const chosen =
+				typeof payload.posterTime === 'number' ? payload.posterTime : (item.posterTime ?? null);
+			const posterSeek =
+				chosen != null && chosen >= 0 && chosen <= probe.duration ? chosen : probe.duration * 0.1;
 			const framePng = join(tmp, 'poster.png');
 			await runFfmpeg(
 				(cmd) =>
 					cmd
-						.seekInput(Math.max(0, probe.duration * 0.1))
+						.seekInput(Math.max(0, posterSeek))
 						.outputOptions(['-frames:v 1', "-vf scale='min(1600,iw)':-2"]),
 				originalAbs,
 				framePng
@@ -233,11 +261,7 @@ export const derivativesHandler: JobHandler = async (payload, ctx) => {
 				[width, height] = [height, width];
 			}
 			if (width > 0 && height > 0 && (item.width !== width || item.height !== height)) {
-				ctx.db
-					.update(schema.items)
-					.set({ width, height })
-					.where(eq(schema.items.id, itemId))
-					.run();
+				ctx.db.update(schema.items).set({ width, height }).where(eq(schema.items.id, itemId)).run();
 			}
 		}
 
@@ -280,6 +304,89 @@ export const spriteHandler: JobHandler = async (payload, ctx) => {
 				height: out.info.height
 			}
 		]);
+	} finally {
+		await rm(tmp, { recursive: true, force: true });
+	}
+};
+
+/** Drop any leftover `playback` derivative from the earlier keep-both policy so a
+ * re-run under the replace policy converges on a single H.264 `original`. */
+async function removeStalePlayback(ctx: Parameters<JobHandler>[1], itemId: string): Promise<void> {
+	const rows = ctx.db
+		.select()
+		.from(schema.itemFiles)
+		.where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'playback')))
+		.all();
+	if (rows.length === 0) return;
+	for (const row of rows) await ctx.storage.delete(row.storageKey);
+	ctx.db
+		.delete(schema.itemFiles)
+		.where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'playback')))
+		.run();
+}
+
+/**
+ * Make a video browser-playable when its source codec (HEVC/H.265 and other
+ * archival codecs) is not decodable in browsers. Storage policy is **replace**:
+ * the H.264 encode overwrites the original in place — no HEVC master is kept and
+ * no separate playback derivative is produced. No-op for photos or already
+ * web-safe videos.
+ */
+export const transcodeHandler: JobHandler = async (payload, ctx) => {
+	const itemId = String(payload.itemId ?? '');
+	const { item, originalKey } = loadItem(ctx.db, itemId);
+	if (item.type !== 'video') return;
+
+	const originalAbs = join(ctx.mediaPath, originalKey);
+	const probe = await probeVideo(originalAbs);
+	if (!needsTranscode(probe.codec)) {
+		await removeStalePlayback(ctx, itemId);
+		return;
+	}
+
+	const tmp = await mkdtemp(join(tmpdir(), 'shoebox-transcode-'));
+	try {
+		const outMp4 = join(tmp, 'transcode.mp4');
+		await runFfmpeg(
+			(cmd) =>
+				cmd.outputOptions([
+					'-map 0:v:0',
+					'-map 0:a:0?',
+					'-c:v libx264',
+					'-preset veryfast',
+					'-crf 20',
+					// format=yuv420p forces 8-bit 4:2:0: HEVC sources are frequently 10-bit
+					// (yuv420p10le), which browsers cannot decode even re-wrapped as H.264.
+					// Cap the long edge at 1080p for a sane streaming size; even dimensions
+					// (-2) are mandatory for yuv420p H.264.
+					"-vf scale='min(1920,iw)':-2:flags=lanczos,format=yuv420p",
+					'-c:a aac',
+					'-b:a 160k',
+					'-movflags +faststart'
+				]),
+			originalAbs,
+			outMp4,
+			TRANSCODE_TIMEOUT_MS
+		);
+
+		// Overwrite the original in place with the H.264 encode (replace policy).
+		const data = await readFile(outMp4);
+		await ctx.storage.put(originalKey, new Uint8Array(data), { contentType: 'video/mp4' });
+
+		// The 1080p cap may have changed the dimensions; re-probe and record them on
+		// both the item and its `original` file row.
+		const after = await probeVideo(join(ctx.mediaPath, originalKey));
+		ctx.db
+			.update(schema.items)
+			.set({ width: after.width, height: after.height })
+			.where(eq(schema.items.id, itemId))
+			.run();
+		ctx.db
+			.update(schema.itemFiles)
+			.set({ mime: 'video/mp4', width: after.width, height: after.height })
+			.where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'original')))
+			.run();
+		await removeStalePlayback(ctx, itemId);
 	} finally {
 		await rm(tmp, { recursive: true, force: true });
 	}

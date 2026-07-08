@@ -34,8 +34,11 @@ COPY --from=build /app/build-worker ./build-worker
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/src/lib/server/db/migrations ./migrations
+# node reads /app (root-owned, world-readable); only the writable mount points
+# need its ownership. Skipping the recursive /app chown avoids the slow pass over
+# node_modules that dominated build time.
 RUN mkdir -p /data /media /ingest \
-	&& chown -R node:node /app /data /media /ingest
+	&& chown node:node /data /media /ingest
 USER node
 VOLUME ["/data", "/media", "/ingest"]
 CMD ["node", "build-worker/index.js"]

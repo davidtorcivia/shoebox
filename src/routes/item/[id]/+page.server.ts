@@ -25,6 +25,7 @@ export const load: PageServerLoad = async ({ fetch, locals, params, url }) => {
 
 	const neighbors = await neighborsOf(locals.db, params.id, contextFromParams(url.searchParams));
 	const canEdit = ROLE_RANK[me.role] >= ROLE_RANK.editor || item.uploadedBy === me.id;
+	const canDelete = ROLE_RANK[me.role] >= ROLE_RANK.admin;
 	const y = url.searchParams.get('y');
 	const backYear = y && Number.isInteger(Number(y)) ? Number(y) : null;
 	const facesEnabled = locals.platform.features.faces;
@@ -35,6 +36,7 @@ export const load: PageServerLoad = async ({ fetch, locals, params, url }) => {
 		neighbors,
 		me,
 		canEdit,
+		canDelete,
 		canCreatePeople: ROLE_RANK[me.role] >= ROLE_RANK.editor,
 		canShare: ROLE_RANK[me.role] >= ROLE_RANK.editor,
 		facesEnabled,

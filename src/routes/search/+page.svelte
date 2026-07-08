@@ -157,8 +157,8 @@
 			birthdate: null,
 			deathDate: null,
 			avatarItemId: person.avatarItemId,
-			avatarCrop: null,
-			avatarUrl: null,
+			avatarCrop: person.avatarCrop,
+			avatarUrl: person.avatarUrl,
 			itemCount: 0
 		};
 	}
@@ -281,7 +281,8 @@
 		position: relative;
 		z-index: 1;
 		width: 100%;
-		margin: 0;
+		max-width: 1120px;
+		margin: 0 auto;
 	}
 
 	.omnibox-input {
@@ -418,7 +419,7 @@
 	.results {
 		position: relative;
 		z-index: 1;
-		max-width: 1220px;
+		max-width: 1120px;
 		margin: 28px auto 0;
 	}
 

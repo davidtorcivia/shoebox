@@ -148,11 +148,15 @@
 		min-height: 48px;
 		padding: 0 12px;
 		border: 0;
-		background: color-mix(in srgb, currentColor 10%, transparent);
+		background-color: color-mix(in srgb, currentColor 10%, transparent);
 		color: inherit;
 		cursor: pointer;
 		font-family: var(--sans);
 		font-size: 13px;
+	}
+
+	select {
+		padding-right: 2.2em;
 	}
 
 	.danger {

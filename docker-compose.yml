@@ -6,7 +6,8 @@ services:
     image: shoebox-app:0.1.0
     restart: unless-stopped
     ports:
-      - '3000:3000'
+      # Bound to the LAN interface only; Caddy reverse-proxies to it via 192.168.1.131:3004.
+      - '192.168.1.131:3004:3000'
     env_file: .env
     environment:
       PLATFORM: node
@@ -41,6 +42,10 @@ services:
     build:
       context: .
       dockerfile: faces/Dockerfile
+      args:
+        # Build the Intel-GPU (OpenVINO) image by default for this deployment.
+        # Set FACE_GPU= (empty) in .env to build a CPU-only image instead.
+        FACE_GPU: ${FACE_GPU-openvino}
     image: shoebox-faces:0.1.0
     restart: unless-stopped
     profiles: ['faces']
@@ -48,6 +53,20 @@ services:
     environment:
       DATABASE_PATH: /data/shoebox.db
       MEDIA_PATH: /media
+      # Intel ARC A770 acceleration via OpenVINO. The worker falls back to CPU on
+      # its own if the GPU can't be initialized, so these are safe defaults.
+      FACE_PROVIDERS: ${FACE_PROVIDERS:-OpenVINOExecutionProvider,CPUExecutionProvider}
+      FACE_OPENVINO_DEVICE: ${FACE_OPENVINO_DEVICE:-GPU}
+      # buffalo_l on the GPU can afford a larger detector for better small-face recall.
+      FACE_DET_SIZE: ${FACE_DET_SIZE:-1024}
+    # Pass the Intel GPU render node through to the container. On a CPU-only host,
+    # comment this block out (and set FACE_GPU= / FACE_PROVIDERS=CPUExecutionProvider).
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      # Host render-group gid so the uid-1000 worker can open /dev/dri.
+      # `getent group render` on this host reports 993.
+      - '${FACE_RENDER_GID:-993}'
     volumes:
       - ${SHOEBOX_DATA_DIR:-./data}:/data
       - ${SHOEBOX_MEDIA_DIR:-./media}:/media

@@ -15,6 +15,7 @@
 	import Player from '$lib/ui/Player.svelte';
 	import ShareDialog from '$lib/ui/ShareDialog.svelte';
 	import TagsRow from '$lib/ui/TagsRow.svelte';
+	import ThumbnailPicker from '$lib/ui/ThumbnailPicker.svelte';
 	import type { ItemDTO } from '$lib/dto';
 	import type { PageData } from './$types';
 
@@ -31,6 +32,11 @@
 	let player = $state<PlayerHandle | null>(null);
 	let saveState = $state('');
 	let shareOpen = $state(false);
+	let thumbPickerOpen = $state(false);
+	let thumbState = $state('');
+	let savingThumb = $state(false);
+	let confirmingDelete = $state(false);
+	let deleteState = $state('');
 	// svelte-ignore state_referenced_locally
 	let facesVisible = $state(data.item.type === 'photo' && data.faces.length > 0);
 
@@ -40,9 +46,18 @@
 	const backLabel = $derived(data.backYear ?? year ?? 'Timeline');
 	const title = $derived(item.title);
 	const pageTitle = $derived(item.title ?? item.displayDate);
-	const mediaSrc = $derived(item.urls.original ?? item.urls.thumb1600 ?? item.urls.poster);
+	const mediaSrc = $derived(
+		item.urls.playback ?? item.urls.original ?? item.urls.thumb1600 ?? item.urls.poster
+	);
 	const poster = $derived(item.urls.poster || item.urls.thumb800 || item.urls.thumb1600);
 	const hasKnownDate = $derived(item.date.precision !== 'unknown');
+	// Faces move frame-to-frame in video, so overlay boxes are meaningless there.
+	// Collapse them to a de-duplicated list of the people detected in the clip.
+	const videoFacePeople = $derived(
+		item.type === 'video'
+			? Array.from(new Map(data.faces.map((f) => [f.person.id, f.person])).values())
+			: []
+	);
 
 	$effect(() => {
 		if (data.item.id === loadedItemId) return;
@@ -55,6 +70,25 @@
 	function navigateTo(id: string | null) {
 		if (!id) return;
 		void goto(resolve(`/item/${id}${data.contextQuery ? `?${data.contextQuery}` : ''}`));
+	}
+
+	// Touch swipe to move between items (replaces the on-screen arrows on mobile).
+	let swipeX = 0;
+	let swipeY = 0;
+
+	function onStagePointerDown(event: PointerEvent) {
+		if (event.pointerType === 'mouse') return;
+		swipeX = event.clientX;
+		swipeY = event.clientY;
+	}
+
+	function onStagePointerUp(event: PointerEvent) {
+		if (event.pointerType === 'mouse') return;
+		const dx = event.clientX - swipeX;
+		const dy = event.clientY - swipeY;
+		if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+			navigateTo(dx < 0 ? data.neighbors.nextId : data.neighbors.prevId);
+		}
 	}
 
 	function handleRoomAction(action: PlayerAction) {
@@ -91,6 +125,37 @@
 		item = body.item;
 		saveState = 'Saved';
 	}
+
+	async function chooseThumbnail(posterTime: number) {
+		savingThumb = true;
+		thumbState = '';
+		const res = await fetch(`/api/items/${item.id}`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ action: 'setPoster', posterTime })
+		});
+		savingThumb = false;
+		if (!res.ok) {
+			thumbState = 'Could not update thumbnail';
+			return;
+		}
+		const body = (await res.json()) as { item: ItemDTO };
+		item = body.item;
+		thumbPickerOpen = false;
+		// The new poster is rendered by the worker; it appears on next reload.
+		thumbState = 'Thumbnail queued — it updates once processing finishes.';
+	}
+
+	async function deleteMedia() {
+		deleteState = 'Deleting';
+		const res = await fetch(`/api/items/${item.id}`, { method: 'DELETE' });
+		if (!res.ok) {
+			deleteState = 'Could not delete';
+			confirmingDelete = false;
+			return;
+		}
+		void goto(data.backYear ? resolve(`/?y=${data.backYear}`) : resolve('/'));
+	}
 </script>
 
 <svelte:head>
@@ -125,21 +190,20 @@
 		{:else}
 			<span class="topbar-spacer" aria-hidden="true"></span>
 		{/if}
-		<a href={data.backYear ? resolve(`/?y=${data.backYear}`) : resolve('/')} aria-label="Close"
-			>✕ Close</a
-		>
+		<span class="topbar-spacer" aria-hidden="true"></span>
 	</header>
 
 	<div class="room-grid">
 		<div class="stage-column">
-			<div class="stage">
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="stage" onpointerdown={onStagePointerDown} onpointerup={onStagePointerUp}>
 				<div class="media-frame">
 					{#if item.type === 'video'}
 						<Player bind:this={player} src={mediaSrc} {poster} duration={item.duration} {title} />
 					{:else}
 						<Lightbox src={mediaSrc} alt={item.title ?? 'Photo'} />
 					{/if}
-					{#if facesVisible && data.faces.length > 0}
+					{#if facesVisible && item.type === 'photo' && data.faces.length > 0}
 						<FaceBoxes faces={data.faces} />
 					{/if}
 				</div>
@@ -167,7 +231,7 @@
 		</div>
 
 		<aside class="rail">
-			<p class="eyebrow">{eyebrowFor(item.date, data.source, item.tapeLabel)} · {item.type}</p>
+			<p class="eyebrow">{eyebrowFor(item.date, item.tapeLabel)}</p>
 			{#if hasKnownDate}
 				<p class="date">{item.displayDate}</p>
 			{/if}
@@ -176,6 +240,20 @@
 			{/if}
 			{#if item.description}
 				<p class="story">{item.description}</p>
+			{/if}
+
+			{#if item.type === 'video' && videoFacePeople.length > 0}
+				<div class="faces-note" data-testid="faces-in-video">
+					<span class="faces-note-label">In this video</span>
+					<span class="faces-note-people">
+						{#each videoFacePeople as person (person.id)}
+							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- person slug is dynamic -->
+							<a href={`/people/${person.slug}`} style:--accent={person.accentColor}
+								>{person.name}</a
+							>
+						{/each}
+					</span>
+				</div>
 			{/if}
 
 			<div class="rail-actions">
@@ -204,7 +282,29 @@
 						onClose={() => (shareOpen = false)}
 					/>
 				{/if}
-				{#if data.facesEnabled && data.faces.length > 0}
+				{#if data.canEdit && item.type === 'video' && item.urls.sprite}
+					<button
+						class="thumb-action"
+						type="button"
+						data-testid="choose-thumbnail"
+						onclick={() => (thumbPickerOpen = true)}
+					>
+						Choose thumbnail
+					</button>
+					<ThumbnailPicker
+						open={thumbPickerOpen}
+						spriteUrl={item.urls.sprite}
+						duration={item.duration}
+						currentPosterTime={item.posterTime ?? null}
+						saving={savingThumb}
+						onClose={() => (thumbPickerOpen = false)}
+						onChoose={(time) => void chooseThumbnail(time)}
+					/>
+					{#if thumbState}
+						<span class="thumb-state" role="status">{thumbState}</span>
+					{/if}
+				{/if}
+				{#if data.facesEnabled && item.type === 'photo' && data.faces.length > 0}
 					<button
 						class="face-toggle"
 						type="button"
@@ -213,6 +313,33 @@
 					>
 						Faces
 					</button>
+				{/if}
+				{#if data.canDelete}
+					{#if confirmingDelete}
+						<button
+							class="delete-action confirm"
+							type="button"
+							data-testid="delete-confirm"
+							onclick={() => void deleteMedia()}
+						>
+							Confirm delete
+						</button>
+						<button class="delete-action" type="button" onclick={() => (confirmingDelete = false)}>
+							Cancel
+						</button>
+					{:else}
+						<button
+							class="delete-action"
+							type="button"
+							data-testid="delete-button"
+							onclick={() => (confirmingDelete = true)}
+						>
+							Delete
+						</button>
+					{/if}
+					{#if deleteState}
+						<span class="delete-state" role="status">{deleteState}</span>
+					{/if}
 				{/if}
 			</div>
 
@@ -242,7 +369,10 @@
 <style>
 	.item-room {
 		margin-top: -56px;
-		min-height: calc(100svh - 56px);
+		/* Starts at the viewport top (pulled up under the nav by the negative
+		   margin), so it must be a full 100svh tall to reach the bottom — the
+		   earlier `- 56px` left a dark body-coloured strip at the bottom edge. */
+		min-height: 100svh;
 		padding: calc(56px + clamp(1rem, 2vw, 2rem)) clamp(1rem, 2vw, 2rem) clamp(1rem, 2vw, 2rem);
 		color: var(--cream);
 		background-image:
@@ -389,9 +519,40 @@
 		gap: 12px;
 	}
 
+	.faces-note {
+		display: grid;
+		gap: 0.5rem;
+	}
+
+	.faces-note-label {
+		font-family: var(--font-sans);
+		font-size: 0.72rem;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		opacity: 0.7;
+	}
+
+	.faces-note-people {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem 0.9rem;
+		font-family: var(--font-serif);
+		font-size: 1.02rem;
+	}
+
+	.faces-note-people a {
+		color: var(--cream);
+		text-decoration: underline;
+		text-decoration-color: var(--accent, var(--dawn));
+		text-decoration-thickness: 2px;
+		text-underline-offset: 4px;
+	}
+
 	.download-original,
 	.share-action,
-	.face-toggle {
+	.thumb-action,
+	.face-toggle,
+	.delete-action {
 		min-height: 48px;
 		border: 0;
 		background: none;
@@ -403,6 +564,26 @@
 		line-height: 48px;
 		text-decoration: none;
 		text-transform: uppercase;
+	}
+
+	.delete-action {
+		opacity: 0.7;
+	}
+
+	.delete-action.confirm {
+		color: var(--dawn);
+		font-weight: 800;
+		opacity: 1;
+	}
+
+	.delete-state,
+	.thumb-state {
+		align-self: center;
+		font-family: var(--font-sans);
+		font-size: 0.72rem;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		opacity: 0.7;
 	}
 
 	.face-toggle[aria-pressed='true'] {
@@ -441,21 +622,13 @@
 			grid-template-columns: 1fr;
 		}
 
+		/* Arrows give way to swipe navigation on touch screens. */
 		.edge {
-			top: auto;
-			bottom: -3.7rem;
-		}
-
-		.prev {
-			left: 0;
-		}
-
-		.next {
-			right: 0;
+			display: none;
 		}
 
 		.social {
-			margin-top: 4rem;
+			margin-top: 1.4rem;
 		}
 	}
 </style>

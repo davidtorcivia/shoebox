@@ -42,7 +42,9 @@
 		});
 		if (!res.ok) {
 			relError =
-				res.status === 409 ? 'That relationship already exists.' : 'Could not update relationships.';
+				res.status === 409
+					? 'That relationship already exists.'
+					: 'Could not update relationships.';
 			return;
 		}
 		family = ((await res.json()) as { family: FamilyRefs }).family;
@@ -91,7 +93,13 @@
 			<span class="names">
 				{#each row.list as member (member.id)}
 					<span class="p">
-						<Avatar name={member.name} accentColor={member.accentColor} size={19} />
+						<Avatar
+							name={member.name}
+							accentColor={member.accentColor}
+							size={19}
+							avatarUrl={member.avatarUrl}
+							avatarCrop={member.avatarCrop}
+						/>
 						<a href={`/people/${member.slug}`}>{member.name}</a>
 						{#if row.kind}
 							<button
@@ -124,12 +132,12 @@
 	select {
 		min-height: 44px;
 		border: 0;
-		background: color-mix(in srgb, var(--cream) 12%, transparent);
+		background-color: color-mix(in srgb, var(--cream) 12%, transparent);
 		color: var(--cream);
 		color-scheme: dark;
 		font-family: var(--font-serif);
 		font-size: 16px;
-		padding: 10px 12px;
+		padding: 10px 2.2em 10px 12px;
 	}
 
 	.addrow button[type='submit'] {

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
 import {
 	albumItems as albumItemsTable,
 	albums as albumsTable,
@@ -16,6 +17,7 @@ import {
 	listItems,
 	normalizeTagName,
 	restoreItem,
+	setItemPoster,
 	updateItem,
 	type CreateItemInput
 } from './items';
@@ -152,12 +154,13 @@ describe('createItem', () => {
 		).rejects.toMatchObject({ status: 400 });
 	});
 
-	it('bumps year_counts and enqueues derivatives plus sprite for videos', async () => {
+	it('bumps year_counts and enqueues derivatives, sprite, and transcode for videos', async () => {
 		await createItem(db, storage, queue, baseInput());
 		expect(await db.select().from(yearCounts)).toEqual([{ year: 1994, type: 'video', count: 1 }]);
 		expect(queue.enqueued).toEqual([
 			{ kind: 'derivatives', payload: { itemId: 'itm000000001' } },
-			{ kind: 'sprite', payload: { itemId: 'itm000000001' } }
+			{ kind: 'sprite', payload: { itemId: 'itm000000001' } },
+			{ kind: 'transcode', payload: { itemId: 'itm000000001' } }
 		]);
 	});
 
@@ -178,7 +181,14 @@ describe('createItem', () => {
 		expect(dto.tags.map((tag) => tag.name).sort()).toEqual(['christmas', 'sprinkler']);
 		expect(dto.tags.every((tag) => tag.kind === 'topic')).toBe(true);
 		expect(dto.people).toEqual([
-			{ id: mom.id, slug: mom.slug, name: 'Mom', accentColor: '#A8D8EA' }
+			{
+				id: mom.id,
+				slug: mom.slug,
+				name: 'Mom',
+				accentColor: '#A8D8EA',
+				avatarUrl: null,
+				avatarCrop: null
+			}
 		]);
 
 		await createItem(
@@ -195,6 +205,33 @@ describe('createItem', () => {
 		await expect(
 			createItem(db, storage, queue, baseInput({ people: ['p_nope'] }))
 		).rejects.toMatchObject({ status: 400 });
+	});
+
+	it('reports circa age at the item date for imprecise dates', async () => {
+		const kid = await seedPerson(db, { name: 'Kid', birthdate: '1990-06-15' });
+		// baseInput date is year-precision 1994 → age at 1994-01-01 is 3, approximate.
+		const dto = await createItem(db, storage, queue, baseInput({ people: [kid.id] }));
+		expect(dto.people[0]).toMatchObject({ id: kid.id, age: 3, ageApprox: true });
+	});
+
+	it('reports an exact age for day-precision dates', async () => {
+		const kid = await seedPerson(db, { name: 'Kid', birthdate: '1990-06-15' });
+		const dto = await createItem(
+			db,
+			storage,
+			queue,
+			baseInput({
+				date: { dateStart: '1995-06-15', dateEnd: '1995-06-15', precision: 'day' },
+				people: [kid.id]
+			})
+		);
+		expect(dto.people[0]).toMatchObject({ age: 5, ageApprox: false });
+	});
+
+	it('omits age when the person has no birthdate', async () => {
+		const mom = await seedPerson(db, { name: 'Mom' });
+		const dto = await createItem(db, storage, queue, baseInput({ people: [mom.id] }));
+		expect(dto.people[0].age).toBeUndefined();
 	});
 
 	it('persists blurhash on the items row', async () => {
@@ -359,5 +396,49 @@ describe('update/delete/restore', () => {
 		const restored = await restoreItem(db, storage, 'itm000000001');
 		expect(restored.id).toBe('itm000000001');
 		expect(await db.select().from(yearCounts)).toEqual([{ year: 1994, type: 'video', count: 1 }]);
+	});
+});
+
+describe('setItemPoster', () => {
+	it('stores the chosen frame and enqueues a derivatives re-run', async () => {
+		await createItem(db, storage, queue, baseInput());
+		const user = await seedUser(db, { id: 'u_ed', username: 'ed', role: 'editor' });
+		queue.enqueued.length = 0;
+
+		const dto = await setItemPoster(db, storage, queue, user, 'itm000000001', 4.2);
+
+		expect(dto.posterTime).toBe(4.2);
+		const [row] = await db
+			.select()
+			.from(itemsTable)
+			.where(eq(itemsTable.id, 'itm000000001'));
+		expect(row.posterTime).toBe(4.2);
+		expect(queue.enqueued).toEqual([{ kind: 'derivatives', payload: { itemId: 'itm000000001' } }]);
+	});
+
+	it('rejects photos, bad times, and non-owners', async () => {
+		await createItem(db, storage, queue, baseInput());
+		const owner = await seedUser(db, { id: 'u_o', username: 'o', role: 'owner' });
+		await expect(
+			setItemPoster(db, storage, queue, owner, 'itm000000001', -1)
+		).rejects.toMatchObject({ status: 400 });
+		await expect(
+			setItemPoster(db, storage, queue, owner, 'itm000000001', 9999)
+		).rejects.toMatchObject({ status: 400 });
+
+		await createItem(
+			db,
+			storage,
+			queue,
+			baseInput({ id: 'itm000000009', sha256: 'e'.repeat(64), type: 'photo', duration: null })
+		);
+		await expect(
+			setItemPoster(db, storage, queue, owner, 'itm000000009', 1)
+		).rejects.toMatchObject({ status: 400 });
+
+		const stranger = await seedUser(db, { id: 'u_x', username: 'x', role: 'uploader' });
+		await expect(
+			setItemPoster(db, storage, queue, stranger, 'itm000000001', 3)
+		).rejects.toMatchObject({ status: 403 });
 	});
 });

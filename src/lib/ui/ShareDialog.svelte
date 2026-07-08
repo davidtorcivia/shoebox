@@ -112,7 +112,9 @@
 	>
 		<header>
 			<h2>Share this {targetType}</h2>
-			<button class="close" type="button" onclick={onClose} aria-label="Close" bind:this={closeBtn}>x</button>
+			<button class="close" type="button" onclick={onClose} aria-label="Close" bind:this={closeBtn}
+				>x</button
+			>
 		</header>
 
 		<form onsubmit={create}>
@@ -158,7 +160,7 @@
 					value={createdUrl}
 					onfocus={selectValue}
 				/>
-				<button type="button" onclick={() => copy(createdUrl ?? '', 'new')}>
+				<button class="copy" type="button" onclick={() => copy(createdUrl ?? '', 'new')}>
 					{copied === 'new' ? 'Copied' : 'Copy link'}
 				</button>
 			</div>
@@ -177,10 +179,14 @@
 							/ {share.allowDownload ? 'downloads on' : 'view only'}
 						</span>
 						<span class="actions">
-							<button type="button" onclick={() => copy(shareUrl(share.token), share.id)}>
+							<button
+								class="copy"
+								type="button"
+								onclick={() => copy(shareUrl(share.token), share.id)}
+							>
 								{copied === share.id ? 'Copied' : 'Copy link'}
 							</button>
-							<button type="button" onclick={() => revoke(share.id)}>Revoke</button>
+							<button class="revoke" type="button" onclick={() => revoke(share.id)}>Revoke</button>
 						</span>
 					</li>
 				{/each}
@@ -206,8 +212,22 @@
 		max-height: 85vh;
 		overflow-y: auto;
 		padding: 24px;
-		background: var(--cream);
-		color: var(--ink);
+		/* Joyous gradient in the family of the timeline rooms — a warm dawn glow and
+		   a cool verdigris pool over a dark base. */
+		background:
+			radial-gradient(
+				90% 60% at 92% -12%,
+				color-mix(in srgb, var(--dawn) 42%, transparent),
+				transparent 55%
+			),
+			radial-gradient(
+				80% 72% at -12% 112%,
+				color-mix(in srgb, #48929b 34%, transparent),
+				transparent 60%
+			),
+			linear-gradient(158deg, color-mix(in srgb, var(--cream) 8%, var(--ink)) 0%, var(--ink) 100%);
+		color: var(--cream);
+		box-shadow: 0 30px 70px rgb(0 0 0 / 0.5);
 		transform: translate(-50%, -50%);
 	}
 
@@ -239,7 +259,7 @@
 		min-height: 48px;
 		border: 0;
 		background: none;
-		color: var(--ink);
+		color: var(--cream);
 		cursor: pointer;
 		font-family: var(--sans);
 		font-size: 12px;
@@ -250,8 +270,29 @@
 	.primary {
 		margin-top: 14px;
 		padding: 0 20px;
-		background: var(--ink);
+		background: var(--cream);
+		color: var(--ink);
+		font-weight: 700;
+	}
+
+	/* Copy (safe, frequent) vs Revoke (destructive) must not look alike — Copy is a
+	   filled chip, Revoke is a distinct outlined danger action, spaced apart. */
+	.copy {
+		padding: 0 14px;
+		background: color-mix(in srgb, var(--cream) 16%, transparent);
 		color: var(--cream);
+	}
+
+	.revoke {
+		padding: 0 14px;
+		background: none;
+		color: var(--dawn);
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dawn) 55%, transparent);
+	}
+
+	.revoke:hover,
+	.revoke:focus-visible {
+		background: color-mix(in srgb, var(--dawn) 16%, transparent);
 	}
 
 	form {
@@ -272,7 +313,7 @@
 	.row input[type='checkbox'] {
 		width: 22px;
 		height: 22px;
-		accent-color: var(--ink);
+		accent-color: var(--dawn);
 	}
 
 	.stack {
@@ -290,10 +331,16 @@
 		min-height: 48px;
 		padding: 0 12px;
 		border: 0;
-		background: color-mix(in srgb, var(--ink) 8%, var(--cream));
-		color: var(--ink);
+		background-color: color-mix(in srgb, var(--cream) 12%, transparent);
+		color: var(--cream);
 		font-family: var(--serif);
 		font-size: 16px;
+	}
+
+	/* Dark dialog → the global dark select styling (cream chevron, dark popup) is
+	   correct; just reserve room for the chevron. */
+	select {
+		padding-right: 2.2em;
 	}
 
 	.created {
@@ -327,11 +374,11 @@
 
 	.actions {
 		display: flex;
-		gap: 4px;
+		gap: 12px;
 	}
 
 	:is(button, select, input):focus-visible {
-		outline: 3px solid var(--ink);
+		outline: 3px solid var(--dawn);
 		outline-offset: 2px;
 	}
 

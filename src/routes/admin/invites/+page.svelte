@@ -119,7 +119,7 @@
 		min-height: 48px;
 		padding: 0 12px;
 		border: 0;
-		background: color-mix(in srgb, currentColor 10%, transparent);
+		background-color: color-mix(in srgb, currentColor 10%, transparent);
 		color: inherit;
 		cursor: pointer;
 		font-family: var(--sans);
@@ -149,6 +149,10 @@
 		padding: 6px 12px 6px 0;
 		font-family: var(--serif);
 		font-size: 16px;
+	}
+
+	select {
+		padding-right: 2.2em;
 	}
 
 	:is(select, input, button):focus-visible {

@@ -200,13 +200,20 @@ describe('completeUpload', () => {
 		const bytes = new Uint8Array(24).map((_, i) => i);
 		const { user, uploadId } = await uploadAll(bytes, SHA);
 		const q = queue();
-		const dto = await completeUpload(db, storage, q, user, {
-			uploadId,
-			allowDuplicate: false,
-			meta: meta(),
-			blurhash: 'LKO2?U%2Tw',
-			derivatives: derivatives()
-		}, sniffVideo);
+		const dto = await completeUpload(
+			db,
+			storage,
+			q,
+			user,
+			{
+				uploadId,
+				allowDuplicate: false,
+				meta: meta(),
+				blurhash: 'LKO2?U%2Tw',
+				derivatives: derivatives()
+			},
+			sniffVideo
+		);
 
 		expect(dto.status).toBe('ready');
 		expect(dto.urls.original).toBe(`/media/media/${dto.id}/original.mp4`);
@@ -221,7 +228,7 @@ describe('completeUpload', () => {
 		expect([t400!.width, t400!.height]).toEqual([192, 108]);
 		expect(await storage.head(`tmp/${uploadId}/manifest.json`)).toBeNull();
 		expect(await storage.head(`tmp/${uploadId}/0`)).toBeNull();
-		expect(q.enqueued.map((job) => job.kind)).toEqual(['derivatives', 'sprite']);
+		expect(q.enqueued.map((job) => job.kind)).toEqual(['derivatives', 'sprite', 'transcode']);
 	});
 
 	it('multi-chunk assembly preserves byte order', async () => {
@@ -244,13 +251,20 @@ describe('completeUpload', () => {
 		await saveChunk(storage, SHA_B, 0, new Uint8Array([0, 1, 2, 3]));
 		await saveChunk(storage, SHA_B, 1, new Uint8Array([4, 5, 6, 7]));
 		await saveChunk(storage, SHA_B, 2, new Uint8Array([8, 9]));
-		const dto = await completeUpload(db, storage, queue(), user, {
-			uploadId: SHA_B,
-			allowDuplicate: false,
-			meta: meta(),
-			blurhash: null,
-			derivatives: derivatives()
-		}, sniffVideo);
+		const dto = await completeUpload(
+			db,
+			storage,
+			queue(),
+			user,
+			{
+				uploadId: SHA_B,
+				allowDuplicate: false,
+				meta: meta(),
+				blurhash: null,
+				derivatives: derivatives()
+			},
+			sniffVideo
+		);
 		const stored = await storage.get(`media/${dto.id}/original.mp4`);
 		expect(new Uint8Array(await new Response(stored!.stream).arrayBuffer())).toEqual(
 			new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
@@ -279,13 +293,20 @@ describe('completeUpload', () => {
 	it('409s on duplicate unless allowDuplicate, then stores the same true sha twice', async () => {
 		const bytes = new Uint8Array(24).fill(1);
 		const { user, uploadId } = await uploadAll(bytes, SHA);
-		const first = await completeUpload(db, storage, queue(), user, {
-			uploadId,
-			allowDuplicate: false,
-			meta: meta(),
-			blurhash: null,
-			derivatives: derivatives()
-		}, sniffVideo);
+		const first = await completeUpload(
+			db,
+			storage,
+			queue(),
+			user,
+			{
+				uploadId,
+				allowDuplicate: false,
+				meta: meta(),
+				blurhash: null,
+				derivatives: derivatives()
+			},
+			sniffVideo
+		);
 		const init2 = await initUpload(db, storage, user.id, {
 			sha256: SHA,
 			sizeBytes: bytes.length,
@@ -303,13 +324,20 @@ describe('completeUpload', () => {
 				derivatives: derivatives()
 			})
 		).rejects.toMatchObject({ status: 409 });
-		const second = await completeUpload(db, storage, queue(), user, {
-			uploadId,
-			allowDuplicate: true,
-			meta: meta(),
-			blurhash: null,
-			derivatives: derivatives()
-		}, sniffVideo);
+		const second = await completeUpload(
+			db,
+			storage,
+			queue(),
+			user,
+			{
+				uploadId,
+				allowDuplicate: true,
+				meta: meta(),
+				blurhash: null,
+				derivatives: derivatives()
+			},
+			sniffVideo
+		);
 		const rows = await db.select().from(itemsTable).where(eq(itemsTable.sha256, SHA));
 		expect(rows.map((row) => row.id).sort()).toEqual([first.id, second.id].sort());
 	});
@@ -318,13 +346,20 @@ describe('completeUpload', () => {
 		const bytes = new Uint8Array(8).fill(2);
 		const { user, uploadId } = await uploadAll(bytes, SHA);
 		await expect(
-			completeUpload(db, storage, queue(), user, {
-				uploadId,
-				allowDuplicate: false,
-				meta: meta({ type: 'photo' }),
-				blurhash: null,
-				derivatives: derivatives()
-			}, sniffVideo)
+			completeUpload(
+				db,
+				storage,
+				queue(),
+				user,
+				{
+					uploadId,
+					allowDuplicate: false,
+					meta: meta({ type: 'photo' }),
+					blurhash: null,
+					derivatives: derivatives()
+				},
+				sniffVideo
+			)
 		).rejects.toMatchObject({ status: 400 });
 	});
 
@@ -361,9 +396,9 @@ describe('completeUpload', () => {
 			async () => ({ mime: 'video/quicktime' })
 		);
 		expect(dto.urls.original).toBe(`/media/media/${dto.id}/original.mov`);
-		const original = (
-			await db.select().from(itemFiles).where(eq(itemFiles.itemId, dto.id))
-		).find((f) => f.kind === 'original');
+		const original = (await db.select().from(itemFiles).where(eq(itemFiles.itemId, dto.id))).find(
+			(f) => f.kind === 'original'
+		);
 		expect(original!.mime).toBe('video/quicktime');
 	});
 

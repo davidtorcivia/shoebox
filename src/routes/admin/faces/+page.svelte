@@ -92,6 +92,26 @@
 		selectedFaces = { ...selectedFaces, [clusterId]: [] };
 	}
 
+	async function rejectFaceBox(clusterId: string, faceId: string): Promise<void> {
+		if (
+			await mutate(`reject-face-${faceId}`, `/api/admin/faces/faces/${faceId}/reject`, {
+				method: 'POST'
+			})
+		) {
+			suggestions = suggestions
+				.map((cluster) =>
+					cluster.clusterId === clusterId
+						? {
+								...cluster,
+								faces: cluster.faces.filter((face) => face.id !== faceId),
+								count: cluster.faces.filter((face) => face.id !== faceId).length
+							}
+						: cluster
+				)
+				.filter((cluster) => cluster.faces.length > 0);
+		}
+	}
+
 	async function saveBox(faceId: string): Promise<void> {
 		let box: unknown;
 		try {
@@ -206,14 +226,25 @@
 									<span>Box</span>
 									<textarea bind:value={boxDrafts[face.id]} rows="3"></textarea>
 								</label>
-								<button
-									class="secondary save-box"
-									type="button"
-									disabled={busy === `box-${face.id}`}
-									onclick={() => saveBox(face.id)}
-								>
-									Save box
-								</button>
+								<div class="face-tools">
+									<button
+										class="secondary save-box"
+										type="button"
+										disabled={busy === `box-${face.id}`}
+										onclick={() => saveBox(face.id)}
+									>
+										Save box
+									</button>
+									<button
+										class="danger reject-face"
+										data-testid="face-reject-one"
+										type="button"
+										disabled={busy === `reject-face-${face.id}`}
+										onclick={() => rejectFaceBox(cluster.clusterId, face.id)}
+									>
+										Reject box
+									</button>
+								</div>
 							</article>
 						{/each}
 					</div>
@@ -320,7 +351,7 @@
 	button,
 	textarea {
 		border: 0;
-		background: color-mix(in srgb, currentColor 10%, transparent);
+		background-color: color-mix(in srgb, currentColor 10%, transparent);
 		color: inherit;
 	}
 
@@ -443,8 +474,18 @@
 		line-height: 1.35;
 	}
 
+	.face-tools {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
 	.save-box {
 		justify-self: start;
+	}
+
+	select {
+		padding-right: 2.2em;
 	}
 
 	:is(select, button, textarea):focus-visible {

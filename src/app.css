@@ -20,6 +20,10 @@
 	--dawn: #fa7b62;
 	--font-serif: 'Fraunces Variable', Georgia, serif;
 	--font-sans: 'Archivo Variable', 'Helvetica Neue', sans-serif;
+	/* Aliases so components using --serif/--sans still resolve to the site fonts
+	   outside a themed container (e.g. the share-page wordmark). */
+	--serif: var(--font-serif);
+	--sans: var(--font-sans);
 	--motion-fast: 200ms;
 	--motion-slow: 300ms;
 	--chrome-opacity: 0.5;
@@ -95,6 +99,32 @@ textarea {
 	font: inherit;
 	color: inherit;
 	border-radius: 0;
+}
+
+/* On-theme dropdowns. `color-scheme: dark` makes the native control chrome and
+   the option popup render dark — this is what was missing on the admin selects
+   (cream text on the browser's default light control). Light surfaces (e.g.
+   ShareDialog) opt back to `color-scheme: light` locally. */
+select {
+	appearance: none;
+	-webkit-appearance: none;
+	color-scheme: dark;
+	background-color: color-mix(in srgb, var(--cream) 12%, var(--ink));
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23fff5e8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 0.85em center;
+	background-size: 0.7em;
+	color: var(--cream);
+	padding: 0.55em 2.2em 0.55em 0.85em;
+	cursor: pointer;
+}
+
+/* Native <option> popups on Linux/GTK ignore `color-scheme: dark`, so the
+   inherited cream text lands on the system's light popup background. Pin an
+   explicit dark background so every select's dropdown stays readable. */
+option {
+	background: var(--ink);
+	color: var(--cream);
 }
 
 img,

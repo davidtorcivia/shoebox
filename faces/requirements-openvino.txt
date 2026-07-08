@@ -1,0 +1,17 @@
+# Intel GPU (ARC / Xe / iGPU) acceleration via OpenVINO Execution Provider.
+#
+# This file is a DROP-IN REPLACEMENT for the onnxruntime line in
+# requirements.txt. onnxruntime-openvino ships the same top-level `onnxruntime`
+# Python package (with the OpenVINOExecutionProvider compiled in), so the two
+# wheels conflict and must never be installed together. The Dockerfile installs
+# this list instead of the plain onnxruntime when built with
+# `--build-arg FACE_GPU=openvino`.
+#
+# onnxruntime-openvino 1.18.x matches the onnxruntime 1.18.1 that insightface
+# 0.7.3 is validated against; it bundles the OpenVINO 2024.x runtime.
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+onnxruntime-openvino==1.18.0
+insightface==0.7.3
+hdbscan==0.8.40
+scikit-learn==1.5.1

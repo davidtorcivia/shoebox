@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Player from '$lib/ui/Player.svelte';
 	import { CREAM, DAWN, FONT, GRAIN_URI, INK, playerRoomFor } from '$lib/ui/tokens';
 	import type { ItemDTO } from '$lib/types';
 
@@ -21,28 +22,9 @@
 	const item = $derived(items[index]);
 	const year = $derived(item.date.dateStart ? Number(item.date.dateStart.slice(0, 4)) : 1990);
 	const room = $derived(playerRoomFor(year));
-	const videoSrc = $derived(item.urls.original ?? item.urls.poster);
+	const videoSrc = $derived(item.urls.playback ?? item.urls.original ?? item.urls.poster);
 	const imageSrc = $derived(item.urls.thumb1600 || item.urls.thumb800 || item.urls.original || '');
 	const canDownload = $derived(allowDownload && Boolean(item.urls.original));
-
-	let video = $state<HTMLVideoElement>();
-	let playing = $state(false);
-	let time = $state(0);
-	let duration = $state(0);
-
-	function toggle(): void {
-		if (!video) return;
-		if (video.paused) void video.play();
-		else video.pause();
-	}
-
-	function seek(event: Event): void {
-		if (video) video.currentTime = Number((event.currentTarget as HTMLInputElement).value);
-	}
-
-	function mmss(seconds: number): string {
-		return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
-	}
 
 	function prev(): void {
 		if (!single && index > 0) onNavigate?.(index - 1);
@@ -50,6 +32,26 @@
 
 	function next(): void {
 		if (!single && index < items.length - 1) onNavigate?.(index + 1);
+	}
+
+	// Touch swipe navigation (replaces the on-screen arrows on mobile).
+	let swipeX = 0;
+	let swipeY = 0;
+
+	function onStagePointerDown(event: PointerEvent): void {
+		if (event.pointerType === 'mouse') return;
+		swipeX = event.clientX;
+		swipeY = event.clientY;
+	}
+
+	function onStagePointerUp(event: PointerEvent): void {
+		if (event.pointerType === 'mouse') return;
+		const dx = event.clientX - swipeX;
+		const dy = event.clientY - swipeY;
+		if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+			if (dx < 0) next();
+			else prev();
+		}
 	}
 
 	function onKey(event: KeyboardEvent): void {
@@ -62,9 +64,6 @@
 		} else if (event.key === 'ArrowRight') {
 			event.preventDefault();
 			next();
-		} else if (event.key === ' ' && item.type === 'video') {
-			event.preventDefault();
-			toggle();
 		}
 	}
 </script>
@@ -82,7 +81,7 @@
 	<div class="grain" style={`background-image:url("${GRAIN_URI}")`}></div>
 
 	<header class="bar">
-		<span class="eyebrow">{item.displayDate}</span>
+		<span class="spacer" aria-hidden="true"></span>
 		<h1>{item.title ?? 'A memory'}</h1>
 		{#if !single}
 			<button class="close" type="button" aria-label="Close" onclick={() => onClose?.()}>x</button>
@@ -91,7 +90,8 @@
 		{/if}
 	</header>
 
-	<div class="stage">
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="stage" onpointerdown={onStagePointerDown} onpointerup={onStagePointerUp}>
 		{#if !single}
 			<button
 				class="arrow"
@@ -105,42 +105,16 @@
 		{/if}
 		<div class="media">
 			{#if item.type === 'video'}
-				<!-- svelte-ignore a11y_media_has_caption -->
-				<video
-					bind:this={video}
+				<Player
 					src={videoSrc}
 					poster={item.urls.poster || item.urls.thumb800}
-					playsinline
-					onplay={() => (playing = true)}
-					onpause={() => (playing = false)}
-					ontimeupdate={() => (time = video?.currentTime ?? 0)}
-					ondurationchange={() => (duration = video?.duration ?? 0)}
-					onclick={toggle}
-				></video>
-				<div class="controls">
-					<button
-						class="play"
-						type="button"
-						onclick={toggle}
-						aria-label={playing ? 'Pause' : 'Play'}
-					>
-						{playing ? '||' : '>'}
-					</button>
-					<span class="timecode">{mmss(time)} / {mmss(duration)}</span>
-					<input
-						class="track"
-						type="range"
-						min="0"
-						max={duration || 0}
-						step="0.01"
-						value={time}
-						oninput={seek}
-						aria-label="Seek"
-					/>
-				</div>
+					duration={item.duration}
+					title={item.title}
+				/>
 			{:else}
 				<img src={imageSrc} alt={item.title ?? item.displayDate} />
 			{/if}
+			<p class="media-date">{item.displayDate}</p>
 			{#if item.description}<p class="story">{item.description}</p>{/if}
 			{#if canDownload && item.urls.original}
 				<a class="download" data-testid="share-download" href={item.urls.original} download>
@@ -190,21 +164,17 @@
 		position: relative;
 		display: grid;
 		align-items: baseline;
-		padding: 22px 28px;
+		padding: 26px 28px 10px;
 		gap: 16px;
 		grid-template-columns: 1fr auto 1fr;
 	}
 
-	.eyebrow,
 	.close,
 	.arrow,
-	.play,
-	.timecode,
 	.download {
 		font-family: var(--sans);
 	}
 
-	.eyebrow,
 	.close,
 	.download {
 		font-size: 12px;
@@ -212,15 +182,12 @@
 		text-transform: uppercase;
 	}
 
-	.eyebrow {
-		opacity: 0.62;
-	}
-
 	h1 {
 		margin: 0;
 		font-family: var(--serif);
-		font-size: 22px;
+		font-size: clamp(28px, 5vw, 46px);
 		font-weight: 500;
+		line-height: 1.04;
 		text-align: center;
 	}
 
@@ -261,7 +228,6 @@
 
 	.arrow:focus-visible,
 	.close:focus-visible,
-	.play:focus-visible,
 	.download:focus-visible {
 		outline: 3px solid var(--cream);
 		outline-offset: 2px;
@@ -271,64 +237,23 @@
 		width: min(900px, 100%);
 	}
 
-	video,
 	img {
 		display: block;
 		width: 100%;
 		height: auto;
 	}
 
-	.controls {
-		display: flex;
-		align-items: center;
-		padding-top: 12px;
-		gap: 14px;
-	}
-
-	.play {
-		min-width: 48px;
-		min-height: 48px;
-		border: 0;
-		background: none;
-		color: var(--cream);
-		cursor: pointer;
-		font-size: 18px;
-	}
-
-	.timecode {
-		font-size: 13px;
-		font-variant-numeric: tabular-nums;
-	}
-
-	.track {
-		height: 8px;
-		flex: 1;
-		appearance: none;
-		background: color-mix(in srgb, var(--cream) 25%, transparent);
-	}
-
-	.track::-webkit-slider-thumb {
-		width: 4px;
-		height: 28px;
-		appearance: none;
-		background: var(--cream);
-	}
-
-	.track::-moz-range-thumb {
-		width: 4px;
-		height: 28px;
-		border: 0;
-		border-radius: 0;
-		background: var(--cream);
-	}
-
-	.track::-moz-range-progress {
-		height: 8px;
-		background: var(--dawn);
+	.media-date {
+		margin: 16px 0 0;
+		font-family: var(--sans);
+		font-size: 12px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		opacity: 0.62;
 	}
 
 	.story {
-		margin: 18px 0 0;
+		margin: 14px 0 0;
 		font-family: var(--serif);
 		font-size: 18px;
 		line-height: 1.5;
@@ -350,7 +275,7 @@
 			grid-template-columns: 1fr auto;
 		}
 
-		.eyebrow {
+		.spacer {
 			display: none;
 		}
 
@@ -362,6 +287,11 @@
 			padding-right: 12px;
 			padding-left: 12px;
 			gap: 8px;
+		}
+
+		/* Arrows give way to swipe navigation on touch screens. */
+		.arrow {
+			display: none;
 		}
 	}
 </style>

@@ -1,4 +1,5 @@
 import type { ItemDate } from '$lib/domain/dates';
+import type { CropRect } from '$lib/domain/people-dto';
 
 export interface ItemDTO {
 	id: string;
@@ -9,6 +10,7 @@ export interface ItemDTO {
 	displayDate: string;
 	shortDate: string;
 	duration: number | null;
+	posterTime: number | null;
 	width: number;
 	height: number;
 	status: 'processing' | 'needs_review' | 'ready';
@@ -18,10 +20,20 @@ export interface ItemDTO {
 		thumb800: string;
 		thumb1600: string;
 		original?: string;
+		playback?: string;
 		sprite?: string;
 	};
 	blurhash: string | null;
-	people: { id: string; slug: string; name: string; accentColor: string; age?: number }[];
+	people: {
+		id: string;
+		slug: string;
+		name: string;
+		accentColor: string;
+		avatarUrl?: string | null;
+		avatarCrop?: CropRect | null;
+		age?: number;
+		ageApprox?: boolean;
+	}[];
 	tags: { id: string; name: string; kind: 'topic' | 'holiday' }[];
 	albums: { id: string; title: string }[];
 	uploadedBy: string;

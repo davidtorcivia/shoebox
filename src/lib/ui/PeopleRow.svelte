@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { CREAM, FONT, accentOn } from '$lib/ui/tokens';
+	import Avatar from '$lib/ui/Avatar.svelte';
+	import { CREAM, FONT } from '$lib/ui/tokens';
 	import type { ItemDTO } from '$lib/dto';
 
 	interface Props {
@@ -24,15 +25,16 @@
 		{:else}
 			{#each people as person (person.id)}
 				<a class="person" href={resolve(`/people/${person.slug}`)}>
-					<span
-						class="avatar"
-						aria-hidden="true"
-						style={`--avatar-bg: ${person.accentColor}; --avatar-fg: ${accentOn(person.accentColor)}`}
-						>{person.name.slice(0, 1)}</span
-					>
+					<Avatar
+						name={person.name}
+						accentColor={person.accentColor}
+						size={19}
+						avatarUrl={person.avatarUrl}
+						avatarCrop={person.avatarCrop}
+					/>
 					<span class="name">{person.name}</span>
 					{#if person.age != null}
-						<span class="age">· age {person.age}</span>
+						<span class="age">· {person.ageApprox ? 'circa ' : ''}age {person.age}</span>
 					{/if}
 				</a>
 			{/each}
@@ -74,19 +76,6 @@
 		font-size: 1rem;
 		color: var(--cream);
 		text-decoration: none;
-	}
-
-	.avatar {
-		display: inline-grid;
-		width: 19px;
-		height: 19px;
-		place-items: center;
-		font-family: var(--sans);
-		font-size: 0.62rem;
-		font-weight: 700;
-		line-height: 1;
-		color: var(--avatar-fg);
-		background: var(--avatar-bg);
 	}
 
 	.age,

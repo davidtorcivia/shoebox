@@ -5,7 +5,7 @@ import * as schema from '../lib/server/db/schema';
 import type { StorageAdapter } from '../lib/server/platform/types';
 
 export type WorkerDb = BetterSQLite3Database<typeof schema>;
-export type JobKind = 'derivatives' | 'sprite' | 'ingest_scan' | 'face_scan';
+export type JobKind = 'derivatives' | 'sprite' | 'ingest_scan' | 'face_scan' | 'transcode';
 
 export interface ClaimedJob {
 	id: string;
@@ -29,7 +29,13 @@ export const MAX_ATTEMPTS = 5;
  * 'running' longer than this. Bounds recovery from worker crashes mid-job. */
 export const STALE_CLAIM_SECONDS = 15 * 60;
 
-const ALL_KINDS: readonly JobKind[] = ['derivatives', 'sprite', 'ingest_scan', 'face_scan'];
+const ALL_KINDS: readonly JobKind[] = [
+	'derivatives',
+	'sprite',
+	'ingest_scan',
+	'face_scan',
+	'transcode'
+];
 
 export function claimJob(
 	db: WorkerDb,
@@ -47,14 +53,13 @@ export function claimJob(
 	// through all retries in that state it cannot make progress, so fail it now
 	// instead of reclaiming it forever. Skipped entirely when nothing is running
 	// so the idle poll loop does not contend for the write lock.
-	const stuck = db
-		.get<{ id: string } | undefined>(
-			sql.raw(`
+	const stuck = db.get<{ id: string } | undefined>(
+		sql.raw(`
 				SELECT id FROM jobs
 				WHERE kind IN (${kindList}) AND status = 'running' AND attempts >= ${MAX_ATTEMPTS}
 				LIMIT 1
 			`)
-		);
+	);
 	if (stuck) {
 		db.run(
 			sql.raw(`

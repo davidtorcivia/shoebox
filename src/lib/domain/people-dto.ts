@@ -10,6 +10,8 @@ export interface PersonRef {
 	slug: string;
 	name: string;
 	accentColor: string;
+	avatarUrl?: string | null;
+	avatarCrop?: CropRect | null;
 }
 
 export interface PersonListDTO extends PersonRef {

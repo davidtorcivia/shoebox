@@ -67,7 +67,9 @@ describe('searchPeopleCards', () => {
 			slug: 'eric',
 			name: 'Eric',
 			accentColor: '#A8D8EA',
-			avatarItemId: null
+			avatarItemId: null,
+			avatarCrop: null,
+			avatarStorageKey: null
 		});
 	});
 

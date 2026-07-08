@@ -22,6 +22,7 @@ function item(
 		displayDate: 'June 1994',
 		shortDate: 'Jun 14',
 		duration: null,
+		posterTime: null,
 		width: 200,
 		height: 100,
 		status: 'ready',

@@ -126,8 +126,18 @@
 	}
 
 	async function toggleFullscreen() {
-		if (document.fullscreenElement) await document.exitFullscreen();
-		else await root.requestFullscreen();
+		if (document.fullscreenElement) {
+			await document.exitFullscreen();
+			return;
+		}
+		if (root.requestFullscreen) {
+			await root.requestFullscreen();
+			return;
+		}
+		// iOS Safari doesn't support Fullscreen API on arbitrary elements — only the
+		// <video> element exposes its own (webkit-prefixed) fullscreen.
+		const legacy = video as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+		legacy?.webkitEnterFullscreen?.();
 	}
 
 	function onVolumeInput(event: Event) {
@@ -151,9 +161,11 @@
 		controlsVisible = true;
 		if (hideTimer) clearTimeout(hideTimer);
 		if (paused || noHover || $reducedMotion || $comfortMode) return;
+		// Hide after inactivity while playing. (We intentionally don't keep them
+		// visible just because a control has focus — clicking play focuses its
+		// button, which used to pin the controls open forever.)
 		hideTimer = setTimeout(() => {
-			const focusInside = root?.contains(document.activeElement);
-			if (!paused && !focusInside) controlsVisible = false;
+			if (!paused) controlsVisible = false;
 		}, 2500);
 	}
 
@@ -188,96 +200,107 @@
 	onfocusin={poke}
 	onfullscreenchange={() => (fullscreen = document.fullscreenElement === root)}
 >
-	{#if loading && !errored}
-		<div class="hairline" class:sweep={!$reducedMotion && !$comfortMode} aria-hidden="true"></div>
-	{/if}
+	<div class="frame">
+		{#if loading && !errored}
+			<div class="hairline" class:sweep={!$reducedMotion && !$comfortMode} aria-hidden="true"></div>
+		{/if}
 
-	<!-- svelte-ignore a11y_media_has_caption -->
-	<video
-		bind:this={video}
-		{src}
-		{poster}
-		preload="metadata"
-		playsinline
-		aria-label={title ?? 'Video'}
-		onplay={() => {
-			paused = false;
-			loading = false;
-		}}
-		onpause={() => (paused = true)}
-		ontimeupdate={() => (currentTime = video?.currentTime ?? 0)}
-		ondurationchange={() => (duration = video?.duration || durationHint || 0)}
-		onprogress={() => {
-			if (video && video.buffered.length > 0)
-				buffered = video.buffered.end(video.buffered.length - 1);
-		}}
-		onwaiting={() => (loading = true)}
-		oncanplay={() => (loading = false)}
-		onended={() => {
-			paused = true;
-			shuttle = SHUTTLE_PAUSED;
-		}}
-		onerror={() => {
-			errored = true;
-			loading = false;
-		}}
-	></video>
+		<!-- svelte-ignore a11y_media_has_caption -->
+		<video
+			bind:this={video}
+			{src}
+			{poster}
+			preload="metadata"
+			playsinline
+			aria-label={title ?? 'Video'}
+			onplay={() => {
+				paused = false;
+				loading = false;
+			}}
+			onpause={() => (paused = true)}
+			ontimeupdate={() => (currentTime = video?.currentTime ?? 0)}
+			ondurationchange={() => (duration = video?.duration || durationHint || 0)}
+			onprogress={() => {
+				if (video && video.buffered.length > 0)
+					buffered = video.buffered.end(video.buffered.length - 1);
+			}}
+			onwaiting={() => (loading = true)}
+			oncanplay={() => (loading = false)}
+			onended={() => {
+				paused = true;
+				shuttle = SHUTTLE_PAUSED;
+			}}
+			onerror={() => {
+				errored = true;
+				loading = false;
+			}}
+		></video>
 
-	{#if errored}
-		<div class="error-state">
-			<p>This clip could not be loaded.</p>
-			<button class="control-button" type="button" onclick={retry}>Retry</button>
-		</div>
-	{:else}
-		<div class="controls" class:hidden={!controlsVisible}>
-			<button
-				class="play"
-				type="button"
-				onclick={() => handleAction({ type: 'toggle-play' })}
-				aria-label={paused ? 'Play' : 'Pause'}
-			>
-				{paused ? '▶' : '❚❚'}
-			</button>
-			<span class="timecode"
-				>{formatTimecode(currentTime)} <span>/ {formatTimecode(duration)}</span></span
-			>
-			<ScrubTrack {duration} {currentTime} {buffered} onseek={seek} />
-			<span class="volume-wrap">
-				{#if volumeOpen}
-					<span class="volume-pop">
-						<input
-							type="range"
-							min="0"
-							max="1"
-							step="0.05"
-							value={muted ? 0 : volume}
-							aria-label="Volume"
-							oninput={onVolumeInput}
-						/>
-					</span>
-				{/if}
+		{#if errored}
+			<div class="error-state">
+				<p>This clip could not be loaded.</p>
+				<button class="control-button" type="button" onclick={retry}>Retry</button>
+			</div>
+		{:else}
+			<div class="controls" class:hidden={!controlsVisible}>
 				<button
-					class="control-button"
-					class:dim={muted}
+					class="play"
 					type="button"
-					onclick={() => (volumeOpen = !volumeOpen)}>Vol</button
+					onclick={() => handleAction({ type: 'toggle-play' })}
+					aria-label={paused ? 'Play' : 'Pause'}
 				>
-			</span>
-			<button class="control-button" type="button" onclick={cycleRate}>{rate}x</button>
-			<button class="control-button" type="button" onclick={() => void toggleFullscreen()}>
-				{fullscreen ? 'Exit' : 'Full'}
-			</button>
-		</div>
-	{/if}
+					{paused ? '▶' : '❚❚'}
+				</button>
+				<span class="timecode"
+					>{formatTimecode(currentTime)} <span>/ {formatTimecode(duration)}</span></span
+				>
+				<ScrubTrack {duration} {currentTime} {buffered} onseek={seek} />
+				<span class="volume-wrap">
+					{#if volumeOpen}
+						<span class="volume-pop">
+							<input
+								type="range"
+								min="0"
+								max="1"
+								step="0.05"
+								value={muted ? 0 : volume}
+								aria-label="Volume"
+								oninput={onVolumeInput}
+							/>
+						</span>
+					{/if}
+					<button
+						class="control-button"
+						class:dim={muted}
+						type="button"
+						onclick={() => (volumeOpen = !volumeOpen)}>Vol</button
+					>
+				</span>
+				<button class="control-button" type="button" onclick={cycleRate}>{rate}x</button>
+				<button class="control-button" type="button" onclick={() => void toggleFullscreen()}>
+					{fullscreen ? 'Exit' : 'Full'}
+				</button>
+			</div>
+		{/if}
+	</div>
 </div>
 
 <style>
 	.player {
 		position: relative;
-		display: grid;
-		justify-items: center;
 		width: 100%;
 		max-height: inherit;
+	}
+
+	/* Shrink-wraps the video (fit-content, centered) so the overlaid controls align
+	   to the video edges instead of the full column width — which left the control
+	   scrim sticking out on the sides of narrower-than-16:9 footage. */
+	.frame {
+		position: relative;
+		width: fit-content;
+		max-width: 100%;
+		max-height: inherit;
+		margin: 0 auto;
 	}
 
 	video {
@@ -286,6 +309,37 @@
 		max-width: 100%;
 		max-height: inherit;
 		background: var(--ink);
+	}
+
+	/* Fullscreen: maximize the video within the screen without ever cropping it. */
+	.player:fullscreen {
+		display: grid;
+		place-content: center;
+		width: 100vw;
+		height: 100vh;
+		max-height: none;
+		background: var(--ink);
+	}
+
+	.player:fullscreen .frame {
+		width: 100vw;
+		height: 100vh;
+		max-width: none;
+		max-height: none;
+		margin: 0;
+	}
+
+	.player:fullscreen video {
+		width: 100%;
+		height: 100%;
+		max-width: none;
+		max-height: none;
+		/* Maximize within the screen without ever cropping the footage. */
+		object-fit: contain;
+	}
+
+	.player:fullscreen .controls {
+		padding: 22px 28px 16px;
 	}
 
 	.hairline {
@@ -322,17 +376,25 @@
 		}
 	}
 
+	/* Overlaid on the bottom of the video (not in flow) so that when they fade out
+	   during playback no empty control bar is left behind. */
 	.controls {
-		width: 100%;
+		position: absolute;
+		right: 0;
+		bottom: 0;
+		left: 0;
+		z-index: 3;
 		display: flex;
 		gap: 22px;
 		align-items: center;
-		padding-top: 16px;
+		padding: 34px 18px 14px;
+		background: linear-gradient(180deg, transparent, rgb(0 0 0 / 0.5));
 		transition: opacity var(--fade) ease;
 	}
 
 	.controls.hidden {
 		opacity: 0;
+		pointer-events: none;
 	}
 
 	button {
@@ -404,5 +466,41 @@
 		margin: 0 0 10px;
 		font-size: 17px;
 		color: var(--cream);
+	}
+
+	/* Mobile: there's vertical room, so drop the controls UNDER the video (in flow,
+	   always visible) instead of overlaying it — and give the scrub its own
+	   full-width row above a tighter, wrapping button row. */
+	@media (max-width: 640px) {
+		.controls {
+			position: static;
+			flex-wrap: wrap;
+			gap: 6px 12px;
+			padding: 12px 2px 0;
+			background: none;
+		}
+
+		.controls.hidden {
+			opacity: 1;
+			pointer-events: auto;
+		}
+
+		.controls :global(.track) {
+			order: -1;
+			flex-basis: 100%;
+		}
+
+		.timecode {
+			font-size: 14px;
+		}
+
+		.control-button {
+			font-size: 12px;
+			letter-spacing: 0.12em;
+		}
+
+		button {
+			min-width: 40px;
+		}
 	}
 </style>

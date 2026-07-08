@@ -56,6 +56,50 @@ docker compose --profile faces up -d --build
 `FACES_ENABLED` is numeric: `1` enables faces, `0` disables them. Do **not** use
 `true`/`false`.
 
+### GPU acceleration for face recognition (Intel ARC / OpenVINO)
+
+This deployment's `faces` service is **GPU-enabled by default** in
+`docker-compose.yml`: it builds the OpenVINO image, passes the Intel GPU render
+node (`/dev/dri`) into the container, and points the worker at the OpenVINO
+execution provider so detection/embedding run on the Intel ARC card. Bringing it
+up is just:
+
+```sh
+# in .env: FACES_ENABLED=1
+docker compose --profile faces up -d --build faces
+```
+
+The compose file assumes the host's render group gid is `993` (what
+`getent group render` reports on this host). If yours differs, set
+`FACE_RENDER_GID` in `.env`. If the analyzer can't initialize the GPU it logs a
+`[faces]` warning and falls back to CPU on its own, so the service always runs.
+
+**Tunable env vars** (set in `.env`; the compose defaults target the ARC card):
+
+| Var | Compose default | Purpose |
+| --- | --- | --- |
+| `FACE_GPU` (build arg) | `openvino` | Build the Intel-GPU image. Set empty for a CPU-only image. |
+| `FACE_PROVIDERS` | `OpenVINOExecutionProvider,CPUExecutionProvider` | Comma-separated ORT execution providers (CPU listed last as fallback). |
+| `FACE_OPENVINO_DEVICE` | `GPU` | OpenVINO device: `GPU`, `GPU.0`/`GPU.1` (pick a specific card), `CPU`, or `AUTO`. Only used when OpenVINO is in `FACE_PROVIDERS`. |
+| `FACE_MODEL_PACK` | `buffalo_l` | InsightFace model pack. `buffalo_s` is smaller/faster with lower accuracy. |
+| `FACE_DET_SIZE` | `1024` | Square detector input size. Higher improves small/distant-face recall at a compute cost — worth it on the GPU. `640` is the InsightFace default. |
+| `FACE_DET_THRESH` | *(unset)* | Detection confidence threshold. Left unset keeps the InsightFace default; lower to catch more faces, raise to cut false positives. |
+| `FACE_RENDER_GID` | `993` | Host render-group gid, added to the container so the uid-1000 worker can open `/dev/dri`. |
+
+**Running CPU-only instead** (host without an Intel GPU): set `FACE_GPU=` and
+`FACE_PROVIDERS=CPUExecutionProvider` in `.env`, and comment out the `devices:`
+/ `group_add:` block in the `faces` service. To build the CPU image directly:
+
+```sh
+docker build -f faces/Dockerfile -t shoebox-faces .
+```
+
+**Accuracy / performance trade-offs:** `buffalo_l` + `FACE_DET_SIZE=1024` gives
+the best recall (recommended once on GPU); `buffalo_s` + `640` is fastest.
+Detection is per-frame, so video (sampled ~1 fps, capped at 60 frames/item) is
+where the GPU helps most. Nothing about the embedding format changes, so
+GPU-scanned faces cluster against existing CPU-scanned ones without a reset.
+
 ## 3. Upgrading
 
 1. Pull/build the new images: `docker compose build`.

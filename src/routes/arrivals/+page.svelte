@@ -37,6 +37,8 @@
 	let anchorIndex = $state<number | null>(null);
 	let selectedIds = $state<string[]>([]);
 	let leavingIds = $state<string[]>([]);
+	let approvedIds = $state<string[]>([]);
+	let addedCount = $state(0);
 	let date = $state<ItemDate>({ dateStart: null, dateEnd: null, precision: 'unknown' });
 	let peopleIds = $state<string[]>([]);
 	let personQuery = $state('');
@@ -121,6 +123,7 @@
 			const remainingCount = queue.filter((item) => !ids.includes(item.id)).length;
 			removedIds = [...new Set([...removedIds, ...ids])];
 			leavingIds = leavingIds.filter((id) => !ids.includes(id));
+			approvedIds = approvedIds.filter((id) => !ids.includes(id));
 			selectedIds = [];
 			anchorIndex = null;
 			focusIndex = moveFocus(remainingCount, focusIndex, 0);
@@ -140,7 +143,11 @@
 		const ids = targetIds();
 		if (ids.length === 0) return;
 		if (focused && ids.includes(focused.id)) await savePerItemFields(focused.id);
-		if (await postArrivals(ids, true)) removeFromQueue(ids);
+		if (await postArrivals(ids, true)) {
+			approvedIds = [...new Set([...approvedIds, ...ids])];
+			addedCount += ids.length;
+			removeFromQueue(ids);
+		}
 	}
 
 	async function applyToSelection(): Promise<void> {
@@ -243,7 +250,12 @@
 	<section class="page" aria-label="Arrivals">
 		<header class="head">
 			<span class="label">Arrivals</span>
-			<p class="count">{queue.length} waiting</p>
+			<div class="counts">
+				{#if addedCount > 0}
+					<p class="count added-count" role="status" aria-live="polite">{addedCount} added</p>
+				{/if}
+				<p class="count">{queue.length} waiting</p>
+			</div>
 		</header>
 
 		{#if queue.length === 0}
@@ -262,9 +274,13 @@
 							class:focused={index === focusIndex}
 							class:selected={selectedIds.includes(item.id)}
 							class:leaving={leavingIds.includes(item.id)}
+							class:approved={approvedIds.includes(item.id)}
 							data-testid="arrivals-row"
 							data-item-id={item.id}
 						>
+							{#if approvedIds.includes(item.id)}
+								<span class="added-flag" data-testid="arrivals-added">✓ Added</span>
+							{/if}
 							<button
 								type="button"
 								class="row-button"
@@ -425,6 +441,8 @@
 		min-height: 100vh;
 		overflow: hidden;
 		color: var(--cream);
+		/* Verdigris tint from the arrivals palette, used to confirm an approval. */
+		--added: #6fb2ba;
 	}
 
 	.page {
@@ -470,6 +488,17 @@
 		opacity: 0.66;
 	}
 
+	.counts {
+		display: flex;
+		align-items: baseline;
+		gap: 14px;
+	}
+
+	.added-count {
+		color: var(--added);
+		opacity: 1;
+	}
+
 	h2 {
 		margin: 0;
 		font-family: var(--font-serif);
@@ -496,6 +525,7 @@
 	}
 
 	.row {
+		position: relative;
 		background: color-mix(in srgb, var(--cream) 9%, transparent);
 		transition:
 			opacity 300ms ease,
@@ -507,9 +537,32 @@
 		background: color-mix(in srgb, var(--cream) 17%, transparent);
 	}
 
+	.row.approved {
+		background: color-mix(in srgb, var(--added) 26%, transparent);
+	}
+
 	.row.leaving {
 		opacity: 0;
 		transform: translateX(18px);
+	}
+
+	.added-flag {
+		position: absolute;
+		top: 50%;
+		right: 10px;
+		z-index: 1;
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 4px 9px;
+		background: var(--added);
+		color: var(--ink);
+		font-family: var(--font-sans);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		pointer-events: none;
 	}
 
 	.row-button {
@@ -620,12 +673,17 @@
 		width: 100%;
 		min-height: 44px;
 		border: 0;
-		background: color-mix(in srgb, var(--cream) 13%, transparent);
+		background-color: color-mix(in srgb, var(--cream) 13%, transparent);
 		color: var(--cream);
 		color-scheme: dark;
 		font-family: var(--font-serif);
 		font-size: 16px;
 		padding: 7px 9px;
+	}
+
+	/* Leave room for the global chevron on the album select. */
+	.meta select {
+		padding-right: 2.2em;
 	}
 
 	.meta :global(legend),
@@ -659,6 +717,11 @@
 		color: inherit;
 		font-size: 16px;
 		padding: 7px 9px;
+	}
+
+	/* Chevron room for the date-picker selects reached via :global. */
+	.meta :global(select) {
+		padding-right: 2.2em;
 	}
 
 	.meta :global(.year-box) {

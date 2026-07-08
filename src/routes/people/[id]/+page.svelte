@@ -152,7 +152,13 @@
 						<span class="names">
 							{#each members as member (member.id)}
 								<a class="person-link" href={resolve(`/people/${member.slug}`)}>
-									<Avatar name={member.name} accentColor={member.accentColor} size={19} />
+									<Avatar
+										name={member.name}
+										accentColor={member.accentColor}
+										size={19}
+										avatarUrl={member.avatarUrl}
+										avatarCrop={member.avatarCrop}
+									/>
 									{member.name}
 								</a>
 							{/each}

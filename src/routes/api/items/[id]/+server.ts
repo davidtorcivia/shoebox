@@ -4,6 +4,7 @@ import {
 	deleteItem,
 	getItemDTO,
 	restoreItem,
+	setItemPoster,
 	updateItem,
 	type UpdateItemInput
 } from '$lib/server/items';
@@ -41,11 +42,28 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
-	requireRole(locals, 'editor');
-	const body = (await request.json()) as { action?: string };
-	if (body.action !== 'restore') return json({ message: 'Unknown action' }, { status: 400 });
-	const item = await restoreItem(locals.db, locals.platform.storage, params.id);
-	return json({ item });
+	const body = (await request.json()) as { action?: string; posterTime?: number };
+	if (body.action === 'setPoster') {
+		const user = requireRole(locals, 'uploader');
+		if (typeof body.posterTime !== 'number') {
+			return json({ message: 'posterTime must be a number' }, { status: 400 });
+		}
+		const item = await setItemPoster(
+			locals.db,
+			locals.platform.storage,
+			locals.platform.queue,
+			user,
+			params.id,
+			body.posterTime
+		);
+		return json({ item });
+	}
+	if (body.action === 'restore') {
+		requireRole(locals, 'editor');
+		const item = await restoreItem(locals.db, locals.platform.storage, params.id);
+		return json({ item });
+	}
+	return json({ message: 'Unknown action' }, { status: 400 });
 };
 
 type FlatUpdateItemInput = {

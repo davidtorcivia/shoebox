@@ -7,6 +7,7 @@ import {
 	confirmedFacesForItem,
 	listSuggestions,
 	rejectCluster,
+	rejectFace,
 	splitCluster,
 	updateFaceBox
 } from './faces';
@@ -132,6 +133,53 @@ describe('faces service', () => {
 			.where(eq(schema.items.id, 'deleted-item'));
 		const person = await makePerson(db);
 		await expect(assignCluster(db, 'c2', person.id)).rejects.toMatchObject({ status: 404 });
+	});
+
+	it('assigns the live faces of a cluster even when a member sits on a deleted item', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		const person = await makePerson(db);
+		await addReadyItem(db, 'live', owner.id);
+		await addReadyItem(db, 'gone', owner.id);
+		await addFace(db, { id: 'f-live', itemId: 'live', clusterId: 'c1' });
+		await addFace(db, { id: 'f-gone', itemId: 'gone', clusterId: 'c1' });
+		await db
+			.update(schema.items)
+			.set({ deletedAt: new Date() })
+			.where(eq(schema.items.id, 'gone'));
+
+		// The deleted-item face must not block assigning the rest of the cluster.
+		await assignCluster(db, 'c1', person.id, { reindex: async () => undefined });
+
+		const live = (await db.select().from(schema.faces).where(eq(schema.faces.id, 'f-live')))[0];
+		expect(live.status).toBe('confirmed');
+		expect(live.personId).toBe(person.id);
+		const tagged = await db.select().from(schema.itemPeople);
+		expect(tagged.map((row) => row.itemId)).toEqual(['live']);
+	});
+
+	it('rejects a single bad face box without touching its cluster mates', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		await addReadyItem(db, 'it1', owner.id);
+		await addReadyItem(db, 'it2', owner.id);
+		await addFace(db, { id: 'good', itemId: 'it1', clusterId: 'c1' });
+		await addFace(db, { id: 'bad', itemId: 'it2', clusterId: 'c1' });
+
+		await rejectFace(db, 'bad', { reindex: async () => undefined });
+
+		const bad = (await db.select().from(schema.faces).where(eq(schema.faces.id, 'bad')))[0];
+		expect(bad.status).toBe('rejected');
+		expect(bad.clusterId).toBeNull();
+		expect(bad.personId).toBeNull();
+		const good = (await db.select().from(schema.faces).where(eq(schema.faces.id, 'good')))[0];
+		expect(good.status).toBe('pending');
+		expect(good.clusterId).toBe('c1');
+		// The rejected box drops out of future suggestions; its mate remains.
+		const suggestions = await listSuggestions(db, stubStorage);
+		expect(suggestions).toEqual([
+			expect.objectContaining({ clusterId: 'c1', count: 1 })
+		]);
 	});
 
 	it('rejects a cluster and clears its cluster id', async () => {

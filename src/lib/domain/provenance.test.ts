@@ -18,18 +18,14 @@ describe('weekdayOf', () => {
 });
 
 describe('eyebrowFor', () => {
-	it('renders full provenance', () => {
-		expect(eyebrowFor(day('1994-06-14'), 'ingest', 'Tape 04')).toBe('Tuesday · Ingest · Tape 04');
+	it('renders weekday and tape label', () => {
+		expect(eyebrowFor(day('1994-06-14'), 'Tape 04')).toBe('Tuesday · Tape 04');
 	});
 
 	it('drops empty segments', () => {
 		expect(
-			eyebrowFor(
-				{ dateStart: '1994-01-01', dateEnd: '1994-12-31', precision: 'year' },
-				'upload',
-				null
-			)
-		).toBe('Upload');
-		expect(eyebrowFor(day('1994-06-14'), 'upload', null)).toBe('Tuesday · Upload');
+			eyebrowFor({ dateStart: '1994-01-01', dateEnd: '1994-12-31', precision: 'year' }, null)
+		).toBe('');
+		expect(eyebrowFor(day('1994-06-14'), null)).toBe('Tuesday');
 	});
 });
