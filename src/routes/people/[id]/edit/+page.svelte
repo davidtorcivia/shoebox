@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import AccentSwatches from '$lib/ui/AccentSwatches.svelte';
 	import CropPicker from '$lib/ui/CropPicker.svelte';
 	import Gradient from '$lib/ui/Gradient.svelte';
 	import RelEditor from '$lib/ui/RelEditor.svelte';
 	import { makePortraitCrop } from '$lib/ui/crop';
 	import { personRoomFor } from '$lib/ui/tokens';
-	import type { CropRect } from '$lib/domain/people-dto';
 	import type { ItemDTO } from '$lib/types';
 
 	let { data } = $props();
@@ -52,18 +52,21 @@
 
 	async function save() {
 		saveError = '';
+		// A linked (non-editor) user manages their own profile but not their display
+		// name, so only editors send `name`.
+		const body: Record<string, unknown> = {
+			birthdate: birthdate || null,
+			deathDate: deathDate || null,
+			birthPlace: birthPlace || null,
+			accentColor,
+			avatarItemId,
+			avatarCrop
+		};
+		if (data.isEditor) body.name = name;
 		const res = await fetch(`/api/people/${person.id}`, {
 			method: 'PATCH',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({
-				name,
-				birthdate: birthdate || null,
-				deathDate: deathDate || null,
-				birthPlace: birthPlace || null,
-				accentColor,
-				avatarItemId,
-				avatarCrop
-			})
+			body: JSON.stringify(body)
 		});
 		if (!res.ok) {
 			saveError =
@@ -72,7 +75,7 @@
 			return;
 		}
 		const { person: saved } = (await res.json()) as { person: { slug: string } };
-		await goto(`/people/${saved.slug}`);
+		await goto(resolve(`/people/${saved.slug}`));
 	}
 
 	async function destroy() {
@@ -88,7 +91,7 @@
 			deleteError = 'Could not delete.';
 			return;
 		}
-		await goto('/people');
+		await goto(resolve('/people'));
 	}
 </script>
 
@@ -100,14 +103,14 @@
 	<Gradient stops={room.stops} pools={room.pools} />
 	<section class="page">
 		<div class="wrap">
-			<a class="back" href={`/people/${person.slug}`}>← Back to {person.name}</a>
+			<a class="back" href={resolve(`/people/${person.slug}`)}>← Back to {person.name}</a>
 			<h1>Edit person</h1>
 
 			<section>
 				<div class="label">Details</div>
 				<label class="field">
-					<span>Name</span>
-					<input data-testid="edit-name" bind:value={name} />
+					<span>Name{data.isEditor ? '' : ' · set by an admin'}</span>
+					<input data-testid="edit-name" bind:value={name} readonly={!data.isEditor} />
 				</label>
 				<div class="row">
 					<label class="field">
@@ -168,7 +171,8 @@
 				<button class="save" data-testid="save-person" onclick={save}>Save</button>
 				{#if saveError}<span class="err">{saveError}</span>{/if}
 				{#if data.isAdmin}
-					<button class="danger" data-testid="delete-person" onclick={destroy}>Delete person</button>
+					<button class="danger" data-testid="delete-person" onclick={destroy}>Delete person</button
+					>
 					{#if deleteError}<span class="err" data-testid="delete-error">{deleteError}</span>{/if}
 				{/if}
 			</div>

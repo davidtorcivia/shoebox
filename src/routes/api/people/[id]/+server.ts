@@ -9,7 +9,17 @@ import {
 import { ROLE_RANK, requireRole } from '$lib/server/roles';
 import type { RequestHandler } from './$types';
 
-const LINKED_USER_KEYS = ['bio', 'birthPlace'] as const;
+// A user linked to this person manages their own profile fully — everything an
+// editor can set except their display name (identity stays admin-controlled).
+const LINKED_USER_KEYS = [
+	'birthdate',
+	'deathDate',
+	'birthPlace',
+	'bio',
+	'accentColor',
+	'avatarItemId',
+	'avatarCrop'
+] as const;
 
 export const GET: RequestHandler = async ({ locals, params }) => {
 	requireRole(locals, 'user');
@@ -29,7 +39,8 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 
 	const allowedKeys: readonly string[] = isEditor ? PERSON_PATCH_KEYS : LINKED_USER_KEYS;
 	for (const key of Object.keys(body)) {
-		if (!(PERSON_PATCH_KEYS as readonly string[]).includes(key)) error(400, `unknown field: ${key}`);
+		if (!(PERSON_PATCH_KEYS as readonly string[]).includes(key))
+			error(400, `unknown field: ${key}`);
 		if (!allowedKeys.includes(key)) {
 			error(403, `linked users may only edit: ${LINKED_USER_KEYS.join(', ')}`);
 		}
@@ -43,6 +54,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 export const DELETE: RequestHandler = async ({ locals, params }) => {
 	requireRole(locals, 'admin');
 	const result = await deletePersonGuarded(locals.db, params.id);
-	if (!result.ok) return json({ error: 'person-in-use', count: result.taggedCount }, { status: 409 });
+	if (!result.ok)
+		return json({ error: 'person-in-use', count: result.taggedCount }, { status: 409 });
 	return json({ ok: true });
 };

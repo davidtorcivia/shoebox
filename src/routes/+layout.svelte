@@ -18,7 +18,11 @@
 </script>
 
 {#if data.user && !data.pathname.startsWith('/share')}
-	<Nav user={data.user} ingestion={data.features.ingestion} />
+	<Nav
+		user={data.user}
+		ingestion={data.features.ingestion}
+		linkedPersonSlug={data.linkedPersonSlug}
+	/>
 {/if}
 <main>
 	{@render children()}

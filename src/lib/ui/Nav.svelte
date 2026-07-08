@@ -9,7 +9,11 @@
 		accentColor: string;
 		avatarStorageKey: string | null;
 	}
-	let { user, ingestion }: { user: NavUser; ingestion: boolean } = $props();
+	let {
+		user,
+		ingestion,
+		linkedPersonSlug = null
+	}: { user: NavUser; ingestion: boolean; linkedPersonSlug?: string | null } = $props();
 
 	const showArrivals = $derived(ingestion && ['editor', 'admin', 'owner'].includes(user.role));
 	const showUpload = $derived(['uploader', 'editor', 'admin', 'owner'].includes(user.role));
@@ -41,6 +45,10 @@
 		<nav aria-label="Primary">
 			<a href={resolve('/')}>Timeline</a>
 			<a href={resolve('/people')}>People</a>
+			{#if linkedPersonSlug}
+				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- person slug is dynamic -->
+				<a href={`/people/${linkedPersonSlug}`} data-testid="nav-you">You</a>
+			{/if}
 			<a href={resolve('/albums')}>Albums</a>
 			<a href={resolve('/search')}>Search</a>
 			{#if showUpload}<a href={resolve('/upload')}>Upload</a>{/if}

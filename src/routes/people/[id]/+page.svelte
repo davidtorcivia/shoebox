@@ -95,13 +95,16 @@
 						</div>
 					{/if}
 				</div>
-				{#if data.canEdit}
+				{#if data.canEdit || data.isLinked}
 					<a class="portrait-action" href={resolve(`/people/${person.slug}/edit`)}
-						>Choose portrait</a
+						>{data.canEdit ? 'Choose portrait' : 'Edit your profile'}</a
 					>
 				{/if}
 			</div>
 			<div class="who">
+				{#if data.isLinked}
+					<div class="you-badge" data-testid="you-badge">This is you</div>
+				{/if}
 				{#if eyebrow}
 					<div class="eyebrow" data-testid="person-eyebrow">{eyebrow}</div>
 				{/if}
@@ -340,6 +343,19 @@
 		font-family: var(--font-sans);
 		font-size: 11px;
 		letter-spacing: 0.26em;
+		text-transform: uppercase;
+	}
+
+	.you-badge {
+		display: inline-block;
+		margin-bottom: 10px;
+		padding: 4px 10px;
+		background: var(--person-accent, var(--dawn));
+		color: var(--ink);
+		font-family: var(--font-sans);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.22em;
 		text-transform: uppercase;
 	}
 
