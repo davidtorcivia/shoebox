@@ -22,16 +22,13 @@
 	const layout = $derived(layoutMasonry(entries, columns, columnWidth, 12));
 </script>
 
-<section
-	class="masonry"
-	data-direction={motionDirection}
-	aria-label="Timeline media"
-	bind:clientWidth={width}
->
+<section class="masonry" data-direction={motionDirection} aria-label="Timeline media">
 	{#if entries.length === 0}
 		<p class="empty">No moments yet for this year.</p>
 	{:else}
-		<div class="canvas" style={`height: ${layout.height}px`}>
+		<!-- Measure the content box (inside padding), not the padded section, so
+		     column widths never overshoot and clip the rightmost media on mobile. -->
+		<div class="canvas" bind:clientWidth={width} style={`height: ${layout.height}px`}>
 			{#each layout.entries as positioned, index (positioned.id)}
 				<div
 					class="cell"
