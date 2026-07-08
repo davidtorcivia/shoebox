@@ -1,4 +1,6 @@
 <script lang="ts">
+	import VoiceNoteItem from './VoiceNoteItem.svelte';
+
 	interface VoiceNote {
 		id: string;
 		url: string;
@@ -16,6 +18,7 @@
 	let elapsed = $state(0);
 	let busy = $state(false);
 	let error = $state('');
+	let pendingDelete = $state<string | null>(null);
 
 	let recorder: MediaRecorder | null = null;
 	let chunks: Blob[] = [];
@@ -81,10 +84,13 @@
 		list = [...list, note];
 	}
 
-	async function remove(id: string): Promise<void> {
-		if (!confirm('Delete this voice memory?')) return;
+	async function confirmDelete(): Promise<void> {
+		const id = pendingDelete;
+		if (!id) return;
+		pendingDelete = null;
 		const res = await fetch(`/api/items/${itemId}/voice/${id}`, { method: 'DELETE' });
 		if (res.ok) list = list.filter((note) => note.id !== id);
+		else error = 'Could not delete the recording.';
 	}
 </script>
 
@@ -113,21 +119,28 @@
 		<ul class="notes">
 			{#each list as note (note.id)}
 				<li>
-					<audio controls preload="none" src={note.url}></audio>
-					<span class="by">{note.author}</span>
-					{#if note.mine}
-						<button
-							type="button"
-							class="del"
-							aria-label="Delete memory"
-							onclick={() => void remove(note.id)}>×</button
-						>
-					{/if}
+					<VoiceNoteItem {note} onDelete={(id) => (pendingDelete = id)} />
 				</li>
 			{/each}
 		</ul>
 	{/if}
 </section>
+
+{#if pendingDelete}
+	<div class="modal-backdrop">
+		<div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-voice-title">
+			<div class="label">Confirm</div>
+			<h2 id="delete-voice-title">Delete this voice memory?</h2>
+			<p>This recording will be permanently removed from this moment.</p>
+			<div class="modal-actions">
+				<button class="secondary" type="button" onclick={() => (pendingDelete = null)}
+					>Cancel</button
+				>
+				<button class="danger" type="button" onclick={() => void confirmDelete()}>Delete</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.voice {
@@ -191,35 +204,7 @@
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
-	}
-
-	.notes li {
-		display: flex;
-		align-items: center;
 		gap: 10px;
-	}
-
-	audio {
-		height: 34px;
-		max-width: min(320px, 68vw);
-	}
-
-	.by {
-		font-family: var(--font-sans);
-		font-size: 0.7rem;
-		color: color-mix(in srgb, var(--cream) 60%, transparent);
-	}
-
-	.del {
-		min-width: 28px;
-		min-height: 28px;
-		border: 0;
-		background: none;
-		color: color-mix(in srgb, var(--cream) 55%, transparent);
-		cursor: pointer;
-		font-size: 18px;
-		line-height: 1;
 	}
 
 	.hint,
@@ -230,5 +215,71 @@
 
 	.err {
 		color: var(--dawn);
+	}
+
+	.modal-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 40;
+		display: grid;
+		place-items: center;
+		padding: 20px;
+		background: rgb(23 20 18 / 0.72);
+	}
+
+	.confirm-modal {
+		width: min(420px, 100%);
+		margin: 0;
+		padding: 24px;
+		background:
+			linear-gradient(135deg, color-mix(in srgb, var(--dawn) 16%, transparent), transparent),
+			color-mix(in srgb, var(--ink) 92%, var(--cream));
+		box-shadow: 0 22px 70px rgb(0 0 0 / 0.38);
+	}
+
+	.confirm-modal .label {
+		opacity: 0.62;
+	}
+
+	.confirm-modal h2 {
+		margin: 8px 0 10px;
+		font-family: var(--font-serif);
+		font-size: 28px;
+		font-weight: 500;
+		line-height: 1.08;
+		color: var(--cream);
+	}
+
+	.confirm-modal p {
+		margin: 0;
+		color: color-mix(in srgb, var(--cream) 78%, transparent);
+		font-family: var(--font-serif);
+		font-size: 16px;
+		line-height: 1.45;
+	}
+
+	.modal-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px;
+		margin-top: 22px;
+	}
+
+	.modal-actions button {
+		min-height: 42px;
+		padding: 0 18px;
+		border: 1px solid color-mix(in srgb, var(--cream) 26%, transparent);
+		background: none;
+		color: var(--cream);
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: 12px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+
+	.modal-actions .danger {
+		border-color: transparent;
+		background: color-mix(in srgb, var(--dawn) 86%, var(--ink));
 	}
 </style>
