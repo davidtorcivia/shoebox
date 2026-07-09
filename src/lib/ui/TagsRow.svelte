@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { tagDisplayLabel } from '$lib/domain/tags';
 	import { CREAM, DAWN_PALE, FONT } from '$lib/ui/tokens';
 	import type { ItemDTO } from '$lib/dto';
 
@@ -25,7 +26,9 @@
 			<span class="empty">None</span>
 		{:else}
 			{#each tags as tag (tag.id)}
-				<a href={resolve(`/?tags=${tag.id}`)}>{tag.name}</a>
+				<a href={resolve(`/tags/${encodeURIComponent(tag.name)}`)}
+					>{tagDisplayLabel(tag.name, tag.kind)}</a
+				>
 			{/each}
 			{#each albums as album (album.id)}
 				<a href={resolve(`/albums?album=${album.id}`)}>{album.title}</a>

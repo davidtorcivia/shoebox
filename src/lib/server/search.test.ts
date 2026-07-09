@@ -77,16 +77,16 @@ beforeEach(() => {
 });
 
 describe('ftsMatchExpr', () => {
-	it('quotes plain tokens', () => {
-		expect(ftsMatchExpr('lake watermelon')).toBe('"lake" "watermelon"');
+	it('turns plain tokens into prefix queries', () => {
+		expect(ftsMatchExpr('lake watermelon')).toBe('"lake"* "watermelon"*');
 	});
 
-	it('keeps quoted phrases as FTS phrases', () => {
-		expect(ftsMatchExpr('"birthday party" lake')).toBe('"birthday party" "lake"');
+	it('keeps quoted phrases exact but prefixes bare tokens', () => {
+		expect(ftsMatchExpr('"birthday party" lake')).toBe('"birthday party" "lake"*');
 	});
 
 	it('doubles embedded quotes', () => {
-		expect(ftsMatchExpr('say"cheese')).toBe('"say""cheese"');
+		expect(ftsMatchExpr('say"cheese')).toBe('"say""cheese"*');
 	});
 
 	it('drops pure punctuation', () => {
@@ -160,8 +160,17 @@ describe('reindexItem', () => {
 		expect(await matchIds(ctx, '"cannonball"')).toEqual(['it_1']);
 	});
 
+	it('matches partial terms via prefix queries', async () => {
+		expect(await matchIds(ctx, ftsMatchExpr('water'))).toEqual(['it_1']);
+		expect(await matchIds(ctx, ftsMatchExpr('lak'))).toEqual(['it_1']);
+		expect(await matchIds(ctx, ftsMatchExpr('summ'))).toEqual(['it_1']);
+		expect(await matchIds(ctx, ftsMatchExpr('zzz'))).toEqual([]);
+	});
+
 	it('replaces rows without keeping stale terms', async () => {
-		await ctx.db.run(sql`UPDATE items SET description = 'sandcastles all afternoon' WHERE id = 'it_1'`);
+		await ctx.db.run(
+			sql`UPDATE items SET description = 'sandcastles all afternoon' WHERE id = 'it_1'`
+		);
 		await reindexItem(ctx.db, 'it_1');
 		expect(await matchIds(ctx, '"watermelon"')).toEqual([]);
 		expect(await matchIds(ctx, '"sandcastles"')).toEqual(['it_1']);

@@ -13,10 +13,10 @@ describe('TagsRow', () => {
 	it('renders the fixed label, tag names, and album titles', () => {
 		const { body } = render(TagsRow, { props: { tags, albums } });
 		expect(body).toContain('Tags');
-		expect(body).toContain('summer');
-		expect(body).toContain('birthday');
+		expect(body).toContain('Summer');
+		expect(body).toContain('Birthday');
 		expect(body).toContain('VHS Tape 04');
-		expect(body).toContain('/?tags=t1');
+		expect(body).toContain('/tags/summer');
 	});
 
 	it('does not emit italic, radius, or media-border styling', () => {

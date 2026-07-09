@@ -109,9 +109,14 @@ export async function reindexItemsForAlbum(db: Db, albumId: string): Promise<voi
 export function ftsMatchExpr(text: string): string {
 	const tokens: string[] = [];
 	for (const match of text.matchAll(/"([^"]*)"|(\S+)/g)) {
+		const quoted = match[1] !== undefined;
 		const raw = (match[1] ?? match[2] ?? '').trim();
 		if (!/[\p{L}\p{N}]/u.test(raw)) continue;
-		tokens.push(`"${raw.replace(/"/g, '""')}"`);
+		const phrase = `"${raw.replace(/"/g, '""')}"`;
+		// Bareword tokens become FTS prefix queries so partially-typed terms match
+		// as you type ("chris" -> Christmas, "beac" -> beach). Explicitly quoted
+		// phrases stay exact so a user can still pin down a precise match.
+		tokens.push(quoted ? phrase : `${phrase}*`);
 	}
 	return tokens.join(' ');
 }

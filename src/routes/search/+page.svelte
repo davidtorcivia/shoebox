@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { serializeQuery, type SearchQuery } from '$lib/domain/search-query';
 	import Gradient from '$lib/ui/Gradient.svelte';
@@ -12,10 +12,14 @@
 
 	let { data }: { data: PageData } = $props();
 
-	let draft = $state('');
+	let draft = $state(data.q);
+	// Results render from local state so they can stream in as the user types,
+	// without a full-page navigation. `liveQ` is the query those results reflect.
+	let liveResult = $state<SearchResultDTO | null>(data.result);
+	let liveQ = $state(data.q);
 	let extraItems = $state<SearchResultDTO['items']>([]);
-	let nextCursor = $state<string | null>(null);
-	let liveTimer: ReturnType<typeof setTimeout> | null = null;
+	let nextCursor = $state<string | null>(data.result?.nextCursor ?? null);
+	let loading = $state(false);
 
 	const room = {
 		stops: ['#171412', '#5E6F4D', '#FFD9A8'] as [string, string, string],
@@ -26,29 +30,77 @@
 		]
 	};
 
+	let seq = 0;
+	let controller: AbortController | null = null;
+	let debounce: ReturnType<typeof setTimeout> | null = null;
+	// The query the server `load` last delivered. A real navigation (back/forward,
+	// a fresh link) changes it and re-seeds the view; our own in-place URL updates
+	// (replaceState doesn't re-run load) leave it untouched so they don't clobber.
+	let syncedDataQ = data.q;
+
 	$effect(() => {
+		if (data.q === syncedDataQ) return;
+		syncedDataQ = data.q;
 		draft = data.q;
+		liveResult = data.result;
+		liveQ = data.q;
 		extraItems = [];
 		nextCursor = data.result?.nextCursor ?? null;
+		loading = false;
 	});
 
 	$effect(() => {
 		const value = draft.trim();
-		if (value === data.q.trim()) return;
-		if (liveTimer) clearTimeout(liveTimer);
-		liveTimer = setTimeout(() => {
-			void goto(value ? resolve(`/search?q=${encodeURIComponent(value)}`) : resolve('/search'), {
-				replaceState: true,
-				noScroll: true,
-				keepFocus: true
-			});
-		}, 240);
+		if (value === liveQ.trim()) return;
+		if (debounce) clearTimeout(debounce);
+		debounce = setTimeout(() => void runSearch(value), 180);
 		return () => {
-			if (liveTimer) clearTimeout(liveTimer);
+			if (debounce) clearTimeout(debounce);
 		};
 	});
 
-	const result = $derived(data.result);
+	async function runSearch(value: string) {
+		const mySeq = ++seq;
+		controller?.abort();
+		const ctrl = new AbortController();
+		controller = ctrl;
+		// Keep the URL shareable/bookmarkable without re-running the server load.
+		replaceState(
+			value ? resolve(`/search?q=${encodeURIComponent(value)}`) : resolve('/search'),
+			{}
+		);
+
+		if (!value) {
+			if (mySeq !== seq) return;
+			liveResult = null;
+			liveQ = '';
+			extraItems = [];
+			nextCursor = null;
+			loading = false;
+			return;
+		}
+
+		loading = true;
+		try {
+			const res = await fetch(`/api/search?q=${encodeURIComponent(value)}`, {
+				signal: ctrl.signal
+			});
+			if (!res.ok) throw new Error('search failed');
+			const body = (await res.json()) as SearchResultDTO;
+			if (mySeq !== seq) return;
+			liveResult = body;
+			liveQ = value;
+			extraItems = [];
+			nextCursor = body.nextCursor;
+		} catch {
+			// Superseded keystroke (aborted) or a transient failure: keep the prior
+			// results on screen rather than flashing an error mid-type.
+		} finally {
+			if (mySeq === seq) loading = false;
+		}
+	}
+
+	const result = $derived(liveResult);
 	const items = $derived(result ? [...result.items, ...extraItems] : []);
 	const activeYear = $derived(yearFor(items[0]));
 
@@ -123,24 +175,21 @@
 
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
-		const value = draft.trim();
-		if (liveTimer) clearTimeout(liveTimer);
-		void goto(value ? resolve(`/search?q=${encodeURIComponent(value)}`) : resolve('/search'), {
-			replaceState: true,
-			noScroll: true,
-			keepFocus: true
-		});
+		if (debounce) clearTimeout(debounce);
+		void runSearch(draft.trim());
 	}
 
 	function removeChip(chip: Chip) {
 		if (chip.q === undefined) return;
-		void goto(chip.q ? resolve(`/search?q=${encodeURIComponent(chip.q)}`) : resolve('/search'));
+		draft = chip.q ?? '';
+		if (debounce) clearTimeout(debounce);
+		void runSearch(draft.trim());
 	}
 
 	async function loadMore() {
 		if (!nextCursor) return;
 		const res = await fetch(
-			`/api/search?q=${encodeURIComponent(data.q)}&cursor=${encodeURIComponent(nextCursor)}`
+			`/api/search?q=${encodeURIComponent(liveQ)}&cursor=${encodeURIComponent(nextCursor)}`
 		);
 		if (!res.ok) return;
 		const body = (await res.json()) as SearchResultDTO;
@@ -188,6 +237,7 @@
 				data-testid="omnibox"
 				bind:value={draft}
 			/>
+			<div class="scanline" class:on={loading} aria-hidden="true"></div>
 		</form>
 
 		{#if chips.length}
@@ -249,7 +299,7 @@
 					<button class="more" type="button" onclick={loadMore}>More</button>
 				{/if}
 			{:else if !result.people.length && !result.albums.length}
-				<p class="empty" data-testid="search-empty">Nothing found in the shoebox for {data.q}.</p>
+				<p class="empty" data-testid="search-empty">Nothing found in the shoebox for {liveQ}.</p>
 			{/if}
 		{/if}
 	</section>
@@ -305,6 +355,49 @@
 	.omnibox-input::placeholder {
 		color: color-mix(in srgb, var(--cream) 54%, transparent);
 		opacity: 1;
+	}
+
+	/* A hairline that sweeps while a live query is in flight, so results feel like
+	   they're streaming in as you type rather than blinking into place. */
+	.scanline {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		height: 2px;
+		width: 100%;
+		overflow: hidden;
+		opacity: 0;
+		transition: opacity 160ms ease;
+	}
+
+	.scanline.on {
+		opacity: 1;
+	}
+
+	.scanline::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		width: 40%;
+		background: linear-gradient(90deg, transparent, var(--dawn), transparent);
+		animation: scan 900ms ease-in-out infinite;
+	}
+
+	@keyframes scan {
+		0% {
+			transform: translateX(-100%);
+		}
+		100% {
+			transform: translateX(350%);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.scanline::after {
+			animation: none;
+			width: 100%;
+			opacity: 0.5;
+		}
 	}
 
 	.more {
