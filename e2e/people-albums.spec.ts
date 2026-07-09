@@ -24,8 +24,12 @@ test('relationships derive family rows and year age captions', async ({ page }) 
 	const addRel = async (kind: string, personId: string) => {
 		await page.getByTestId('rel-kind').selectOption(kind);
 		await page.getByTestId('rel-person').click();
-		await page.getByTestId(`rel-option-${personId}`).click();
-		await page.waitForResponse((res) => res.url().includes('/relationships') && res.ok());
+		// Register the response waiter BEFORE the click that triggers the PATCH —
+		// otherwise a fast response can resolve before the waiter attaches and hang.
+		await Promise.all([
+			page.waitForResponse((res) => res.url().includes('/relationships') && res.ok()),
+			page.getByTestId(`rel-option-${personId}`).click()
+		]);
 	};
 	await addRel('spouse', seed.people.frank);
 	await addRel('child', seed.people.david);
