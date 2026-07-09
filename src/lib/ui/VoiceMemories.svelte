@@ -7,6 +7,8 @@
 		mime: string;
 		duration: number | null;
 		author: string;
+		authorAvatarUrl: string | null;
+		authorAccentColor: string;
 		mine: boolean;
 		createdAt: number;
 	}

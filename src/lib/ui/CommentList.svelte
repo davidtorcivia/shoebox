@@ -3,7 +3,7 @@
 		id: string;
 		body: string;
 		createdAt: string;
-		user: { id: string; username: string; accentColor: string };
+		user: { id: string; username: string; accentColor: string; avatarUrl?: string | null };
 		canDelete?: boolean;
 	}
 </script>
@@ -27,7 +27,12 @@
 	{#each comments as comment (comment.id)}
 		<li>
 			<div class="head">
-				<Avatar name={comment.user.username} accentColor={comment.user.accentColor} size={19} />
+				<Avatar
+					name={comment.user.username}
+					accentColor={comment.user.accentColor}
+					avatarUrl={comment.user.avatarUrl}
+					size={19}
+				/>
 				<span class="who" style:color={comment.user.accentColor} data-testid="comment-username">
 					{comment.user.username}
 				</span>

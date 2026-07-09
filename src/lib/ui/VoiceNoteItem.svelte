@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatTimecode } from '$lib/domain/timecode';
+	import Avatar from './Avatar.svelte';
 	import ScrubTrack from './ScrubTrack.svelte';
 
 	interface VoiceNote {
@@ -7,6 +8,8 @@
 		url: string;
 		duration: number | null;
 		author: string;
+		authorAvatarUrl: string | null;
+		authorAccentColor: string;
 		mine: boolean;
 		createdAt: number;
 	}
@@ -72,6 +75,12 @@
 			<span class="time">{formatTimecode(currentTime)} / {formatTimecode(duration)}</span>
 		</div>
 		<div class="meta">
+			<Avatar
+				name={note.author}
+				accentColor={note.authorAccentColor}
+				avatarUrl={note.authorAvatarUrl}
+				size={20}
+			/>
 			<span class="who">{note.author}</span>
 			<span class="dot" aria-hidden="true">·</span>
 			<span class="when">{recordedOn}</span>
@@ -158,7 +167,7 @@
 	.meta {
 		display: flex;
 		gap: 7px;
-		align-items: baseline;
+		align-items: center;
 		font-family: var(--font-sans);
 		font-size: 11px;
 		letter-spacing: 0.08em;

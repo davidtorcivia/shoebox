@@ -15,6 +15,8 @@ export interface VoiceNoteDTO {
 	duration: number | null;
 	author: string;
 	authorId: string;
+	authorAvatarUrl: string | null;
+	authorAccentColor: string;
 	createdAt: number;
 	mine: boolean;
 }
@@ -33,7 +35,9 @@ export async function listVoiceNotes(
 			duration: voiceNotes.duration,
 			createdAt: voiceNotes.createdAt,
 			userId: voiceNotes.userId,
-			username: users.username
+			username: users.username,
+			avatarStorageKey: users.avatarStorageKey,
+			accentColor: users.accentColor
 		})
 		.from(voiceNotes)
 		.innerJoin(users, eq(users.id, voiceNotes.userId))
@@ -48,6 +52,8 @@ export async function listVoiceNotes(
 			duration: row.duration,
 			author: row.username,
 			authorId: row.userId,
+			authorAvatarUrl: row.avatarStorageKey ? await storage.mediaUrl(row.avatarStorageKey) : null,
+			authorAccentColor: row.accentColor,
 			createdAt: row.createdAt.getTime(),
 			mine: row.userId === viewerId
 		}))
@@ -121,7 +127,9 @@ async function listVoiceNotesById(
 				duration: voiceNotes.duration,
 				createdAt: voiceNotes.createdAt,
 				userId: voiceNotes.userId,
-				username: users.username
+				username: users.username,
+				avatarStorageKey: users.avatarStorageKey,
+				accentColor: users.accentColor
 			})
 			.from(voiceNotes)
 			.innerJoin(users, eq(users.id, voiceNotes.userId))
@@ -137,6 +145,8 @@ async function listVoiceNotesById(
 			duration: row.duration,
 			author: row.username,
 			authorId: row.userId,
+			authorAvatarUrl: row.avatarStorageKey ? await storage.mediaUrl(row.avatarStorageKey) : null,
+			authorAccentColor: row.accentColor,
 			createdAt: row.createdAt.getTime(),
 			mine: row.userId === viewerId
 		}

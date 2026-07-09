@@ -1,12 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { items as itemsTable } from '$lib/server/db/schema';
-import {
-	makeItem,
-	makeTestDb,
-	makeUser,
-	sessionUser,
-	type TestDb
-} from '$lib/server/testing/db';
+import { makeItem, makeTestDb, makeUser, sessionUser, type TestDb } from '$lib/server/testing/db';
 import { addComment, deleteComment, listComments } from './comments';
 
 let db: TestDb;
@@ -33,9 +27,21 @@ describe('comments service', () => {
 		expect(listed[0].user).toEqual({
 			id: viewer.id,
 			username: viewer.username,
-			accentColor: viewer.accentColor
+			accentColor: viewer.accentColor,
+			avatarUrl: null
 		});
 		expect(listed.map((comment) => comment.canDelete)).toEqual([true, false]);
+	});
+
+	it("uses the author's uploaded avatar when they have one", async () => {
+		const author = sessionUser(
+			await makeUser(db, { role: 'user', avatarStorageKey: 'avatars/kid.webp' })
+		);
+		const item = await makeItem(db, { uploadedBy: author.id });
+		const created = await addComment(db, item.id, author, 'Hi');
+		expect(created.user.avatarUrl).toBe('/media/avatars/kid.webp');
+		const listed = await listComments(db, item.id, author);
+		expect(listed[0].user.avatarUrl).toBe('/media/avatars/kid.webp');
 	});
 
 	it('rejects blank and oversized comments', async () => {

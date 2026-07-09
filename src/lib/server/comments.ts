@@ -11,8 +11,14 @@ export interface CommentDTO {
 	id: string;
 	body: string;
 	createdAt: string;
-	user: { id: string; username: string; accentColor: string };
+	user: { id: string; username: string; accentColor: string; avatarUrl: string | null };
 	canDelete: boolean;
+}
+
+/** User avatars are served straight from the media route by their storage key,
+ * matching how the nav renders them. */
+function userAvatarUrl(key: string | null): string | null {
+	return key ? `/media/${key}` : null;
 }
 
 export async function listComments(
@@ -27,25 +33,25 @@ export async function listComments(
 			createdAt: comments.createdAt,
 			userId: users.id,
 			username: users.username,
-			accentColor: users.accentColor
+			accentColor: users.accentColor,
+			avatarStorageKey: users.avatarStorageKey
 		})
 		.from(comments)
 		.innerJoin(users, eq(comments.userId, users.id))
 		.innerJoin(items, eq(comments.itemId, items.id))
-		.where(
-			and(
-				eq(comments.itemId, itemId),
-				isNull(comments.deletedAt),
-				isNull(items.deletedAt)
-			)
-		)
+		.where(and(eq(comments.itemId, itemId), isNull(comments.deletedAt), isNull(items.deletedAt)))
 		.orderBy(asc(comments.createdAt));
 
 	return rows.map((row) => ({
 		id: row.id,
 		body: row.body,
 		createdAt: row.createdAt.toISOString(),
-		user: { id: row.userId, username: row.username, accentColor: row.accentColor },
+		user: {
+			id: row.userId,
+			username: row.username,
+			accentColor: row.accentColor,
+			avatarUrl: userAvatarUrl(row.avatarStorageKey)
+		},
 		canDelete: canDeleteComment(viewer, row.userId)
 	}));
 }
@@ -77,16 +83,17 @@ export async function addComment(
 		id,
 		body: trimmed,
 		createdAt: createdAt.toISOString(),
-		user: { id: viewer.id, username: viewer.username, accentColor: viewer.accentColor },
+		user: {
+			id: viewer.id,
+			username: viewer.username,
+			accentColor: viewer.accentColor,
+			avatarUrl: userAvatarUrl(viewer.avatarStorageKey)
+		},
 		canDelete: true
 	};
 }
 
-export async function deleteComment(
-	db: Db,
-	commentId: string,
-	viewer: SessionUser
-): Promise<void> {
+export async function deleteComment(db: Db, commentId: string, viewer: SessionUser): Promise<void> {
 	const row = (
 		await db
 			.select({ id: comments.id, itemId: comments.itemId, userId: comments.userId })

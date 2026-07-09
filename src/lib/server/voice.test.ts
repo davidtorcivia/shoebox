@@ -57,6 +57,26 @@ describe('voice notes', () => {
 		expect(await listVoiceNotes(db, storage, item.id, owner.id)).toHaveLength(0);
 	});
 
+	it("surfaces the author's avatar when they have uploaded one", async () => {
+		const withAvatar = await makeUser(db, { role: 'user', avatarStorageKey: 'avatars/gran.webp' });
+		const item = await makeItem(db, { uploadedBy: owner.id });
+		const note = await addVoiceNote(db, storage, withAvatar.id, item.id, {
+			data: new Uint8Array([1]),
+			mime: 'audio/webm',
+			duration: 1
+		});
+		expect(note.authorAvatarUrl).toBe('/media/avatars/gran.webp');
+		expect(note.authorAccentColor).toBe(withAvatar.accentColor);
+
+		const noAvatar = await makeUser(db, { role: 'user' });
+		const plain = await addVoiceNote(db, storage, noAvatar.id, item.id, {
+			data: new Uint8Array([2]),
+			mime: 'audio/webm',
+			duration: 1
+		});
+		expect(plain.authorAvatarUrl).toBeNull();
+	});
+
 	it('rejects oversized and unsupported audio', async () => {
 		const item = await makeItem(db, { uploadedBy: owner.id });
 		await expect(
