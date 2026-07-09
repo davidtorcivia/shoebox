@@ -19,7 +19,7 @@
 		"format": "prettier --write .",
 		"test": "vitest run",
 		"test:workers": "vitest run --config vitest.workers.config.ts",
-		"test:e2e": "pnpm fixtures && playwright test",
+		"test:e2e": "pnpm fixtures && playwright test --grep-invert 'timeline at' && playwright test --grep 'timeline at'",
 		"test:e2e:cf": "pnpm fixtures && playwright test -c playwright.cf.config.ts",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate:d1": "wrangler d1 migrations apply shoebox-db --local",
