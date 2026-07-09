@@ -50,7 +50,8 @@
 	<header class="year-head">
 		<h3>{year}</h3>
 		<span class="age" data-testid={`year-meta-${year}`}>
-			{ageLabel}{count} {count === 1 ? 'moment' : 'moments'}
+			{ageLabel}{count}
+			{count === 1 ? 'moment' : 'moments'}
 		</span>
 		<details class="jump">
 			<summary>All years ↓</summary>

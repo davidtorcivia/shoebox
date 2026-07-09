@@ -66,7 +66,7 @@ test.describe(() => {
 			tags: []
 		};
 		const complete = await page.request.post('/api/upload/complete', {
-			headers: { origin: 'http://127.0.0.1:8788' },
+			headers: { origin: 'http://localhost:8788' },
 			multipart: {
 				uploadId: sha256,
 				allowDuplicate: 'false',

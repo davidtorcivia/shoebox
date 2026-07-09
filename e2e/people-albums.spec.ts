@@ -37,8 +37,9 @@ test('relationships derive family rows and year age captions', async ({ page }) 
 	await expect(page.getByTestId('family-row-spouse')).toContainText('Frank Torcivia');
 	await expect(page.getByTestId('family-row-children')).toContainText('David Sr.');
 	await expect(page.getByTestId('family-row-children')).toContainText('Carol');
-	await expect(page.getByTestId('year-meta-1994')).toHaveText(/Age 52–53 · 2 moments/);
-	await expect(page.getByTestId('year-meta-1993')).toHaveText(/Age 51–52 · 1 moment/);
+	// \s+ tolerates the template's newline between the count and the "moment(s)" label.
+	await expect(page.getByTestId('year-meta-1994')).toHaveText(/Age 52–53 · 2\s+moments/);
+	await expect(page.getByTestId('year-meta-1993')).toHaveText(/Age 51–52 · 1\s+moment/);
 });
 
 test('album creation, item-room membership toggle, and comments work together', async ({

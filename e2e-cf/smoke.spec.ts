@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { approveItems } from '../e2e/helpers/arrivals';
 import { ensureOwner } from '../e2e/helpers/auth';
 import { FIXTURE_PNG, FIXTURE_PNG_2, FIXTURE_WEBM } from '../e2e/fixtures/generate';
 
@@ -44,7 +45,7 @@ async function uploadViaApi(page: Page, opts: UploadOpts): Promise<string> {
 		tags: []
 	};
 	const complete = await page.request.post('/api/upload/complete', {
-		headers: { origin: 'http://127.0.0.1:8788' },
+		headers: { origin: 'http://localhost:8788' },
 		multipart: {
 			uploadId: sha256,
 			allowDuplicate: 'false',
@@ -58,6 +59,9 @@ async function uploadViaApi(page: Page, opts: UploadOpts): Promise<string> {
 	});
 	expect(complete.status()).toBe(201);
 	const body = (await complete.json()) as { item: { id: string } };
+	// Uploads land in needs_review; Cloudflare has no arrivals worker, so approve
+	// via the API so the item reaches the timeline (mirrors the node flow).
+	await approveItems(page, [body.item.id]);
 	return body.item.id;
 }
 
