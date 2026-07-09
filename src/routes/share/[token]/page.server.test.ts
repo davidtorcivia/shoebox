@@ -122,7 +122,7 @@ describe('load', () => {
 			createdBy: OWNER_ID,
 			expiresAt: new Date('2000-01-01')
 		});
-		expect(await load(baseEvent(share.token))).toEqual({ state: 'expired' });
+		expect(await load(baseEvent(share.token))).toMatchObject({ state: 'expired' });
 	});
 
 	it('returns password state without a valid cookie', async () => {
@@ -132,7 +132,7 @@ describe('load', () => {
 			createdBy: OWNER_ID,
 			password: 'pw'
 		});
-		expect(await load(baseEvent(share.token))).toEqual({ state: 'password' });
+		expect(await load(baseEvent(share.token))).toMatchObject({ state: 'password' });
 	});
 
 	it('serves album content when the cookie token is present, and refreshes the cookie', async () => {

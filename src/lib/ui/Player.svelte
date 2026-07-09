@@ -934,9 +934,6 @@
 		justify-content: center;
 		margin: 12px auto 0;
 		gap: 8px 16px;
-		padding: 12px 16px;
-		background: color-mix(in srgb, var(--cream) 8%, var(--ink));
-		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cream) 12%, transparent);
 		color: var(--cream);
 	}
 

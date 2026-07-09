@@ -24,7 +24,17 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	if (locals.user) redirect(303, '/');
 	const invite = await getInviteByToken(locals.db, params.token);
 	const state = inviteState(invite);
-	return { state, role: state === 'valid' ? invite!.role : null };
+	return {
+		state,
+		role: state === 'valid' ? invite!.role : null,
+		meta: {
+			title: "You're invited to Shoebox",
+			description:
+				'Someone shared their family archive with you — photos, films, and the stories behind them.',
+			image: '/og-invite.png',
+			imageAlt: "You're invited to Shoebox"
+		}
+	};
 };
 
 export const actions: Actions = {

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import '../app.css';
+	import { page } from '$app/state';
+	import Meta from '$lib/ui/Meta.svelte';
 	import Nav from '$lib/ui/Nav.svelte';
 	import { comfortMode, initTheme, themePref } from '$lib/ui/theme';
 	import { onMount } from 'svelte';
@@ -15,7 +17,41 @@
 		themePref.set(data.user.theme);
 		comfortMode.set(data.user.comfortMode);
 	});
+
+	// One source of truth for link-preview tags: a page can supply `meta` from its
+	// load; otherwise the site defaults apply. Relative images resolve against the
+	// request origin so crawlers get an absolute URL.
+	const SITE_DESCRIPTION =
+		'A private home for your family’s photos, films, and the stories behind them.';
+	const pageMeta = $derived((page.data as { meta?: PageMeta }).meta ?? null);
+	const absolute = (path: string) =>
+		path.startsWith('http') ? path : new URL(path, page.url.origin).href;
+	const meta = $derived({
+		title: pageMeta?.title ?? 'Shoebox',
+		description: pageMeta?.description ?? SITE_DESCRIPTION,
+		image: absolute(pageMeta?.image ?? '/og.png'),
+		imageAlt: pageMeta?.imageAlt ?? 'Shoebox',
+		type: pageMeta?.type ?? ('website' as const),
+		url: page.url.href
+	});
+
+	interface PageMeta {
+		title?: string;
+		description?: string;
+		image?: string;
+		imageAlt?: string;
+		type?: 'website' | 'article';
+	}
 </script>
+
+<Meta
+	title={meta.title}
+	description={meta.description}
+	image={meta.image}
+	imageAlt={meta.imageAlt}
+	type={meta.type}
+	url={meta.url}
+/>
 
 {#if data.user && !data.pathname.startsWith('/share')}
 	<Nav

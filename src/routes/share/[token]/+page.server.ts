@@ -34,12 +34,19 @@ export const load: PageServerLoad = async ({ locals, params, cookies, url }) => 
 	if (!token) error(404, 'This share link does not exist.');
 	const share = await getShareByToken(locals.db, token);
 	if (!share) error(404, 'This share link does not exist.');
+	// A private-but-not-content-revealing preview for links behind a password, an
+	// expiry, or a wrong token — never leaks the shared media into a link card.
+	const privateMeta = {
+		title: 'A shared memory',
+		description: 'Someone shared a private Shoebox link with you.'
+	};
+
 	if (share.expiresAt && share.expiresAt.getTime() <= Date.now()) {
-		return { state: 'expired' as const };
+		return { state: 'expired' as const, meta: privateMeta };
 	}
 
 	const authorized = !share.hasPassword || locals.shareTokens.includes(token);
-	if (!authorized) return { state: 'password' as const };
+	if (!authorized) return { state: 'password' as const, meta: privateMeta };
 
 	await setShareCookie(cookies, token, url.protocol === 'https:');
 
@@ -50,7 +57,13 @@ export const load: PageServerLoad = async ({ locals, params, cookies, url }) => 
 			state: 'ok' as const,
 			share: { token, targetType: 'favorites' as const, allowDownload: share.allowDownload },
 			album: { id: 'saved', title: 'Saved', description: null },
-			items
+			items,
+			meta: {
+				title: 'A shared collection',
+				description: 'A collection of saved memories from a family Shoebox.',
+				image: `/share/${token}/og`,
+				type: 'article' as const
+			}
 		};
 	}
 
@@ -79,7 +92,14 @@ export const load: PageServerLoad = async ({ locals, params, cookies, url }) => 
 			state: 'ok' as const,
 			share: { token, targetType: 'album' as const, allowDownload: share.allowDownload },
 			album: { id: album.id, title: album.title, description: album.description },
-			items
+			items,
+			meta: {
+				title: album.title,
+				description: album.description ?? `A shared album of ${items.length} memories.`,
+				image: `/share/${token}/og`,
+				imageAlt: album.title,
+				type: 'article' as const
+			}
 		};
 	}
 
@@ -111,7 +131,16 @@ export const load: PageServerLoad = async ({ locals, params, cookies, url }) => 
 			clip
 		},
 		album: null,
-		items: [item]
+		items: [item],
+		meta: {
+			title: item.title ?? 'A shared memory',
+			description:
+				item.description ??
+				`A ${item.type === 'video' ? 'film' : 'photo'} from ${item.displayDate}.`,
+			image: `/share/${token}/og`,
+			imageAlt: item.title ?? 'A shared memory',
+			type: 'article' as const
+		}
 	};
 };
 
