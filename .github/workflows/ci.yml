@@ -8,6 +8,10 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-22.04
+    # PLATFORM feeds `$env/static/private` at `svelte-kit sync` time so `pnpm check`
+    # can typecheck platform/index.ts. The build scripts still set it inline.
+    env:
+      PLATFORM: node
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

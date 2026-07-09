@@ -5,9 +5,12 @@ build/
 build-worker/
 .wrangler/
 .env
-data/
-media/
-seed-src/
+# Anchored to the repo root so they only match the top-level runtime data dirs —
+# an unanchored `media/`/`data/` also swallowed `src/lib/server/media/`, which kept
+# the node-only ffmpeg modules out of git and broke CI.
+/data/
+/media/
+/seed-src/
 e2e/fixtures/
 e2e/.data/
 /ingest/
