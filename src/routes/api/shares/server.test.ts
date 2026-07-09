@@ -103,6 +103,39 @@ describe('POST /api/shares', () => {
 		expect(stored?.targetId).toBe(viewer.id);
 	});
 
+	it('persists a video segment on an item share', async () => {
+		const res = await POST(
+			event(editor, {
+				body: { targetType: 'item', targetId: 'it_1', segmentStart: 3, segmentEnd: 12 }
+			})
+		);
+		expect(res.status).toBe(201);
+		const { share } = await res.json();
+		const stored = await getShareByToken(db, share.token);
+		expect(stored?.segmentStart).toBe(3);
+		expect(stored?.segmentEnd).toBe(12);
+	});
+
+	it('rejects a reversed or empty segment', async () => {
+		await expect(
+			POST(
+				event(editor, {
+					body: { targetType: 'item', targetId: 'it_1', segmentStart: 12, segmentEnd: 3 }
+				})
+			)
+		).rejects.toMatchObject({ status: 400 });
+	});
+
+	it('rejects a segment on a non-item share', async () => {
+		await expect(
+			POST(
+				event(editor, {
+					body: { targetType: 'album', targetId: 'al_1', segmentStart: 1, segmentEnd: 5 }
+				})
+			)
+		).rejects.toMatchObject({ status: 400 });
+	});
+
 	it('accepts a custom ISO date expiry and never-expiry', async () => {
 		const past = await POST(
 			event(editor, { body: { targetType: 'item', targetId: 'it_1', expiry: '2000-01-01' } })

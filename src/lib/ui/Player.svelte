@@ -7,6 +7,13 @@
 	import ScrubTrack from './ScrubTrack.svelte';
 	import { FRAME_STEP, type PlayerAction } from './player-keys';
 	import {
+		CLIP_MAX_GIF_SECONDS,
+		CLIP_MAX_MP4_SECONDS,
+		CLIP_MIN_SECONDS,
+		clipStem,
+		type ClipFormat
+	} from '$lib/domain/clip';
+	import {
 		castMedia,
 		loadCastFramework,
 		toCastState,
@@ -21,9 +28,30 @@
 		hls?: string | null;
 		duration?: number | null;
 		title?: string | null;
+		/** Item id — enables the clip/trim tool (needs it to build export URLs). */
+		itemId?: string | null;
+		/** Storyboard sprite for thumbnail previews on the clip handles. */
+		spriteUrl?: string | null;
+		/** Whether to offer "Share segment" inside the clip tool. */
+		canShareClip?: boolean;
+		/** Ask the page to open its share dialog for the selected [start,end]. */
+		onShareSegment?: ((start: number, end: number) => void) | null;
+		/** View-only playback bounds (share viewer): seek to start and loop within. */
+		segment?: { start: number; end: number } | null;
 	}
 
-	let { src, poster, hls = null, duration: durationHint = null, title = null }: Props = $props();
+	let {
+		src,
+		poster,
+		hls = null,
+		duration: durationHint = null,
+		title = null,
+		itemId = null,
+		spriteUrl = null,
+		canShareClip = false,
+		onShareSegment = null,
+		segment = null
+	}: Props = $props();
 
 	let root: HTMLDivElement;
 	let video = $state<HTMLVideoElement | null>(null);
@@ -38,6 +66,18 @@
 	let loading = $state(true);
 	let errored = $state(false);
 	let controlsVisible = $state(true);
+
+	// Clip/trim tool. When active the scrubber shows an in/out selection, playback
+	// loops within it, and an export toolbar appears.
+	let clipMode = $state(false);
+	let clipIn = $state(0);
+	let clipOut = $state(0);
+	let exporting = $state<null | 'mp4' | 'gif'>(null);
+	let clipError = $state('');
+	let segmentSeeded = false;
+
+	const clipLength = $derived(Math.max(0, clipOut - clipIn));
+	const canClip = $derived(!!itemId);
 
 	// Cast / remote playback across three surfaces: Google Cast (Chrome, via the
 	// SDK — handles HLS/MSE by sending the URL to the receiver), Safari AirPlay,
@@ -91,10 +131,112 @@
 				video.muted = !video.muted;
 				muted = video.muted;
 				break;
+			case 'clip-toggle':
+				if (canClip) toggleClip();
+				break;
+			case 'clip-set-in':
+				if (canClip) setClipEdge('in');
+				break;
+			case 'clip-set-out':
+				if (canClip) setClipEdge('out');
+				break;
 			default:
 				return;
 		}
 		poke();
+	}
+
+	function clipDuration(): number {
+		return duration || video?.duration || durationHint || 0;
+	}
+
+	function toggleClip() {
+		if (clipMode) {
+			clipMode = false;
+			clipError = '';
+			return;
+		}
+		const total = clipDuration();
+		if (total <= 0) return;
+		// Default selection: a few seconds from the current playhead.
+		const start = Math.min(currentTime, Math.max(0, total - CLIP_MIN_SECONDS));
+		const span = Math.min(5, total);
+		clipIn = start;
+		clipOut = Math.min(total, Math.max(start + CLIP_MIN_SECONDS, start + span));
+		if (clipOut - clipIn < CLIP_MIN_SECONDS) clipIn = Math.max(0, clipOut - span);
+		clipMode = true;
+		clipError = '';
+		poke();
+	}
+
+	function setClipEdge(which: 'in' | 'out') {
+		const total = clipDuration();
+		if (total <= 0) return;
+		if (!clipMode) {
+			toggleClip();
+		}
+		if (which === 'in') {
+			clipIn = Math.min(currentTime, clipOut - CLIP_MIN_SECONDS);
+			if (clipIn < 0) clipIn = 0;
+		} else {
+			clipOut = Math.max(currentTime, clipIn + CLIP_MIN_SECONDS);
+			if (clipOut > total) clipOut = total;
+		}
+	}
+
+	function onClipChange(inSec: number, outSec: number) {
+		clipIn = inSec;
+		clipOut = outSec;
+		clipError = '';
+	}
+
+	async function exportClip(format: ClipFormat) {
+		if (!itemId || exporting) return;
+		clipError = '';
+		exporting = format;
+		try {
+			const url = `/api/items/${itemId}/clip?start=${clipIn.toFixed(3)}&end=${clipOut.toFixed(3)}&format=${format}`;
+			const res = await fetch(url);
+			if (!res.ok) {
+				const body = (await res.json().catch(() => null)) as { message?: string } | null;
+				clipError = body?.message ?? 'Could not render clip';
+				return;
+			}
+			const blob = await res.blob();
+			const objectUrl = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = objectUrl;
+			a.download = `${clipStem(title, clipIn, clipOut)}.${format}`;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			// Revoke after the download has surely started.
+			setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+		} catch {
+			clipError = 'Could not render clip';
+		} finally {
+			exporting = null;
+		}
+	}
+
+	function shareSegment() {
+		onShareSegment?.(clipIn, clipOut);
+	}
+
+	// Loop playback within the active bounds — the clip selection while trimming,
+	// or a shared segment in view-only mode.
+	function enforceBounds() {
+		if (!video) return;
+		const bounds = clipMode
+			? { in: clipIn, out: clipOut }
+			: segment
+				? { in: segment.start, out: segment.end }
+				: null;
+		if (!bounds) return;
+		if (video.currentTime >= bounds.out - 0.03 || video.currentTime < bounds.in - 0.5) {
+			video.currentTime = bounds.in;
+			currentTime = bounds.in;
+		}
 	}
 
 	function clearReverse() {
@@ -174,7 +316,9 @@
 	function poke() {
 		controlsVisible = true;
 		if (hideTimer) clearTimeout(hideTimer);
-		if (paused || noHover || $reducedMotion || $comfortMode) return;
+		// Never auto-hide the controls while the clip tool is open — its toolbar and
+		// handles must stay reachable.
+		if (paused || clipMode || noHover || $reducedMotion || $comfortMode) return;
 		// Hide after inactivity while playing. (We intentionally don't keep them
 		// visible just because a control has focus — clicking play focuses its
 		// button, which used to pin the controls open forever.)
@@ -190,6 +334,17 @@
 	$effect(() => {
 		if (!video || !Number.isFinite(video.duration) || video.duration <= 0) {
 			duration = durationHint ?? 0;
+		}
+	});
+
+	// Shared-segment view mode: once the video can play, jump to the segment start
+	// so the viewer lands on the clip rather than the video's beginning.
+	$effect(() => {
+		if (!segment || !video || segmentSeeded) return;
+		if (Number.isFinite(video.duration) && video.duration > 0) {
+			video.currentTime = segment.start;
+			currentTime = segment.start;
+			segmentSeeded = true;
 		}
 	});
 
@@ -366,7 +521,10 @@
 				loading = false;
 			}}
 			onpause={() => (paused = true)}
-			ontimeupdate={() => (currentTime = video?.currentTime ?? 0)}
+			ontimeupdate={() => {
+				currentTime = video?.currentTime ?? 0;
+				enforceBounds();
+			}}
 			ondurationchange={() => (duration = video?.duration || durationHint || 0)}
 			onprogress={() => {
 				if (video && video.buffered.length > 0)
@@ -402,7 +560,15 @@
 				<span class="timecode"
 					>{formatTimecode(currentTime)} <span>/ {formatTimecode(duration)}</span></span
 				>
-				<ScrubTrack {duration} {currentTime} {buffered} onseek={seek} />
+				<ScrubTrack
+					{duration}
+					{currentTime}
+					{buffered}
+					onseek={seek}
+					clip={clipMode ? { in: clipIn, out: clipOut } : null}
+					{onClipChange}
+					{spriteUrl}
+				/>
 				<span class="volume-wrap">
 					{#if volumeOpen}
 						<span class="volume-pop">
@@ -445,10 +611,88 @@
 						</svg>
 					</button>
 				{/if}
+				{#if canClip}
+					<button
+						class="control-button clip-toggle"
+						class:on={clipMode}
+						type="button"
+						onclick={toggleClip}
+						aria-label="Clip a segment"
+						aria-pressed={clipMode}
+						title="Clip a segment (C)"
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+							<path
+								fill="currentColor"
+								d="M9.64 7.64a3 3 0 1 0-1.41 1.41L11 12l-2.77 2.95a3 3 0 1 0 1.41 1.41L12.5 13l6.5 7h2v-1L9.64 7.64ZM6 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm0 12a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm8-9 7-7v-1h-2l-6 6 1 2Z"
+							/>
+						</svg>
+					</button>
+				{/if}
 				<button class="control-button" type="button" onclick={() => void toggleFullscreen()}>
 					{fullscreen ? 'Exit' : 'Full'}
 				</button>
 			</div>
+
+			{#if clipMode}
+				<div class="clip-bar" data-testid="clip-bar">
+					<div class="clip-range">
+						<span class="clip-label">Clip</span>
+						<b>{formatTimecode(clipIn)}</b>
+						<span class="clip-dash">–</span>
+						<b>{formatTimecode(clipOut)}</b>
+						<span class="clip-len">{clipLength.toFixed(1)}s</span>
+					</div>
+					<div class="clip-buttons">
+						<button
+							type="button"
+							class="clip-btn"
+							data-testid="clip-mp4"
+							disabled={exporting !== null ||
+								clipLength < CLIP_MIN_SECONDS ||
+								clipLength > CLIP_MAX_MP4_SECONDS}
+							title={`Download MP4 (up to ${CLIP_MAX_MP4_SECONDS}s)`}
+							onclick={() => void exportClip('mp4')}
+						>
+							{exporting === 'mp4' ? 'Rendering…' : 'MP4'}
+						</button>
+						<button
+							type="button"
+							class="clip-btn"
+							data-testid="clip-gif"
+							disabled={exporting !== null ||
+								clipLength < CLIP_MIN_SECONDS ||
+								clipLength > CLIP_MAX_GIF_SECONDS}
+							title={`Convert to GIF (up to ${CLIP_MAX_GIF_SECONDS}s)`}
+							onclick={() => void exportClip('gif')}
+						>
+							{exporting === 'gif' ? 'Rendering…' : 'GIF'}
+						</button>
+						{#if canShareClip}
+							<button
+								type="button"
+								class="clip-btn"
+								data-testid="clip-share"
+								disabled={exporting !== null}
+								onclick={shareSegment}
+							>
+								Share
+							</button>
+						{/if}
+						<button
+							type="button"
+							class="clip-btn done"
+							data-testid="clip-done"
+							onclick={toggleClip}
+						>
+							Done
+						</button>
+					</div>
+					{#if clipError}
+						<span class="clip-error" role="alert">{clipError}</span>
+					{/if}
+				</div>
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -622,6 +866,111 @@
 		color: var(--dawn);
 	}
 
+	.control-button.clip-toggle {
+		display: inline-grid;
+		place-items: center;
+		padding: 0;
+	}
+
+	.control-button.clip-toggle svg {
+		width: 20px;
+		height: 20px;
+	}
+
+	.control-button.clip-toggle.on {
+		color: var(--dawn);
+	}
+
+	/* Floating clip toolbar, above the controls while trimming. */
+	.clip-bar {
+		position: absolute;
+		bottom: 78px;
+		left: 50%;
+		z-index: 4;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: center;
+		max-width: calc(100% - 20px);
+		gap: 8px 16px;
+		padding: 10px 14px;
+		background: color-mix(in srgb, var(--ink) 84%, transparent);
+		box-shadow: 0 14px 34px rgb(0 0 0 / 0.5);
+		color: var(--cream);
+		transform: translateX(-50%);
+	}
+
+	.clip-range {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 8px;
+		font-family: var(--sans);
+		font-size: 14px;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.clip-range b {
+		font-weight: 700;
+	}
+
+	.clip-label {
+		font-size: 10px;
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		color: color-mix(in srgb, var(--cream) 55%, transparent);
+	}
+
+	.clip-dash {
+		opacity: 0.55;
+	}
+
+	.clip-len {
+		padding: 1px 8px;
+		background: color-mix(in srgb, var(--dawn) 22%, transparent);
+		color: var(--dawn);
+		font-size: 12px;
+	}
+
+	.clip-buttons {
+		display: inline-flex;
+		gap: 8px;
+	}
+
+	.clip-btn {
+		min-width: 52px;
+		min-height: 40px;
+		padding: 0 12px;
+		background: color-mix(in srgb, var(--cream) 14%, transparent);
+		color: var(--cream);
+		font-family: var(--sans);
+		font-size: 12px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+	}
+
+	.clip-btn:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--cream) 24%, transparent);
+	}
+
+	.clip-btn:disabled {
+		cursor: default;
+		opacity: 0.4;
+	}
+
+	.clip-btn.done {
+		background: var(--cream);
+		color: var(--ink);
+		font-weight: 700;
+	}
+
+	.clip-error {
+		flex-basis: 100%;
+		color: var(--dawn);
+		font-family: var(--sans);
+		font-size: 12px;
+		text-align: center;
+	}
+
 	.volume-wrap {
 		position: relative;
 		display: inline-flex;
@@ -673,6 +1022,14 @@
 		.controls :global(.track) {
 			order: -1;
 			flex-basis: 100%;
+		}
+
+		/* In flow under the controls rather than floating over the video. */
+		.clip-bar {
+			position: static;
+			max-width: 100%;
+			margin-top: 12px;
+			transform: none;
 		}
 
 		.timecode {

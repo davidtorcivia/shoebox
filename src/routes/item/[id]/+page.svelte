@@ -34,6 +34,9 @@
 	let player = $state<PlayerHandle | null>(null);
 	let saveState = $state('');
 	let shareOpen = $state(false);
+	// When the viewer shares a clip from the player, this carries the [start,end]
+	// into the share dialog; a plain "Share" click leaves it null (share the whole).
+	let pendingSegment = $state<{ start: number; end: number } | null>(null);
 	// svelte-ignore state_referenced_locally
 	let favorited = $state(data.favorited);
 	let thumbPickerOpen = $state(false);
@@ -110,7 +113,10 @@
 			action.type === 'seek-by' ||
 			action.type === 'step' ||
 			action.type === 'fullscreen' ||
-			action.type === 'mute'
+			action.type === 'mute' ||
+			action.type === 'clip-toggle' ||
+			action.type === 'clip-set-in' ||
+			action.type === 'clip-set-out'
 		) {
 			player?.handleAction(action);
 		} else if (action.type === 'prev-item') {
@@ -165,6 +171,11 @@
 		// The poster is regenerated inline and the URL is cache-busted, so the new
 		// frame shows immediately.
 		thumbState = 'Thumbnail updated.';
+	}
+
+	function shareWithSegment(start: number, end: number) {
+		pendingSegment = { start, end };
+		shareOpen = true;
 	}
 
 	async function deleteMedia() {
@@ -227,6 +238,10 @@
 							{poster}
 							duration={item.duration}
 							{title}
+							itemId={item.id}
+							spriteUrl={item.urls.sprite ?? null}
+							canShareClip={data.canShare}
+							onShareSegment={shareWithSegment}
 						/>
 					{:else}
 						<Lightbox src={mediaSrc} alt={item.title ?? 'Photo'} />
@@ -310,15 +325,23 @@
 					<button
 						class="share-action"
 						data-testid="share-button"
-						onclick={() => (shareOpen = true)}
+						onclick={() => {
+							pendingSegment = null;
+							shareOpen = true;
+						}}
 					>
 						Share
 					</button>
 					<ShareDialog
 						targetType="item"
 						targetId={item.id}
+						segmentStart={pendingSegment?.start ?? null}
+						segmentEnd={pendingSegment?.end ?? null}
 						open={shareOpen}
-						onClose={() => (shareOpen = false)}
+						onClose={() => {
+							shareOpen = false;
+							pendingSegment = null;
+						}}
 					/>
 				{/if}
 				{#if data.facesEnabled && item.type === 'photo' && data.faces.length > 0}

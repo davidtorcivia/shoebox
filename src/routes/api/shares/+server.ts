@@ -66,6 +66,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		password?: unknown;
 		expiry?: unknown;
 		allowDownload?: unknown;
+		segmentStart?: unknown;
+		segmentEnd?: unknown;
 	} | null;
 
 	if (
@@ -97,12 +99,30 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 
 	const password = typeof body.password === 'string' && body.password.trim() ? body.password : null;
+
+	// An optional video segment [start,end] (seconds) is only meaningful on an item
+	// share; both bounds must be finite, ordered, and non-negative.
+	let segmentStart: number | null = null;
+	let segmentEnd: number | null = null;
+	if (body.segmentStart != null || body.segmentEnd != null) {
+		if (body.targetType !== 'item') error(400, 'segments are only valid on item shares');
+		const s = Number(body.segmentStart);
+		const e = Number(body.segmentEnd);
+		if (!Number.isFinite(s) || !Number.isFinite(e) || s < 0 || e <= s) {
+			error(400, 'segmentStart and segmentEnd must be 0 <= start < end');
+		}
+		segmentStart = s;
+		segmentEnd = e;
+	}
+
 	const share = await createShare(locals.db, {
 		targetType: body.targetType,
 		targetId,
 		password,
 		expiresAt: expiresAtFrom(body.expiry),
 		allowDownload: body.allowDownload === true,
+		segmentStart,
+		segmentEnd,
 		createdBy: user.id
 	});
 

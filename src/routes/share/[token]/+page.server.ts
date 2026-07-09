@@ -87,7 +87,15 @@ export const load: PageServerLoad = async ({ locals, params, cookies, url }) => 
 	if (!item) error(404, 'This memory is no longer available.');
 	return {
 		state: 'ok' as const,
-		share: { token, targetType: 'item' as const, allowDownload: share.allowDownload },
+		share: {
+			token,
+			targetType: 'item' as const,
+			allowDownload: share.allowDownload,
+			segment:
+				share.segmentStart != null && share.segmentEnd != null
+					? { start: share.segmentStart, end: share.segmentEnd }
+					: null
+		},
 		album: null,
 		items: [item]
 	};

@@ -27,6 +27,8 @@ export interface CreateShareInput {
 	password?: string | null;
 	expiresAt?: Date | null;
 	allowDownload?: boolean;
+	segmentStart?: number | null;
+	segmentEnd?: number | null;
 	createdBy: string;
 }
 
@@ -38,6 +40,8 @@ export interface ShareRecord {
 	hasPassword: boolean;
 	expiresAt: Date | null;
 	allowDownload: boolean;
+	segmentStart: number | null;
+	segmentEnd: number | null;
 	createdBy: string;
 }
 
@@ -57,6 +61,8 @@ function toRecord(row: ShareRow): ShareRecord {
 		hasPassword: row.passwordHash !== null,
 		expiresAt: row.expiresAt ?? null,
 		allowDownload: row.allowDownload,
+		segmentStart: row.segmentStart ?? null,
+		segmentEnd: row.segmentEnd ?? null,
 		createdBy: row.createdBy
 	};
 }
@@ -94,6 +100,8 @@ export async function createShare(db: Db, input: CreateShareInput): Promise<Shar
 		passwordHash: password ? await hashPassword(password) : null,
 		expiresAt: input.expiresAt ?? null,
 		allowDownload: input.allowDownload ?? false,
+		segmentStart: input.segmentStart ?? null,
+		segmentEnd: input.segmentEnd ?? null,
 		createdBy: input.createdBy
 	};
 	await db.insert(shares).values(row);

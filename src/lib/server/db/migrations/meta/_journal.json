@@ -64,6 +64,13 @@
       "when": 1783271200000,
       "tag": "0008_places-reactions-favorites-voice",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1783619836951,
+      "tag": "0009_share-segment",
+      "breakpoints": true
     }
   ]
 }

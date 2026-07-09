@@ -246,6 +246,10 @@ export const shares = sqliteTable('shares', {
 	passwordHash: text('password_hash'),
 	expiresAt: integer('expires_at', { mode: 'timestamp' }),
 	allowDownload: integer('allow_download', { mode: 'boolean' }).notNull().default(false),
+	// Optional [start,end] (seconds) for a video-segment share: the share still
+	// targets the whole item, but the viewer is bounded to this clip.
+	segmentStart: real('segment_start'),
+	segmentEnd: real('segment_end'),
 	createdBy: text('created_by')
 		.notNull()
 		.references(() => users.id)

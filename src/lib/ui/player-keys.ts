@@ -8,6 +8,9 @@ export type PlayerAction =
 	| { type: 'next-item' }
 	| { type: 'fullscreen' }
 	| { type: 'mute' }
+	| { type: 'clip-toggle' }
+	| { type: 'clip-set-in' }
+	| { type: 'clip-set-out' }
 	| { type: 'close' };
 
 export const FRAME_STEP = 1 / 30;
@@ -50,6 +53,13 @@ export function mapPlayerKey(
 		case 'm':
 		case 'M':
 			return ctx.isVideo ? { type: 'mute' } : null;
+		case 'c':
+		case 'C':
+			return ctx.isVideo ? { type: 'clip-toggle' } : null;
+		case '[':
+			return ctx.isVideo ? { type: 'clip-set-in' } : null;
+		case ']':
+			return ctx.isVideo ? { type: 'clip-set-out' } : null;
 		case 'Escape':
 			return { type: 'close' };
 		default:

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import { formatTimecode } from '$lib/domain/timecode';
 	import { CREAM, FONT, INK } from '$lib/ui/tokens';
 	import type { ShareRecord } from '$lib/server/shares';
 
@@ -7,13 +8,20 @@
 		targetType,
 		targetId,
 		open,
-		onClose
+		onClose,
+		segmentStart = null,
+		segmentEnd = null
 	}: {
 		targetType: 'album' | 'item' | 'favorites';
 		targetId: string;
 		open: boolean;
 		onClose: () => void;
+		/** Optional video segment [start,end] (seconds) — shares just that clip. */
+		segmentStart?: number | null;
+		segmentEnd?: number | null;
 	} = $props();
+
+	const hasSegment = $derived(segmentStart != null && segmentEnd != null);
 
 	let shares = $state<ShareRecord[]>([]);
 	let usePassword = $state(false);
@@ -59,7 +67,9 @@
 					targetId,
 					password: usePassword ? password : undefined,
 					expiry: expiry === 'custom' ? customDate : expiry,
-					allowDownload
+					allowDownload,
+					segmentStart: hasSegment ? segmentStart : undefined,
+					segmentEnd: hasSegment ? segmentEnd : undefined
 				})
 			});
 			if (!res.ok) return;
@@ -111,11 +121,18 @@
 		style={`--ink:${INK}; --cream:${CREAM}; --serif:${FONT.serif}; --sans:${FONT.sans};`}
 	>
 		<header>
-			<h2>Share this {targetType}</h2>
+			<h2>{hasSegment ? 'Share this clip' : `Share this ${targetType}`}</h2>
 			<button class="close" type="button" onclick={onClose} aria-label="Close" bind:this={closeBtn}
 				>x</button
 			>
 		</header>
+
+		{#if hasSegment}
+			<p class="segment-note" data-testid="share-segment-note">
+				Sharing a {((segmentEnd ?? 0) - (segmentStart ?? 0)).toFixed(1)}s clip ·
+				{formatTimecode(segmentStart ?? 0)} – {formatTimecode(segmentEnd ?? 0)}
+			</p>
+		{/if}
 
 		<form onsubmit={create}>
 			<label class="row">
@@ -252,6 +269,16 @@
 		font-size: 12px;
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
+	}
+
+	.segment-note {
+		margin: -6px 0 14px;
+		padding: 8px 12px;
+		background: color-mix(in srgb, var(--dawn) 18%, transparent);
+		color: var(--cream);
+		font-family: var(--sans);
+		font-size: 13px;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.close,

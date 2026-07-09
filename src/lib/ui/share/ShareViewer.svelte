@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Player from '$lib/ui/Player.svelte';
+	import { formatTimecode } from '$lib/domain/timecode';
 	import { CREAM, DAWN, FONT, GRAIN_URI, INK, playerRoomFor } from '$lib/ui/tokens';
 	import type { ItemDTO } from '$lib/types';
 
@@ -8,6 +9,7 @@
 		index,
 		allowDownload,
 		single = false,
+		segment = null,
 		onClose,
 		onNavigate
 	}: {
@@ -15,11 +17,18 @@
 		index: number;
 		allowDownload: boolean;
 		single?: boolean;
+		/** A shared video segment [start,end] (seconds), for single-item shares. */
+		segment?: { start: number; end: number } | null;
 		onClose?: () => void;
 		onNavigate?: (index: number) => void;
 	} = $props();
 
 	const item = $derived(items[index]);
+	const clipSegment = $derived(segment && item?.type === 'video' ? segment : null);
+	const clipUrl = (format: 'mp4' | 'gif'): string =>
+		clipSegment
+			? `/api/items/${item.id}/clip?start=${clipSegment.start.toFixed(3)}&end=${clipSegment.end.toFixed(3)}&format=${format}`
+			: '';
 	const year = $derived(item.date.dateStart ? Number(item.date.dateStart.slice(0, 4)) : 1990);
 	const room = $derived(playerRoomFor(year));
 	const videoSrc = $derived(item.urls.playback ?? item.urls.original ?? item.urls.poster);
@@ -110,13 +119,31 @@
 					poster={item.urls.poster || item.urls.thumb800}
 					duration={item.duration}
 					title={item.title}
+					itemId={item.id}
+					segment={clipSegment}
 				/>
 			{:else}
 				<img src={imageSrc} alt={item.title ?? item.displayDate} />
 			{/if}
+			{#if clipSegment}
+				<p class="clip-tag" data-testid="share-clip-tag">
+					Clip · {formatTimecode(clipSegment.start)} – {formatTimecode(clipSegment.end)}
+				</p>
+			{/if}
 			<p class="media-date">{item.displayDate}</p>
 			{#if item.description}<p class="story">{item.description}</p>{/if}
-			{#if canDownload && item.urls.original}
+			{#if canDownload && clipSegment}
+				<!-- eslint-disable svelte/no-navigation-without-resolve -- clip endpoint, not an app route -->
+				<div class="downloads">
+					<a class="download" data-testid="share-download-mp4" href={clipUrl('mp4')} download>
+						Download clip (MP4)
+					</a>
+					<a class="download ghost" data-testid="share-download-gif" href={clipUrl('gif')} download>
+						GIF
+					</a>
+				</div>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+			{:else if canDownload && item.urls.original}
 				<!-- eslint-disable svelte/no-navigation-without-resolve -- storage adapters return media URLs, not app routes -->
 				<a class="download" data-testid="share-download" href={item.urls.original} download>
 					Download original
@@ -261,6 +288,22 @@
 		line-height: 1.5;
 	}
 
+	.clip-tag {
+		margin: 14px 0 0;
+		font-family: var(--sans);
+		font-size: 12px;
+		font-variant-numeric: tabular-nums;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--dawn);
+	}
+
+	.downloads {
+		display: flex;
+		margin-top: 18px;
+		gap: 10px;
+	}
+
 	.download {
 		display: inline-block;
 		min-height: 48px;
@@ -270,6 +313,15 @@
 		color: var(--ink);
 		line-height: 48px;
 		text-decoration: none;
+	}
+
+	.downloads .download {
+		margin-top: 0;
+	}
+
+	.download.ghost {
+		background: color-mix(in srgb, var(--cream) 16%, transparent);
+		color: var(--cream);
 	}
 
 	@media (max-width: 760px) {

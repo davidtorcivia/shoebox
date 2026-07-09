@@ -73,7 +73,13 @@
 	{/if}
 {:else}
 	<div class="item-wordmark" data-testid="share-wordmark">Shoebox</div>
-	<ShareViewer items={data.items} index={0} allowDownload={data.share.allowDownload} single />
+	<ShareViewer
+		items={data.items}
+		index={0}
+		allowDownload={data.share.allowDownload}
+		segment={data.share.segment}
+		single
+	/>
 {/if}
 
 <style>
