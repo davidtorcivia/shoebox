@@ -6,6 +6,13 @@
 	import { comfortMode, reducedMotion } from '$lib/ui/theme';
 	import ScrubTrack from './ScrubTrack.svelte';
 	import { FRAME_STEP, type PlayerAction } from './player-keys';
+	import {
+		castMedia,
+		loadCastFramework,
+		toCastState,
+		type CastFramework,
+		type CastState
+	} from './cast';
 
 	interface Props {
 		src: string;
@@ -32,10 +39,18 @@
 	let errored = $state(false);
 	let controlsVisible = $state(true);
 
-	// Cast / remote playback. Availability toggles the (otherwise hidden) button,
-	// so nothing shows until there's actually a TV/receiver to send to.
-	let castAvailable = $state(false);
-	let casting = $state(false);
+	// Cast / remote playback across three surfaces: Google Cast (Chrome, via the
+	// SDK — handles HLS/MSE by sending the URL to the receiver), Safari AirPlay,
+	// and the standard Remote Playback API (others). The button stays hidden until
+	// one of them reports a device on the network.
+	let castFw: CastFramework | null = null;
+	let chromecastState = $state<CastState>('off');
+	let airplayAvailable = $state(false);
+	let airplayConnected = $state(false);
+	let remoteAvailable = $state(false);
+	let remoteConnected = $state(false);
+	const castAvailable = $derived(chromecastState !== 'off' || airplayAvailable || remoteAvailable);
+	const casting = $derived(chromecastState === 'connected' || airplayConnected || remoteConnected);
 
 	let shuttle: Shuttle = SHUTTLE_PAUSED;
 	let reverseTimer: ReturnType<typeof setInterval> | null = null;
@@ -212,27 +227,27 @@
 		};
 	});
 
-	// Watch for a cast target on the network. Two independent surfaces: the
-	// standard Remote Playback API (Chrome/Edge → Google Cast) and Safari's
-	// webkit AirPlay events. Whichever reports availability reveals the button.
+	// Watch every cast surface for an available device; whichever fires reveals
+	// the button.
 	$effect(() => {
 		const el = video;
 		if (!el) return;
 		// Opt the element into AirPlay (Safari reads this attribute, not a property).
 		el.setAttribute('x-webkit-airplay', 'allow');
 		const cleanups: Array<() => void> = [];
+		let cancelled = false;
 
+		// Standard Remote Playback API (Firefox and others). Rejects on MSE sources,
+		// which is exactly where the Cast SDK below takes over.
 		const remote = el.remote;
 		if (remote && typeof remote.watchAvailability === 'function') {
 			let watchId: number | null = null;
 			remote
-				.watchAvailability((available) => (castAvailable = available))
+				.watchAvailability((available) => (remoteAvailable = available))
 				.then((id) => (watchId = id))
-				.catch(() => {
-					/* remote playback disabled (e.g. MSE source) — button stays hidden */
-				});
-			const onConnect = () => (casting = true);
-			const onDisconnect = () => (casting = false);
+				.catch(() => {});
+			const onConnect = () => (remoteConnected = true);
+			const onDisconnect = () => (remoteConnected = false);
 			remote.addEventListener('connect', onConnect);
 			remote.addEventListener('connecting', onConnect);
 			remote.addEventListener('disconnect', onDisconnect);
@@ -244,11 +259,13 @@
 			});
 		}
 
+		// Safari AirPlay.
 		const airplay = el as AirplayVideo;
 		const onAvail = (event: Event) => {
-			castAvailable = (event as Event & { availability?: string }).availability === 'available';
+			airplayAvailable = (event as Event & { availability?: string }).availability === 'available';
 		};
-		const onWireless = () => (casting = Boolean(airplay.webkitCurrentPlaybackTargetIsWireless));
+		const onWireless = () =>
+			(airplayConnected = Boolean(airplay.webkitCurrentPlaybackTargetIsWireless));
 		el.addEventListener('webkitplaybacktargetavailabilitychanged', onAvail);
 		el.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', onWireless);
 		cleanups.push(() => {
@@ -256,19 +273,59 @@
 			el.removeEventListener('webkitcurrentplaybacktargetiswirelesschanged', onWireless);
 		});
 
-		return () => cleanups.forEach((fn) => fn());
+		// Google Cast (Chrome/Edge). The full SDK, so casting works even for the
+		// HLS/MSE case the Remote Playback API can't handle.
+		void loadCastFramework().then((fw) => {
+			if (!fw || cancelled) return;
+			castFw = fw;
+			const ctx = fw.CastContext.getInstance();
+			const apply = (raw: string) => {
+				chromecastState = toCastState(fw, raw);
+				// Hand playback off to the TV so we're not playing in two places.
+				if (chromecastState === 'connected') video?.pause();
+			};
+			apply(ctx.getCastState());
+			const handler = (event: { castState: string }) => apply(event.castState);
+			ctx.addEventListener(fw.CastContextEventType.CAST_STATE_CHANGED, handler);
+			cleanups.push(() =>
+				ctx.removeEventListener(fw.CastContextEventType.CAST_STATE_CHANGED, handler)
+			);
+		});
+
+		return () => {
+			cancelled = true;
+			cleanups.forEach((fn) => fn());
+		};
 	});
 
 	function cast(): void {
 		const el = video as AirplayVideo | null;
 		if (!el) return;
+		const toAbs = (u: string) => new URL(u, window.location.href).href;
+
+		// Chrome / Chromecast: send the media URL to the receiver via the Cast SDK.
+		if (castFw) {
+			void castMedia(castFw, {
+				url: toAbs(hls ?? src),
+				contentType: hls ? 'application/x-mpegurl' : 'video/mp4',
+				title,
+				posterUrl: poster ? toAbs(poster) : null
+			}).catch(() => {
+				/* user dismissed the picker, or the receiver rejected the media */
+			});
+			poke();
+			return;
+		}
+
+		// Safari AirPlay.
 		if (typeof el.webkitShowPlaybackTargetPicker === 'function') {
 			el.webkitShowPlaybackTargetPicker();
-		} else {
-			el.remote?.prompt?.().catch(() => {
-				/* user dismissed the picker, or no device accepted */
-			});
+			poke();
+			return;
 		}
+
+		// Standard Remote Playback (Firefox, others).
+		el.remote?.prompt?.().catch(() => {});
 		poke();
 	}
 
