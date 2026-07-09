@@ -226,7 +226,9 @@
 	// Loop playback within the active bounds — the clip selection while trimming,
 	// or a shared segment in view-only mode.
 	function enforceBounds() {
-		if (!video) return;
+		// Only loop while actually playing — otherwise dragging a handle to the out
+		// point would immediately snap the preview frame back to the in point.
+		if (!video || video.paused) return;
 		const bounds = clipMode
 			? { in: clipIn, out: clipOut }
 			: segment
@@ -237,6 +239,32 @@
 			video.currentTime = bounds.in;
 			currentTime = bounds.in;
 		}
+	}
+
+	// Preview the frame under a dragged in/out handle on the big video.
+	function scrubPreview(time: number) {
+		if (!video) return;
+		if (!video.paused) video.pause();
+		video.currentTime = time;
+		currentTime = time;
+	}
+
+	// Play the selection, looping within [in,out] with sound (enforceBounds loops).
+	function playLoop() {
+		if (!video) return;
+		if (!video.paused) {
+			video.pause();
+			return;
+		}
+		if (video.muted) {
+			video.muted = false;
+			muted = false;
+		}
+		if (video.currentTime < clipIn || video.currentTime >= clipOut - 0.03) {
+			video.currentTime = clipIn;
+			currentTime = clipIn;
+		}
+		void video.play();
 	}
 
 	function clearReverse() {
@@ -567,134 +595,142 @@
 					onseek={seek}
 					clip={clipMode ? { in: clipIn, out: clipOut } : null}
 					{onClipChange}
+					onScrub={scrubPreview}
 					{spriteUrl}
 				/>
-				<span class="volume-wrap">
-					{#if volumeOpen}
-						<span class="volume-pop">
-							<input
-								type="range"
-								min="0"
-								max="1"
-								step="0.05"
-								value={muted ? 0 : volume}
-								aria-label="Volume"
-								oninput={onVolumeInput}
-							/>
-						</span>
-					{/if}
-					<button
-						class="control-button"
-						class:dim={muted}
-						type="button"
-						onclick={() => (volumeOpen = !volumeOpen)}>Vol</button
-					>
-				</span>
-				{#if castAvailable}
-					<button
-						class="control-button cast"
-						class:on={casting}
-						type="button"
-						onclick={cast}
-						aria-label={casting ? 'Casting to a device' : 'Cast to a device'}
-						title={casting ? 'Casting' : 'Cast to a device'}
-					>
-						<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-							<path
-								d="M1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11z"
-								fill="currentColor"
-							/>
-							<path
-								d="M21 3H3c-1.1 0-2 .9-2 2v2h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"
-								fill="currentColor"
-							/>
-						</svg>
-					</button>
-				{/if}
-				{#if canClip}
-					<button
-						class="control-button clip-toggle"
-						class:on={clipMode}
-						type="button"
-						onclick={toggleClip}
-						aria-label="Clip a segment"
-						aria-pressed={clipMode}
-						title="Clip a segment (C)"
-					>
-						<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-							<path
-								fill="currentColor"
-								d="M9.64 7.64a3 3 0 1 0-1.41 1.41L11 12l-2.77 2.95a3 3 0 1 0 1.41 1.41L12.5 13l6.5 7h2v-1L9.64 7.64ZM6 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm0 12a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm8-9 7-7v-1h-2l-6 6 1 2Z"
-							/>
-						</svg>
-					</button>
-				{/if}
-				<button class="control-button" type="button" onclick={() => void toggleFullscreen()}>
-					{fullscreen ? 'Exit' : 'Full'}
-				</button>
-			</div>
-
-			{#if clipMode}
-				<div class="clip-bar" data-testid="clip-bar">
-					<div class="clip-range">
-						<span class="clip-label">Clip</span>
-						<b>{formatTimecode(clipIn)}</b>
-						<span class="clip-dash">–</span>
-						<b>{formatTimecode(clipOut)}</b>
-						<span class="clip-len">{clipLength.toFixed(1)}s</span>
-					</div>
-					<div class="clip-buttons">
-						<button
-							type="button"
-							class="clip-btn"
-							data-testid="clip-mp4"
-							disabled={exporting !== null ||
-								clipLength < CLIP_MIN_SECONDS ||
-								clipLength > CLIP_MAX_MP4_SECONDS}
-							title={`Download MP4 (up to ${CLIP_MAX_MP4_SECONDS}s)`}
-							onclick={() => void exportClip('mp4')}
-						>
-							{exporting === 'mp4' ? 'Rendering…' : 'MP4'}
-						</button>
-						<button
-							type="button"
-							class="clip-btn"
-							data-testid="clip-gif"
-							disabled={exporting !== null ||
-								clipLength < CLIP_MIN_SECONDS ||
-								clipLength > CLIP_MAX_GIF_SECONDS}
-							title={`Convert to GIF (up to ${CLIP_MAX_GIF_SECONDS}s)`}
-							onclick={() => void exportClip('gif')}
-						>
-							{exporting === 'gif' ? 'Rendering…' : 'GIF'}
-						</button>
-						{#if canShareClip}
-							<button
-								type="button"
-								class="clip-btn"
-								data-testid="clip-share"
-								disabled={exporting !== null}
-								onclick={shareSegment}
-							>
-								Share
-							</button>
+				<div class="right-controls">
+					<span class="volume-wrap">
+						{#if volumeOpen}
+							<span class="volume-pop">
+								<input
+									type="range"
+									min="0"
+									max="1"
+									step="0.05"
+									value={muted ? 0 : volume}
+									aria-label="Volume"
+									oninput={onVolumeInput}
+								/>
+							</span>
 						{/if}
 						<button
+							class="control-button"
+							class:dim={muted}
 							type="button"
-							class="clip-btn done"
-							data-testid="clip-done"
-							onclick={toggleClip}
+							onclick={() => (volumeOpen = !volumeOpen)}>Vol</button
 						>
-							Done
+					</span>
+					{#if castAvailable}
+						<button
+							class="control-button cast"
+							class:on={casting}
+							type="button"
+							onclick={cast}
+							aria-label={casting ? 'Casting to a device' : 'Cast to a device'}
+							title={casting ? 'Casting' : 'Cast to a device'}
+						>
+							<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+								<path
+									d="M1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11z"
+									fill="currentColor"
+								/>
+								<path
+									d="M21 3H3c-1.1 0-2 .9-2 2v2h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"
+									fill="currentColor"
+								/>
+							</svg>
 						</button>
-					</div>
-					{#if clipError}
-						<span class="clip-error" role="alert">{clipError}</span>
 					{/if}
+					{#if canClip}
+						<button
+							class="control-button clip-toggle"
+							class:on={clipMode}
+							type="button"
+							onclick={toggleClip}
+							aria-label="Clip a segment"
+							aria-pressed={clipMode}
+							title="Clip a segment (C)"
+						>
+							<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+								<path
+									fill="currentColor"
+									d="M9.64 7.64a3 3 0 1 0-1.41 1.41L11 12l-2.77 2.95a3 3 0 1 0 1.41 1.41L12.5 13l6.5 7h2v-1L9.64 7.64ZM6 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm0 12a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm8-9 7-7v-1h-2l-6 6 1 2Z"
+								/>
+							</svg>
+						</button>
+					{/if}
+					<button class="control-button" type="button" onclick={() => void toggleFullscreen()}>
+						{fullscreen ? 'Exit' : 'Full'}
+					</button>
 				</div>
-			{/if}
+			</div>
 		{/if}
 	</div>
+
+	{#if clipMode && !errored}
+		<div class="clip-bar" data-testid="clip-bar">
+			<button
+				class="clip-play"
+				type="button"
+				data-testid="clip-play"
+				onclick={playLoop}
+				aria-label={paused ? 'Play the selection' : 'Pause'}
+			>
+				{paused ? '▶' : '❚❚'}
+				<span>Loop</span>
+			</button>
+			<div class="clip-range">
+				<span class="clip-label">Clip</span>
+				<b>{formatTimecode(clipIn)}</b>
+				<span class="clip-dash">–</span>
+				<b>{formatTimecode(clipOut)}</b>
+				<span class="clip-len">{clipLength.toFixed(1)}s</span>
+			</div>
+			<div class="clip-buttons">
+				<button
+					type="button"
+					class="clip-btn"
+					data-testid="clip-mp4"
+					disabled={exporting !== null ||
+						clipLength < CLIP_MIN_SECONDS ||
+						clipLength > CLIP_MAX_MP4_SECONDS}
+					title={`Download MP4 (up to ${CLIP_MAX_MP4_SECONDS}s)`}
+					onclick={() => void exportClip('mp4')}
+				>
+					{exporting === 'mp4' ? 'Rendering…' : 'MP4'}
+				</button>
+				<button
+					type="button"
+					class="clip-btn"
+					data-testid="clip-gif"
+					disabled={exporting !== null ||
+						clipLength < CLIP_MIN_SECONDS ||
+						clipLength > CLIP_MAX_GIF_SECONDS}
+					title={`Convert to GIF (up to ${CLIP_MAX_GIF_SECONDS}s)`}
+					onclick={() => void exportClip('gif')}
+				>
+					{exporting === 'gif' ? 'Rendering…' : 'GIF'}
+				</button>
+				{#if canShareClip}
+					<button
+						type="button"
+						class="clip-btn"
+						data-testid="clip-share"
+						disabled={exporting !== null}
+						onclick={shareSegment}
+					>
+						Share
+					</button>
+				{/if}
+				<button type="button" class="clip-btn done" data-testid="clip-done" onclick={toggleClip}>
+					Done
+				</button>
+			</div>
+			{#if clipError}
+				<span class="clip-error" role="alert">{clipError}</span>
+			{/if}
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -797,11 +833,19 @@
 		left: 0;
 		z-index: 3;
 		display: flex;
-		gap: 22px;
+		gap: 14px;
 		align-items: center;
 		padding: 34px 18px 14px;
 		background: linear-gradient(180deg, transparent, rgb(0 0 0 / 0.5));
 		transition: opacity var(--fade) ease;
+	}
+
+	/* The trailing buttons (volume, cast, clip, full) group tightly together so the
+	   scrubber — the most useful control — gets the rest of the width. */
+	.right-controls {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
 	}
 
 	.controls.hidden {
@@ -881,23 +925,39 @@
 		color: var(--dawn);
 	}
 
-	/* Floating clip toolbar, above the controls while trimming. */
+	/* Trim toolbar — sits BENEATH the video (in flow) so it never covers the
+	   footage while you're setting the in/out points. */
 	.clip-bar {
-		position: absolute;
-		bottom: 78px;
-		left: 50%;
-		z-index: 4;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		justify-content: center;
-		max-width: calc(100% - 20px);
+		margin: 12px auto 0;
 		gap: 8px 16px;
-		padding: 10px 14px;
-		background: color-mix(in srgb, var(--ink) 84%, transparent);
-		box-shadow: 0 14px 34px rgb(0 0 0 / 0.5);
+		padding: 12px 16px;
+		background: color-mix(in srgb, var(--cream) 8%, var(--ink));
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cream) 12%, transparent);
 		color: var(--cream);
-		transform: translateX(-50%);
+	}
+
+	/* Play/pause the selection, looping with sound. */
+	.clip-play {
+		display: inline-flex;
+		min-height: 40px;
+		align-items: center;
+		gap: 8px;
+		padding: 0 16px;
+		background: var(--dawn);
+		color: var(--ink);
+		font-family: var(--sans);
+		font-size: 12px;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+	}
+
+	.clip-play:hover {
+		background: color-mix(in srgb, var(--dawn) 88%, var(--cream));
 	}
 
 	.clip-range {
@@ -1022,14 +1082,6 @@
 		.controls :global(.track) {
 			order: -1;
 			flex-basis: 100%;
-		}
-
-		/* In flow under the controls rather than floating over the video. */
-		.clip-bar {
-			position: static;
-			max-width: 100%;
-			margin-top: 12px;
-			transform: none;
 		}
 
 		.timecode {

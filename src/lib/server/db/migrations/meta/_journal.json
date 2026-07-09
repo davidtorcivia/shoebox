@@ -71,6 +71,13 @@
       "when": 1783619836951,
       "tag": "0009_share-segment",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1783628000000,
+      "tag": "0010_share-clip",
+      "breakpoints": true
     }
   ]
 }

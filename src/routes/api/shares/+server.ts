@@ -1,10 +1,54 @@
 import { error, json } from '@sveltejs/kit';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Db } from '$lib/server/db';
-import { albums, items } from '$lib/server/db/schema';
+import { albums, itemFiles, items } from '$lib/server/db/schema';
 import { requireRole } from '$lib/server/roles';
-import { createShare, listShares } from '$lib/server/shares';
+import { createShare, listShares, setShareClip } from '$lib/server/shares';
 import type { RequestHandler } from './$types';
+
+/**
+ * Pre-cut the shared segment so a segment-share viewer only ever receives the
+ * clip, never the full video. Best-effort: needs ffmpeg (node), so on a runtime
+ * without it the share still works, bounded client-side. Returns the clip key.
+ */
+async function renderShareClip(
+	locals: App.Locals,
+	shareId: string,
+	itemId: string,
+	start: number,
+	end: number
+): Promise<string | null> {
+	const item = (
+		await locals.db
+			.select({ duration: items.duration, type: items.type })
+			.from(items)
+			.where(eq(items.id, itemId))
+			.limit(1)
+	)[0];
+	if (!item || item.type !== 'video') return null;
+
+	const limit = item.duration && item.duration > 0 ? item.duration : end;
+	const s = Math.max(0, Math.min(start, limit));
+	const e = Math.max(0, Math.min(end, limit));
+	if (e - s < 0.2) return null;
+
+	const files = await locals.db
+		.select({ kind: itemFiles.kind, storageKey: itemFiles.storageKey })
+		.from(itemFiles)
+		.where(eq(itemFiles.itemId, itemId));
+	const sourceKey =
+		files.find((f) => f.kind === 'playback')?.storageKey ??
+		files.find((f) => f.kind === 'original')?.storageKey;
+	if (!sourceKey) return null;
+
+	const mediaPath = process.env.MEDIA_PATH ?? './data/media';
+	const { renderClip } = await import('$lib/server/media/clip');
+	const rendered = await renderClip({ mediaPath, sourceKey, start: s, end: e, format: 'mp4' });
+	const clipKey = `media/${itemId}/shareclips/${shareId}.mp4`;
+	await locals.platform.storage.put(clipKey, rendered.data, { contentType: 'video/mp4' });
+	await setShareClip(locals.db, shareId, clipKey);
+	return clipKey;
+}
 
 type ShareTarget = 'album' | 'item' | 'favorites';
 
@@ -125,6 +169,15 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		segmentEnd,
 		createdBy: user.id
 	});
+
+	if (segmentStart != null && segmentEnd != null) {
+		try {
+			const clipKey = await renderShareClip(locals, share.id, targetId, segmentStart, segmentEnd);
+			if (clipKey) share.clipKey = clipKey;
+		} catch (err) {
+			console.error('share clip render failed', err);
+		}
+	}
 
 	return json({ share, url: `/share/${share.token}` }, { status: 201 });
 };

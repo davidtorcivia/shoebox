@@ -3,7 +3,7 @@ import * as schema from './db/schema';
 import type { Db } from './db';
 import { createTestDb } from './db/test-db';
 import { canAccessItem, canAccessMedia, getCoveringShare } from './media-access';
-import { createShare } from './shares';
+import { createShare, setShareClip } from './shares';
 
 let db: Db;
 const OWNER_ID = 'u_owner000001';
@@ -160,35 +160,102 @@ describe('canAccessMedia', () => {
 		expect(await canAccessMedia(locals(null), 'media/it_in/thumb_800.webp')).toBe(false);
 	});
 
-	it('album share grants exactly its album members, including originals', async () => {
-		const share = await createShare(db, {
+	it('album share grants members thumbnails, but the original only with download', async () => {
+		const view = await createShare(db, {
 			targetType: 'album',
 			targetId: 'al_1',
 			createdBy: OWNER_ID
 		});
-		expect(await canAccessMedia(locals(null, [share.token]), 'media/it_in/thumb_800.webp')).toBe(
+		expect(await canAccessMedia(locals(null, [view.token]), 'media/it_in/thumb_800.webp')).toBe(
 			true
 		);
-		expect(await canAccessMedia(locals(null, [share.token]), 'media/it_in/original.jpg')).toBe(
-			true
-		);
-		expect(await canAccessMedia(locals(null, [share.token]), 'media/it_out/thumb_800.webp')).toBe(
+		// View-only: the full-res original is NOT downloadable.
+		expect(await canAccessMedia(locals(null, [view.token]), 'media/it_in/original.jpg')).toBe(
 			false
+		);
+		expect(await canAccessMedia(locals(null, [view.token]), 'media/it_out/thumb_800.webp')).toBe(
+			false
+		);
+
+		const download = await createShare(db, {
+			targetType: 'album',
+			targetId: 'al_1',
+			allowDownload: true,
+			createdBy: OWNER_ID
+		});
+		expect(await canAccessMedia(locals(null, [download.token]), 'media/it_in/original.jpg')).toBe(
+			true
 		);
 	});
 
-	it('item share grants only that item', async () => {
-		const share = await createShare(db, {
+	it('item share grants the item, gating the original behind download', async () => {
+		const view = await createShare(db, {
 			targetType: 'item',
 			targetId: 'it_in',
 			createdBy: OWNER_ID
 		});
-		expect(await canAccessMedia(locals(null, [share.token]), 'media/it_in/original.jpg')).toBe(
+		expect(await canAccessMedia(locals(null, [view.token]), 'media/it_in/thumb_800.webp')).toBe(
 			true
 		);
-		expect(await canAccessMedia(locals(null, [share.token]), 'media/it_out/thumb_800.webp')).toBe(
+		expect(await canAccessMedia(locals(null, [view.token]), 'media/it_in/original.jpg')).toBe(
 			false
 		);
+		expect(await canAccessMedia(locals(null, [view.token]), 'media/it_out/thumb_800.webp')).toBe(
+			false
+		);
+
+		const download = await createShare(db, {
+			targetType: 'item',
+			targetId: 'it_in',
+			allowDownload: true,
+			createdBy: OWNER_ID
+		});
+		expect(await canAccessMedia(locals(null, [download.token]), 'media/it_in/original.jpg')).toBe(
+			true
+		);
+	});
+
+	it('a pre-cut segment share serves only the clip and low-res — never the full video', async () => {
+		await db.insert(schema.itemFiles).values([
+			{
+				id: 'if_pb',
+				itemId: 'it_in',
+				kind: 'playback',
+				storageKey: 'media/it_in/playback.mp4',
+				mime: 'video/mp4',
+				width: 1920,
+				height: 1080
+			},
+			{
+				id: 'if_hls',
+				itemId: 'it_in',
+				kind: 'hls',
+				storageKey: 'media/it_in/hls/master.m3u8',
+				mime: 'application/vnd.apple.mpegurl',
+				width: null,
+				height: null
+			}
+		]);
+		const share = await createShare(db, {
+			targetType: 'item',
+			targetId: 'it_in',
+			allowDownload: true,
+			segmentStart: 2,
+			segmentEnd: 5,
+			createdBy: OWNER_ID
+		});
+		await setShareClip(db, share.id, 'media/it_in/shareclips/x.mp4');
+		const l = locals(null, [share.token]);
+
+		// The clip and the poster/thumbnails are fine.
+		expect(await canAccessMedia(l, 'media/it_in/shareclips/x.mp4')).toBe(true);
+		expect(await canAccessMedia(l, 'media/it_in/thumb_800.webp')).toBe(true);
+		// The full-resolution video is off-limits — even with allowDownload on.
+		expect(await canAccessMedia(l, 'media/it_in/playback.mp4')).toBe(false);
+		expect(await canAccessMedia(l, 'media/it_in/hls/master.m3u8')).toBe(false);
+		expect(await canAccessMedia(l, 'media/it_in/original.jpg')).toBe(false);
+		// A different share's clip key isn't reachable.
+		expect(await canAccessMedia(l, 'media/it_in/shareclips/other.mp4')).toBe(false);
 	});
 
 	it('denies expired shares, deleted items, and forged keys', async () => {

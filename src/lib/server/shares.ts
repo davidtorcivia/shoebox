@@ -42,6 +42,7 @@ export interface ShareRecord {
 	allowDownload: boolean;
 	segmentStart: number | null;
 	segmentEnd: number | null;
+	clipKey: string | null;
 	createdBy: string;
 }
 
@@ -63,6 +64,7 @@ function toRecord(row: ShareRow): ShareRecord {
 		allowDownload: row.allowDownload,
 		segmentStart: row.segmentStart ?? null,
 		segmentEnd: row.segmentEnd ?? null,
+		clipKey: row.clipKey ?? null,
 		createdBy: row.createdBy
 	};
 }
@@ -102,10 +104,16 @@ export async function createShare(db: Db, input: CreateShareInput): Promise<Shar
 		allowDownload: input.allowDownload ?? false,
 		segmentStart: input.segmentStart ?? null,
 		segmentEnd: input.segmentEnd ?? null,
+		clipKey: null,
 		createdBy: input.createdBy
 	};
 	await db.insert(shares).values(row);
 	return toRecord(row);
+}
+
+/** Attach the rendered segment clip to a share once it's been cut. */
+export async function setShareClip(db: Db, id: string, clipKey: string): Promise<void> {
+	await db.update(shares).set({ clipKey }).where(eq(shares.id, id));
 }
 
 export async function getShareByToken(db: Db, token: string): Promise<ShareRecord | null> {

@@ -85,16 +85,30 @@ export const load: PageServerLoad = async ({ locals, params, cookies, url }) => 
 
 	const item = await getItemDTO(locals.db, locals.platform.storage, share.targetId);
 	if (!item) error(404, 'This memory is no longer available.');
+
+	const hasSegment = share.segmentStart != null && share.segmentEnd != null;
+	// A pre-cut segment share serves ONLY the clip: expose its URL and strip the
+	// full-video sources so the viewer never receives (or can reference) them.
+	let clip: { url: string; start: number; end: number } | null = null;
+	if (hasSegment && share.clipKey) {
+		clip = {
+			url: await locals.platform.storage.mediaUrl(share.clipKey),
+			start: share.segmentStart!,
+			end: share.segmentEnd!
+		};
+		item.urls = { ...item.urls, original: undefined, playback: undefined, hls: undefined };
+	}
+
 	return {
 		state: 'ok' as const,
 		share: {
 			token,
 			targetType: 'item' as const,
 			allowDownload: share.allowDownload,
-			segment:
-				share.segmentStart != null && share.segmentEnd != null
-					? { start: share.segmentStart, end: share.segmentEnd }
-					: null
+			// When a clip was cut, the viewer gets it directly (no client-side
+			// bounding). Only fall back to bounding the full video when we couldn't cut.
+			segment: hasSegment && !clip ? { start: share.segmentStart!, end: share.segmentEnd! } : null,
+			clip
 		},
 		album: null,
 		items: [item]

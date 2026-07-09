@@ -10,6 +10,7 @@
 		allowDownload,
 		single = false,
 		segment = null,
+		clip = null,
 		onClose,
 		onNavigate
 	}: {
@@ -17,23 +18,28 @@
 		index: number;
 		allowDownload: boolean;
 		single?: boolean;
-		/** A shared video segment [start,end] (seconds), for single-item shares. */
+		/** A shared video segment [start,end] bounding the full video (fallback). */
 		segment?: { start: number; end: number } | null;
+		/** A pre-cut clip served in place of the full video (secure segment share). */
+		clip?: { url: string; start: number; end: number } | null;
 		onClose?: () => void;
 		onNavigate?: (index: number) => void;
 	} = $props();
 
 	const item = $derived(items[index]);
-	const clipSegment = $derived(segment && item?.type === 'video' ? segment : null);
-	const clipUrl = (format: 'mp4' | 'gif'): string =>
-		clipSegment
-			? `/api/items/${item.id}/clip?start=${clipSegment.start.toFixed(3)}&end=${clipSegment.end.toFixed(3)}&format=${format}`
-			: '';
+	// Bound the full video only when there's no pre-cut clip to serve instead.
+	const clipSegment = $derived(!clip && segment && item?.type === 'video' ? segment : null);
+	// The clip label range — from the served clip or the client-bounded segment.
+	const clipRange = $derived(clip ?? (item?.type === 'video' ? segment : null));
 	const year = $derived(item.date.dateStart ? Number(item.date.dateStart.slice(0, 4)) : 1990);
 	const room = $derived(playerRoomFor(year));
-	const videoSrc = $derived(item.urls.playback ?? item.urls.original ?? item.urls.poster);
+	// A cut clip is served directly; otherwise the (possibly bounded) full video.
+	const videoSrc = $derived(
+		clip?.url ?? item.urls.playback ?? item.urls.original ?? item.urls.poster
+	);
 	const imageSrc = $derived(item.urls.thumb1600 || item.urls.thumb800 || item.urls.original || '');
-	const canDownload = $derived(allowDownload && Boolean(item.urls.original));
+	const canDownloadClip = $derived(allowDownload && Boolean(clip));
+	const canDownload = $derived(allowDownload && !clip && Boolean(item.urls.original));
 
 	function prev(): void {
 		if (!single && index > 0) onNavigate?.(index - 1);
@@ -125,31 +131,29 @@
 			{:else}
 				<img src={imageSrc} alt={item.title ?? item.displayDate} />
 			{/if}
-			{#if clipSegment}
+			{#if clipRange}
 				<p class="clip-tag" data-testid="share-clip-tag">
-					Clip · {formatTimecode(clipSegment.start)} – {formatTimecode(clipSegment.end)}
+					Clip · {formatTimecode(clipRange.start)} – {formatTimecode(clipRange.end)}
 				</p>
 			{/if}
 			<p class="media-date">{item.displayDate}</p>
 			{#if item.description}<p class="story">{item.description}</p>{/if}
-			{#if canDownload && clipSegment}
-				<!-- eslint-disable svelte/no-navigation-without-resolve -- clip endpoint, not an app route -->
-				<div class="downloads">
-					<a class="download" data-testid="share-download-mp4" href={clipUrl('mp4')} download>
-						Download clip (MP4)
-					</a>
-					<a class="download ghost" data-testid="share-download-gif" href={clipUrl('gif')} download>
-						GIF
-					</a>
-				</div>
-				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+			<!-- eslint-disable svelte/no-navigation-without-resolve -- media URLs, not app routes -->
+			{#if canDownloadClip && clip}
+				<a
+					class="download"
+					data-testid="share-download-mp4"
+					href={clip.url}
+					download={`${item.title ?? 'clip'}.mp4`}
+				>
+					Download clip (MP4)
+				</a>
 			{:else if canDownload && item.urls.original}
-				<!-- eslint-disable svelte/no-navigation-without-resolve -- storage adapters return media URLs, not app routes -->
 				<a class="download" data-testid="share-download" href={item.urls.original} download>
 					Download original
 				</a>
-				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			{/if}
+			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 		</div>
 		{#if !single}
 			<button
@@ -298,12 +302,6 @@
 		color: var(--dawn);
 	}
 
-	.downloads {
-		display: flex;
-		margin-top: 18px;
-		gap: 10px;
-	}
-
 	.download {
 		display: inline-block;
 		min-height: 48px;
@@ -313,15 +311,6 @@
 		color: var(--ink);
 		line-height: 48px;
 		text-decoration: none;
-	}
-
-	.downloads .download {
-		margin-top: 0;
-	}
-
-	.download.ghost {
-		background: color-mix(in srgb, var(--cream) 16%, transparent);
-		color: var(--cream);
 	}
 
 	@media (max-width: 760px) {

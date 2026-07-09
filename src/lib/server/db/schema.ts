@@ -247,9 +247,11 @@ export const shares = sqliteTable('shares', {
 	expiresAt: integer('expires_at', { mode: 'timestamp' }),
 	allowDownload: integer('allow_download', { mode: 'boolean' }).notNull().default(false),
 	// Optional [start,end] (seconds) for a video-segment share: the share still
-	// targets the whole item, but the viewer is bounded to this clip.
+	// targets the whole item, but the viewer only ever receives the pre-cut clip
+	// stored at `clipKey` — the full video is never exposed.
 	segmentStart: real('segment_start'),
 	segmentEnd: real('segment_end'),
+	clipKey: text('clip_key'),
 	createdBy: text('created_by')
 		.notNull()
 		.references(() => users.id)

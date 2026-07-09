@@ -78,6 +78,7 @@
 		index={0}
 		allowDownload={data.share.allowDownload}
 		segment={data.share.segment}
+		clip={data.share.clip}
 		single
 	/>
 {/if}

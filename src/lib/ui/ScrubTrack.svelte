@@ -16,6 +16,8 @@
 		/** When set, the track shows a draggable in/out selection over the rail. */
 		clip?: Clip | null;
 		onClipChange?: (inSec: number, outSec: number) => void;
+		/** Fires with the dragged handle's time so the video can preview that frame. */
+		onScrub?: (time: number) => void;
 		/** Storyboard sprite for the hover/drag thumbnail bubble (10x10, 100 frames). */
 		spriteUrl?: string | null;
 	}
@@ -27,6 +29,7 @@
 		onseek,
 		clip = null,
 		onClipChange,
+		onScrub,
 		spriteUrl = null
 	}: Props = $props();
 
@@ -95,13 +98,15 @@
 		if (!clip || !activeHandle || !onClipChange) return;
 		const time = timeFromClientX(event.clientX, track.getBoundingClientRect(), duration);
 		if (activeHandle === 'in') {
-			const next = Math.min(time, clip.out - MIN_CLIP);
-			onClipChange(Math.max(0, next), clip.out);
-			previewFraction = fractionOf(Math.max(0, next), duration);
+			const next = Math.max(0, Math.min(time, clip.out - MIN_CLIP));
+			onClipChange(next, clip.out);
+			previewFraction = fractionOf(next, duration);
+			onScrub?.(next);
 		} else {
-			const next = Math.max(time, clip.in + MIN_CLIP);
-			onClipChange(clip.in, Math.min(duration, next));
-			previewFraction = fractionOf(Math.min(duration, next), duration);
+			const next = Math.min(duration, Math.max(time, clip.in + MIN_CLIP));
+			onClipChange(clip.in, next);
+			previewFraction = fractionOf(next, duration);
+			onScrub?.(next);
 		}
 	}
 
