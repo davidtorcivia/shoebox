@@ -47,7 +47,9 @@ describe('PATCH /api/people/[id]', () => {
 	it('lets an editor patch any field', async () => {
 		const editor = sessionUser(await makeUser(db, { role: 'editor' }));
 		const meg = await makePerson(db, {});
-		const res = await PATCH(evt(editor, meg.id, { name: 'Margaret', birthPlace: 'Brooklyn, New York' }));
+		const res = await PATCH(
+			evt(editor, meg.id, { name: 'Margaret', birthPlace: 'Brooklyn, New York' })
+		);
 		expect((await res.json()).person.birthPlace).toBe('Brooklyn, New York');
 	});
 

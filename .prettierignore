@@ -1,6 +1,8 @@
 docs/
 .superpowers/
 .svelte-kit/
+faces/
+**/.pytest_cache/
 build/
 static/
 pnpm-lock.yaml

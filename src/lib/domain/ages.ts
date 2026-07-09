@@ -19,11 +19,7 @@ function addDays(iso: string, days: number): string {
 	return toISO(date);
 }
 
-export function ageAt(
-	birthdate: string,
-	onDate: string,
-	deathDate?: string | null
-): number | null {
+export function ageAt(birthdate: string, onDate: string, deathDate?: string | null): number | null {
 	if (onDate < birthdate) return null;
 	if (deathDate && onDate > deathDate) return null;
 

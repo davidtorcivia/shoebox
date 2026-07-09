@@ -71,13 +71,13 @@ codebase. A platform abstraction in `src/lib/server/platform` swaps the
 storage, database, and queue adapters per target, so the domain logic above it
 is identical on both.
 
-| Concern | Docker / Node | Cloudflare |
-| --- | --- | --- |
-| Database | SQLite via better-sqlite3 (WAL) | D1 |
-| Media | filesystem under `/media` | R2 bucket |
-| Job queue | SQLite `jobs` table | none, derivatives run client-side |
-| Worker process | yes | no |
-| Faces service | optional | no |
+| Concern        | Docker / Node                   | Cloudflare                        |
+| -------------- | ------------------------------- | --------------------------------- |
+| Database       | SQLite via better-sqlite3 (WAL) | D1                                |
+| Media          | filesystem under `/media`       | R2 bucket                         |
+| Job queue      | SQLite `jobs` table             | none, derivatives run client-side |
+| Worker process | yes                             | no                                |
+| Faces service  | optional                        | no                                |
 
 The Node target is primary and the only one that runs the worker or the faces
 service. The Cloudflare build is a single Worker: it hides the Arrivals UI and
@@ -161,17 +161,17 @@ request limits; use the Docker stack for very large originals.
 
 Environment variables, read by the app and the worker. See `.env.example`.
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `PLATFORM` | `node` | `node` for Docker, `cloudflare` for Workers |
-| `DATABASE_PATH` | `/data/shoebox.db` | SQLite database path (Node) |
-| `MEDIA_PATH` | `/media` | originals and derivatives (Node) |
-| `INGEST_PATH` | `/ingest` | watched drop folder (Node, worker) |
-| `ORIGIN` | `http://localhost:3000` | exact external URL; drives CSRF |
-| `BODY_LIMIT_MB` | `4096` | request body size cap |
-| `FACES_ENABLED` | `0` | `1` enables the faces profile |
-| `BACKUP_KEEP_DAYS` | `14` | nightly backup retention |
-| `SECRET_KEY` | random per process | HMAC key for share cookies; set it for multi-instance deploys |
+| Variable           | Default                 | Purpose                                                       |
+| ------------------ | ----------------------- | ------------------------------------------------------------- |
+| `PLATFORM`         | `node`                  | `node` for Docker, `cloudflare` for Workers                   |
+| `DATABASE_PATH`    | `/data/shoebox.db`      | SQLite database path (Node)                                   |
+| `MEDIA_PATH`       | `/media`                | originals and derivatives (Node)                              |
+| `INGEST_PATH`      | `/ingest`               | watched drop folder (Node, worker)                            |
+| `ORIGIN`           | `http://localhost:3000` | exact external URL; drives CSRF                               |
+| `BODY_LIMIT_MB`    | `4096`                  | request body size cap                                         |
+| `FACES_ENABLED`    | `0`                     | `1` enables the faces profile                                 |
+| `BACKUP_KEEP_DAYS` | `14`                    | nightly backup retention                                      |
+| `SECRET_KEY`       | random per process      | HMAC key for share cookies; set it for multi-instance deploys |
 
 ## Development
 
@@ -184,15 +184,15 @@ pnpm dev          # app on http://localhost:5173
 pnpm worker       # derivative, sprite, and ingestion worker, separate terminal
 ```
 
-| Command | What it does |
-| --- | --- |
-| `pnpm check` | svelte-check type checking |
-| `pnpm test` | vitest unit tests |
-| `pnpm test:workers` | Cloudflare-pool tests over D1 and R2 |
-| `pnpm test:e2e` | build, serve, and run the Playwright suite |
-| `pnpm build` | adapter-node production build |
-| `pnpm build:cf` | adapter-cloudflare production build |
-| `pnpm build:worker` | esbuild worker bundle |
+| Command             | What it does                               |
+| ------------------- | ------------------------------------------ |
+| `pnpm check`        | svelte-check type checking                 |
+| `pnpm test`         | vitest unit tests                          |
+| `pnpm test:workers` | Cloudflare-pool tests over D1 and R2       |
+| `pnpm test:e2e`     | build, serve, and run the Playwright suite |
+| `pnpm build`        | adapter-node production build              |
+| `pnpm build:cf`     | adapter-cloudflare production build        |
+| `pnpm build:worker` | esbuild worker bundle                      |
 
 ## Operations
 

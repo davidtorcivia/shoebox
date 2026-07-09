@@ -14,7 +14,7 @@ services:
       INGEST_PATH: /ingest
       ORIGIN: http://localhost:3000
     ports:
-      - "3000:3000"
+      - '3000:3000'
     volumes:
       - .:/app
       - shoebox-dev-data:/data

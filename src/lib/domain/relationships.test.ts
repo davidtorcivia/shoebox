@@ -108,16 +108,14 @@ describe('familyOf', () => {
 	});
 
 	it('ignores rels not connected to the person', () => {
-		expect(familyOf('meg', [rel('x', 'y', 'parent-of'), rel('x', 'y', 'spouse-of')])).toEqual(
-			{
-				parents: [],
-				children: [],
-				spouses: [],
-				siblings: [],
-				grandparents: [],
-				grandchildren: []
-			}
-		);
+		expect(familyOf('meg', [rel('x', 'y', 'parent-of'), rel('x', 'y', 'spouse-of')])).toEqual({
+			parents: [],
+			children: [],
+			spouses: [],
+			siblings: [],
+			grandparents: [],
+			grandchildren: []
+		});
 	});
 });
 

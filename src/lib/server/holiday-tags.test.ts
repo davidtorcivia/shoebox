@@ -107,7 +107,9 @@ describe('applyHolidayTags', () => {
 	});
 
 	it('honors the holidaySet settings key', async () => {
-		await ctx.db.run(sql`INSERT INTO settings (key, value) VALUES ('holidaySet', '["thanksgiving"]')`);
+		await ctx.db.run(
+			sql`INSERT INTO settings (key, value) VALUES ('holidaySet', '["thanksgiving"]')`
+		);
 		seedItem(ctx, { id: 'i1', dateStart: '1994-12-25' });
 		expect(await applyHolidayTags(ctx.db, 'i1')).toEqual([]);
 		seedItem(ctx, { id: 'i2', dateStart: '1994-11-24' });
@@ -123,7 +125,9 @@ describe('applyHolidayTags', () => {
 			kind: string;
 		}[];
 		expect(kind).toEqual([{ kind: 'topic' }]);
-		const linked = (await ctx.db.all(sql`SELECT tag_id AS tagId FROM item_tags WHERE item_id = 'i1'`)) as {
+		const linked = (await ctx.db.all(
+			sql`SELECT tag_id AS tagId FROM item_tags WHERE item_id = 'i1'`
+		)) as {
 			tagId: string;
 		}[];
 		expect(linked).toEqual([{ tagId: 't_c' }]);

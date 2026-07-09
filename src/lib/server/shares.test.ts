@@ -185,9 +185,7 @@ describe('share cookie', () => {
 		// of the token: the token is the public share URL, so a plain SHA-256
 		// would let any link-holder forge the cookie and bypass password gates.
 		const bare = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('abc'));
-		const bareHex = [...new Uint8Array(bare)]
-			.map((b) => b.toString(16).padStart(2, '0'))
-			.join('');
+		const bareHex = [...new Uint8Array(bare)].map((b) => b.toString(16).padStart(2, '0')).join('');
 		expect(v1).not.toBe(bareHex);
 	});
 });

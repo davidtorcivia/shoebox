@@ -19,7 +19,10 @@ async function editableAlbum(locals: App.Locals, id: string) {
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
 	await editableAlbum(locals, params.id);
-	const body = (await request.json().catch(() => null)) as { add?: unknown; remove?: unknown } | null;
+	const body = (await request.json().catch(() => null)) as {
+		add?: unknown;
+		remove?: unknown;
+	} | null;
 	if (!body || typeof body !== 'object' || Array.isArray(body)) error(400, 'invalid body');
 	const add = body.add ?? [];
 	const remove = body.remove ?? [];

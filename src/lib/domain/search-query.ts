@@ -68,7 +68,8 @@ export function parseOmnibox(input: string): ParsedOmnibox {
 				case 'uploader': {
 					const v = val.trim();
 					if (!v) break;
-					if (q.uploader) q.warnings.push(`Ignored uploader:${v} - already filtering uploader:${q.uploader}`);
+					if (q.uploader)
+						q.warnings.push(`Ignored uploader:${v} - already filtering uploader:${q.uploader}`);
 					else q.uploader = v;
 					break;
 				}
@@ -137,7 +138,8 @@ const quote = (v: string) => (/\s/.test(v) ? `"${v}"` : v);
 export function serializeQuery(q: SearchQuery): string {
 	const parts: string[] = [];
 	for (const person of q.people) parts.push(`person:${quote(person)}`);
-	if (q.age) parts.push(q.age.min === q.age.max ? `age:${q.age.min}` : `age:${q.age.min}-${q.age.max}`);
+	if (q.age)
+		parts.push(q.age.min === q.age.max ? `age:${q.age.min}` : `age:${q.age.min}-${q.age.max}`);
 	for (const tag of q.tags) parts.push(`tag:${quote(tag)}`);
 	if (q.type) parts.push(`type:${q.type}`);
 	if (q.album) parts.push(`album:${quote(q.album)}`);

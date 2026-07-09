@@ -43,7 +43,10 @@ describe('parseOmnibox person filters', () => {
 
 describe('parseOmnibox tag, type, album, and uploader filters', () => {
 	it('lowercases and dedupes tags', () => {
-		expect(parseOmnibox('tag:Christmas tag:christmas tag:lake').tags).toEqual(['christmas', 'lake']);
+		expect(parseOmnibox('tag:Christmas tag:christmas tag:lake').tags).toEqual([
+			'christmas',
+			'lake'
+		]);
 	});
 
 	it('parses type video', () => {
@@ -181,7 +184,9 @@ describe('serializeQuery', () => {
 	});
 
 	it('quotes multi-word values', () => {
-		expect(serializeQuery({ text: '', people: ['Grandpa Joe'], tags: [] })).toBe('person:"Grandpa Joe"');
+		expect(serializeQuery({ text: '', people: ['Grandpa Joe'], tags: [] })).toBe(
+			'person:"Grandpa Joe"'
+		);
 	});
 
 	it('serializes a single year bare', () => {

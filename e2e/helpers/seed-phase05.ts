@@ -30,11 +30,12 @@ export interface Phase05Seed {
 export function seedPhase05(): Phase05Seed {
 	const db = new Database(DB_PATH);
 	const owner = db.prepare('select id from users where username = ?').get('matriarch') as
-		| { id: string }
-		| undefined;
+		{ id: string } | undefined;
 	if (!owner) throw new Error('owner user missing');
 
-	const oldItems = db.prepare("select id from items where id like 'e2e05-%'").all() as { id: string }[];
+	const oldItems = db.prepare("select id from items where id like 'e2e05-%'").all() as {
+		id: string;
+	}[];
 	for (const item of oldItems) {
 		db.prepare('delete from comments where item_id = ?').run(item.id);
 		db.prepare('delete from album_items where item_id = ?').run(item.id);
@@ -44,7 +45,9 @@ export function seedPhase05(): Phase05Seed {
 	}
 	db.prepare("delete from album_items where album_id like 'e2e05-%'").run();
 	db.prepare("delete from albums where id like 'e2e05-%' or title = 'Summer at the Lake'").run();
-	db.prepare("delete from relationships where person_a like 'e2e05-%' or person_b like 'e2e05-%'").run();
+	db.prepare(
+		"delete from relationships where person_a like 'e2e05-%' or person_b like 'e2e05-%'"
+	).run();
 	db.prepare("delete from sessions where user_id like 'e2e05-%'").run();
 	db.prepare("delete from users where id like 'e2e05-%'").run();
 	db.prepare("delete from people where id like 'e2e05-%'").run();

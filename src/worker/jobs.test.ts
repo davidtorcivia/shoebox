@@ -5,7 +5,14 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as schema from '../lib/server/db/schema';
 import { createFsStorage } from '../lib/server/platform/storage-fs';
-import { claimJob, logIngestFailure, MAX_ATTEMPTS, runJob, STALE_CLAIM_SECONDS, type WorkerContext } from './jobs';
+import {
+	claimJob,
+	logIngestFailure,
+	MAX_ATTEMPTS,
+	runJob,
+	STALE_CLAIM_SECONDS,
+	type WorkerContext
+} from './jobs';
 import { createTestDb, insertJob } from './test-helpers';
 
 function testCtx(db: ReturnType<typeof createTestDb>): WorkerContext {

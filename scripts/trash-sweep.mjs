@@ -35,14 +35,14 @@ const sweepItem = db.transaction((itemId) => {
 	db.prepare('DELETE FROM items WHERE id = ?').run(itemId);
 });
 
-	for (const { id } of expiredItems) {
-		sweepItem(id);
-		try {
-			rmSync(join(mediaPath, 'media', id), { recursive: true, force: true });
-		} catch (err) {
-			console.error(`[trash-sweep] failed to delete media for ${id}: ${err.message}`);
-		}
+for (const { id } of expiredItems) {
+	sweepItem(id);
+	try {
+		rmSync(join(mediaPath, 'media', id), { recursive: true, force: true });
+	} catch (err) {
+		console.error(`[trash-sweep] failed to delete media for ${id}: ${err.message}`);
 	}
+}
 
 // 3. Expired soft-deleted albums and their children.
 const expiredAlbums = db

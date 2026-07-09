@@ -13,7 +13,9 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	);
 
 	if (hasFilters) {
-		const filter: ItemFilter = params.get('q') ? filterFromQuery(parseOmnibox(params.get('q')!)) : {};
+		const filter: ItemFilter = params.get('q')
+			? filterFromQuery(parseOmnibox(params.get('q')!))
+			: {};
 		if (params.get('people')) filter.personIds = params.get('people')!.split(',').filter(Boolean);
 		if (params.get('tags')) filter.tagIds = params.get('tags')!.split(',').filter(Boolean);
 		const type = params.get('type');

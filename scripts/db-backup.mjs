@@ -6,7 +6,9 @@ const dbPath = resolve(process.env.DATABASE_PATH ?? '/data/shoebox.db');
 const destDir = resolve(process.argv[2] ?? '/data/backups');
 const keepDays = Number(process.env.BACKUP_KEEP_DAYS ?? 14);
 if (!Number.isFinite(keepDays) || keepDays < 0) {
-	throw new Error(`BACKUP_KEEP_DAYS must be a non-negative number, got: ${process.env.BACKUP_KEEP_DAYS}`);
+	throw new Error(
+		`BACKUP_KEEP_DAYS must be a non-negative number, got: ${process.env.BACKUP_KEEP_DAYS}`
+	);
 }
 
 mkdirSync(destDir, { recursive: true });

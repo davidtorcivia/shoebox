@@ -42,7 +42,11 @@ describe('applyArrivalsBatch', () => {
 		expect(tagNames).toContain('birthday');
 		expect(tagNames).toContain('christmas');
 
-		const yearRows = db.select().from(schema.yearCounts).where(eq(schema.yearCounts.year, 1994)).all();
+		const yearRows = db
+			.select()
+			.from(schema.yearCounts)
+			.where(eq(schema.yearCounts.year, 1994))
+			.all();
 		expect(yearRows.length).toBeGreaterThan(0);
 	});
 
@@ -69,7 +73,11 @@ describe('applyArrivalsBatch', () => {
 
 		const item = db.select().from(schema.items).where(eq(schema.items.id, itemId)).get()!;
 		expect(item.status).toBe('needs_review');
-		const people = db.select().from(schema.itemPeople).where(eq(schema.itemPeople.itemId, itemId)).all();
+		const people = db
+			.select()
+			.from(schema.itemPeople)
+			.where(eq(schema.itemPeople.itemId, itemId))
+			.all();
 		expect(people).toHaveLength(1);
 		expect(people[0].personId).toBe('p1');
 		expect(people[0].source).toBe('manual');

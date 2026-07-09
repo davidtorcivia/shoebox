@@ -11,7 +11,9 @@ import { ROLE_RANK } from '$lib/server/roles';
 import { reindexItem, reindexItemsForAlbum } from '$lib/server/search';
 
 type AlbumRow = typeof albums.$inferSelect;
-type AlbumPatch = Partial<Pick<typeof albums.$inferInsert, 'title' | 'description' | 'coverItemId'>>;
+type AlbumPatch = Partial<
+	Pick<typeof albums.$inferInsert, 'title' | 'description' | 'coverItemId'>
+>;
 
 export async function listAlbums(db: Db, storage: StorageAdapter): Promise<AlbumDTO[]> {
 	const rows = await db

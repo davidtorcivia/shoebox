@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { makeTestDb, makeUser, sessionUser, stubStorage, type TestDb } from '$lib/server/testing/db';
+import {
+	makeTestDb,
+	makeUser,
+	sessionUser,
+	stubStorage,
+	type TestDb
+} from '$lib/server/testing/db';
 import { GET, POST } from './+server';
 
 let db: TestDb;

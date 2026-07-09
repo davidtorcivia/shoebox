@@ -1,10 +1,5 @@
 import { error, json } from '@sveltejs/kit';
-import {
-	canEditAlbum,
-	getAlbumDetail,
-	softDeleteAlbum,
-	updateAlbum
-} from '$lib/server/albums';
+import { canEditAlbum, getAlbumDetail, softDeleteAlbum, updateAlbum } from '$lib/server/albums';
 import { getItemDTOsByIds } from '$lib/server/items';
 import { requireRole } from '$lib/server/roles';
 import type { RequestHandler } from './$types';

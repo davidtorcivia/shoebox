@@ -46,7 +46,9 @@ test('folder drop to Arrivals approve to timeline with sprite hover-scrub', asyn
 	const itemId = await row.getAttribute('data-item-id');
 	expect(itemId).toBeTruthy();
 	await expect(page.getByTestId('arrivals-date')).toContainText('1994');
-	await expect(page.getByTestId('hint-chip').filter({ hasText: 'christmas' }).first()).toBeVisible();
+	await expect(
+		page.getByTestId('hint-chip').filter({ hasText: 'christmas' }).first()
+	).toBeVisible();
 	await expect(page.getByTestId('arrivals-preview')).toBeVisible();
 
 	await row.locator('button').first().click();

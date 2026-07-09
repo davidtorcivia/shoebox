@@ -37,7 +37,10 @@ export function parseConventions(relPath: string): ConventionHints {
 }
 
 export function titleFromFilename(filename: string): string {
-	return filename.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim();
+	return filename
+		.replace(/\.[^.]+$/, '')
+		.replace(/[-_]+/g, ' ')
+		.trim();
 }
 
 export function resolveItemDate(mediaDate: string | null, yearHint?: number): ResolvedDate {

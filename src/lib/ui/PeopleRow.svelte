@@ -64,7 +64,9 @@
 						/>
 					</button>
 					{#if expanded.has(person.id)}
-						<a class="name" href={resolve(`/people/${person.slug}`)}>{person.name}{ageText(person)}</a>
+						<a class="name" href={resolve(`/people/${person.slug}`)}
+							>{person.name}{ageText(person)}</a
+						>
 					{/if}
 				</span>
 			{/each}
