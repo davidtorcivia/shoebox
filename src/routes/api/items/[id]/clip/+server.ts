@@ -1,8 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { and, eq, isNull } from 'drizzle-orm';
 import { itemFiles, items } from '$lib/server/db/schema';
-import { canAccessItem } from '$lib/server/media-access';
-import { clipStem, validateClip, type ClipFormat } from '$lib/domain/clip';
+import { getCoveringShare } from '$lib/server/media-access';
+import { CLIP_MIN_SECONDS, clipStem, validateClip, type ClipFormat } from '$lib/domain/clip';
 import type { RequestHandler } from './$types';
 
 // Extract a [start,end] segment of a video as an MP4 or GIF and stream it back as
@@ -11,10 +11,14 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 	const id = params.id;
 
 	// Logged-in users always; otherwise a share viewer whose share covers this item
-	// and permits downloads.
+	// and permits downloads. A segment share additionally bounds what can be pulled.
+	let shareBounds: { start: number; end: number } | null = null;
 	if (!locals.user) {
-		const ok = await canAccessItem(locals, id, { requireDownload: true });
-		if (!ok) error(403, 'Not allowed');
+		const share = await getCoveringShare(locals, id, { requireDownload: true });
+		if (!share) error(403, 'Not allowed');
+		if (share.segmentStart != null && share.segmentEnd != null) {
+			shareBounds = { start: share.segmentStart, end: share.segmentEnd };
+		}
 	}
 
 	const formatRaw = url.searchParams.get('format') ?? 'mp4';
@@ -38,6 +42,16 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 	const valid = validateClip(start, end, item.duration, format);
 	if (!valid.ok) error(400, valid.error ?? 'Invalid selection');
 
+	// A share viewer may only pull within the segment their share was scoped to;
+	// clamp the request to it and reject if nothing meaningful remains.
+	let renderStart = valid.start;
+	let renderEnd = valid.end;
+	if (shareBounds) {
+		renderStart = Math.max(renderStart, shareBounds.start);
+		renderEnd = Math.min(renderEnd, shareBounds.end);
+		if (renderEnd - renderStart < CLIP_MIN_SECONDS) error(403, 'Outside the shared segment');
+	}
+
 	// Prefer the progressive playback file (already H.264, ≤1920, faststart) as the
 	// source — smaller and faster to re-encode than a large original.
 	const files = await locals.db
@@ -56,8 +70,8 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 		rendered = await renderClip({
 			mediaPath,
 			sourceKey,
-			start: valid.start,
-			end: valid.end,
+			start: renderStart,
+			end: renderEnd,
 			format
 		});
 	} catch (err) {
@@ -68,7 +82,7 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 		error(500, 'Could not render clip');
 	}
 
-	const filename = `${clipStem(item.title, valid.start, valid.end)}.${rendered.ext}`;
+	const filename = `${clipStem(item.title, renderStart, renderEnd)}.${rendered.ext}`;
 	return new Response(rendered.data as unknown as BodyInit, {
 		headers: {
 			'content-type': rendered.contentType,

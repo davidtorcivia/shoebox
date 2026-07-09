@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import * as schema from './db/schema';
 import type { Db } from './db';
 import { createTestDb } from './db/test-db';
-import { canAccessMedia } from './media-access';
+import { canAccessItem, canAccessMedia, getCoveringShare } from './media-access';
 import { createShare } from './shares';
 
 let db: Db;
@@ -222,5 +222,48 @@ describe('canAccessMedia', () => {
 		expect(await canAccessMedia(locals(null, [share.token]), 'not-media/it_in/original.jpg')).toBe(
 			false
 		);
+	});
+});
+
+describe('getCoveringShare / canAccessItem', () => {
+	it('returns the covering item share, including its segment bounds', async () => {
+		const share = await createShare(db, {
+			targetType: 'item',
+			targetId: 'it_in',
+			allowDownload: true,
+			segmentStart: 2,
+			segmentEnd: 5,
+			createdBy: OWNER_ID
+		});
+		const found = await getCoveringShare(locals(null, [share.token]), 'it_in', {
+			requireDownload: true
+		});
+		expect(found?.targetId).toBe('it_in');
+		expect(found?.segmentStart).toBe(2);
+		expect(found?.segmentEnd).toBe(5);
+	});
+
+	it('excludes a download-required check when the share is view-only', async () => {
+		const share = await createShare(db, {
+			targetType: 'item',
+			targetId: 'it_in',
+			allowDownload: false,
+			createdBy: OWNER_ID
+		});
+		expect(
+			await getCoveringShare(locals(null, [share.token]), 'it_in', { requireDownload: true })
+		).toBeNull();
+		// ...but plain item access (no download requirement) still resolves it.
+		expect(await canAccessItem(locals(null, [share.token]), 'it_in')).toBe(true);
+	});
+
+	it('does not cover a different item, and always allows a session user', async () => {
+		const share = await createShare(db, {
+			targetType: 'item',
+			targetId: 'it_in',
+			createdBy: OWNER_ID
+		});
+		expect(await getCoveringShare(locals(null, [share.token]), 'it_out')).toBeNull();
+		expect(await canAccessItem(locals(sessionUser), 'it_out')).toBe(true);
 	});
 });

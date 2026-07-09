@@ -3,29 +3,28 @@ import { albumItems, albums, itemFiles, items, shares } from './db/schema';
 
 const KEY_RE = /^media\/([A-Za-z0-9_-]+)\//;
 
+type ShareRow = typeof shares.$inferSelect;
+
 /**
- * Whether the current request may access media for `itemId` — either a logged-in
- * user, or an unauthenticated share viewer whose share token covers this item
- * (directly or via an album). With `requireDownload`, the covering share must
- * also permit downloads. Mirrors {@link canAccessMedia} but at item granularity,
- * for endpoints (like clip export) that aren't keyed by a storage path.
+ * The first valid, unexpired share token in the request that covers `itemId`
+ * (directly, or via an album), or null. With `requireDownload`, only shares that
+ * permit downloads qualify. Returns the share row so callers can honour its scope
+ * (e.g. a segment share bounds a clip download).
  */
-export async function canAccessItem(
+export async function getCoveringShare(
 	locals: App.Locals,
 	itemId: string,
 	opts: { requireDownload?: boolean } = {}
-): Promise<boolean> {
-	if (locals.user) return true;
-
+): Promise<ShareRow | null> {
 	const tokens = locals.shareTokens ?? [];
-	if (tokens.length === 0) return false;
+	if (tokens.length === 0) return null;
 
 	const alive = await locals.db
 		.select({ id: items.id })
 		.from(items)
 		.where(and(eq(items.id, itemId), isNull(items.deletedAt)))
 		.limit(1);
-	if (alive.length === 0) return false;
+	if (alive.length === 0) return null;
 
 	const now = Date.now();
 	for (const token of tokens) {
@@ -37,7 +36,7 @@ export async function canAccessItem(
 		if (opts.requireDownload && !share.allowDownload) continue;
 
 		if (share.targetType === 'item') {
-			if (share.targetId === itemId) return true;
+			if (share.targetId === itemId) return share;
 			continue;
 		}
 
@@ -53,10 +52,25 @@ export async function canAccessItem(
 				)
 			)
 			.limit(1);
-		if (member.length > 0) return true;
+		if (member.length > 0) return share;
 	}
 
-	return false;
+	return null;
+}
+
+/**
+ * Whether the current request may access media for `itemId` — either a logged-in
+ * user, or an unauthenticated share viewer whose share token covers this item.
+ * Mirrors {@link canAccessMedia} but at item granularity, for endpoints (like
+ * clip export) that aren't keyed by a storage path.
+ */
+export async function canAccessItem(
+	locals: App.Locals,
+	itemId: string,
+	opts: { requireDownload?: boolean } = {}
+): Promise<boolean> {
+	if (locals.user) return true;
+	return (await getCoveringShare(locals, itemId, opts)) !== null;
 }
 
 export async function canAccessMedia(locals: App.Locals, key: string): Promise<boolean> {
