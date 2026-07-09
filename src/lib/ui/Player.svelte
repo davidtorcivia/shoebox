@@ -32,9 +32,21 @@
 	let errored = $state(false);
 	let controlsVisible = $state(true);
 
+	// Cast / remote playback. Availability toggles the (otherwise hidden) button,
+	// so nothing shows until there's actually a TV/receiver to send to.
+	let castAvailable = $state(false);
+	let casting = $state(false);
+
 	let shuttle: Shuttle = SHUTTLE_PAUSED;
 	let reverseTimer: ReturnType<typeof setInterval> | null = null;
 	let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
+	// Safari exposes AirPlay through its own webkit-prefixed API rather than the
+	// standard RemotePlayback interface.
+	type AirplayVideo = HTMLVideoElement & {
+		webkitShowPlaybackTargetPicker?: () => void;
+		webkitCurrentPlaybackTargetIsWireless?: boolean;
+	};
 
 	const noHover = typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
 
@@ -200,6 +212,66 @@
 		};
 	});
 
+	// Watch for a cast target on the network. Two independent surfaces: the
+	// standard Remote Playback API (Chrome/Edge → Google Cast) and Safari's
+	// webkit AirPlay events. Whichever reports availability reveals the button.
+	$effect(() => {
+		const el = video;
+		if (!el) return;
+		// Opt the element into AirPlay (Safari reads this attribute, not a property).
+		el.setAttribute('x-webkit-airplay', 'allow');
+		const cleanups: Array<() => void> = [];
+
+		const remote = el.remote;
+		if (remote && typeof remote.watchAvailability === 'function') {
+			let watchId: number | null = null;
+			remote
+				.watchAvailability((available) => (castAvailable = available))
+				.then((id) => (watchId = id))
+				.catch(() => {
+					/* remote playback disabled (e.g. MSE source) — button stays hidden */
+				});
+			const onConnect = () => (casting = true);
+			const onDisconnect = () => (casting = false);
+			remote.addEventListener('connect', onConnect);
+			remote.addEventListener('connecting', onConnect);
+			remote.addEventListener('disconnect', onDisconnect);
+			cleanups.push(() => {
+				remote.removeEventListener('connect', onConnect);
+				remote.removeEventListener('connecting', onConnect);
+				remote.removeEventListener('disconnect', onDisconnect);
+				if (watchId != null) remote.cancelWatchAvailability(watchId).catch(() => {});
+			});
+		}
+
+		const airplay = el as AirplayVideo;
+		const onAvail = (event: Event) => {
+			castAvailable = (event as Event & { availability?: string }).availability === 'available';
+		};
+		const onWireless = () => (casting = Boolean(airplay.webkitCurrentPlaybackTargetIsWireless));
+		el.addEventListener('webkitplaybacktargetavailabilitychanged', onAvail);
+		el.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', onWireless);
+		cleanups.push(() => {
+			el.removeEventListener('webkitplaybacktargetavailabilitychanged', onAvail);
+			el.removeEventListener('webkitcurrentplaybacktargetiswirelesschanged', onWireless);
+		});
+
+		return () => cleanups.forEach((fn) => fn());
+	});
+
+	function cast(): void {
+		const el = video as AirplayVideo | null;
+		if (!el) return;
+		if (typeof el.webkitShowPlaybackTargetPicker === 'function') {
+			el.webkitShowPlaybackTargetPicker();
+		} else {
+			el.remote?.prompt?.().catch(() => {
+				/* user dismissed the picker, or no device accepted */
+			});
+		}
+		poke();
+	}
+
 	onDestroy(() => {
 		clearReverse();
 		if (hideTimer) clearTimeout(hideTimer);
@@ -295,6 +367,27 @@
 						onclick={() => (volumeOpen = !volumeOpen)}>Vol</button
 					>
 				</span>
+				{#if castAvailable}
+					<button
+						class="control-button cast"
+						class:on={casting}
+						type="button"
+						onclick={cast}
+						aria-label={casting ? 'Casting to a device' : 'Cast to a device'}
+						title={casting ? 'Casting' : 'Cast to a device'}
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+							<path
+								d="M1 18v3h3c0-1.66-1.34-3-3-3zm0-4v2c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0-4v2c4.97 0 9 4.03 9 9h2c0-6.08-4.93-11-11-11z"
+								fill="currentColor"
+							/>
+							<path
+								d="M21 3H3c-1.1 0-2 .9-2 2v2h2V5h18v14h-7v2h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"
+								fill="currentColor"
+							/>
+						</svg>
+					</button>
+				{/if}
 				<button class="control-button" type="button" onclick={() => void toggleFullscreen()}>
 					{fullscreen ? 'Exit' : 'Full'}
 				</button>
@@ -453,6 +546,23 @@
 
 	.control-button.dim {
 		color: color-mix(in srgb, var(--cream) 45%, transparent);
+	}
+
+	.control-button.cast {
+		display: inline-grid;
+		place-items: center;
+		padding: 0;
+	}
+
+	.control-button.cast svg {
+		width: 20px;
+		height: 20px;
+	}
+
+	/* Lit while connected to a receiver, otherwise it reads as just another
+	   quiet control. */
+	.control-button.cast.on {
+		color: var(--dawn);
 	}
 
 	.volume-wrap {
