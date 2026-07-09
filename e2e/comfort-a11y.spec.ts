@@ -45,6 +45,20 @@ test.beforeEach(async ({ page }) => {
 	await enableComfort(page);
 });
 
+// Comfort mode is persisted on the shared owner; leave it OFF so later specs
+// (e.g. the sprite hover-scrub) aren't silently running in comfort mode.
+test.afterAll(async ({ browser }) => {
+	const context = await browser.newContext();
+	const page = await context.newPage();
+	await ensureOwner(page);
+	await page.goto('/profile');
+	const toggle = page.getByTestId('comfort-toggle');
+	if (await toggle.isChecked()) await toggle.uncheck();
+	await page.getByTestId('save-appearance').click();
+	await expect(page.locator('html.comfort')).toHaveCount(0);
+	await context.close();
+});
+
 test('comfort type scale, chrome opacity, and hit areas', async ({ page }) => {
 	await page.goto('/');
 	await expect(page.locator('html.comfort')).toHaveCount(1);

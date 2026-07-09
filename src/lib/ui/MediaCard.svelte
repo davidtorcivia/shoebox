@@ -107,7 +107,7 @@
 	}
 </script>
 
-<article class="card" class:selecting class:selected data-type={item.type}>
+<article class="card" class:selecting class:selected data-type={item.type} data-item-id={item.id}>
 	<div class="media-wrap">
 		<button
 			class="media"

@@ -39,6 +39,7 @@ test('item room video, neighbors, photo lightbox, and edit panel', async ({ page
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page.getByText('Saved')).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Edited Player Clip' })).toBeVisible();
-	await expect(page.getByText('1996')).toBeVisible();
+	// Switching the date type to year precision reformats the seeded 1994 date.
+	await expect(page.getByText('c. 1994')).toBeVisible();
 	await expect(page.getByText('reunion')).toBeVisible();
 });

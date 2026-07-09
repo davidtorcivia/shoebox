@@ -77,7 +77,9 @@ test('folder drop to Arrivals approve to timeline with sprite hover-scrub', asyn
 		.not.toBeNull();
 
 	await page.goto('/?y=1994');
-	const readyCard = page.getByRole('button', { name: /Open clip/i }).first();
+	// Target this drop's own card by id — other specs seed items titled "…clip"
+	// too, so a name-based .first() would race onto the wrong (spriteless) card.
+	const readyCard = page.locator(`[data-item-id="${itemId}"]`);
 	await readyCard.hover();
 	await readyCard.hover({ position: { x: 60, y: 30 } });
 	await expect(readyCard.locator('[data-testid="scrub-hairline"]')).toBeVisible();
