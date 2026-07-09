@@ -1,0 +1,27 @@
+name: gen-visual
+
+# One-off helper: regenerate the visual baselines on the same runner image CI
+# uses, then upload them as an artifact to commit. Triggered manually.
+on: workflow_dispatch
+
+jobs:
+  gen:
+    runs-on: ubuntu-22.04
+    env:
+      PLATFORM: node
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm fixtures
+      - run: pnpm exec playwright test visual.spec.ts --update-snapshots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines
+          path: e2e/__screenshots__/
+          if-no-files-found: error
