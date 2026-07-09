@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
+import { approveItems } from './helpers/arrivals';
 import { OWNER, ensureOwner } from './helpers/auth';
 import { readFile } from 'node:fs/promises';
 import { FIXTURE_MP4 } from './fixtures/generate';
@@ -146,6 +147,10 @@ test('media upload API golden path, range streaming, dedupe, trash and restore',
 		item: { id: string; urls: { original: string }; displayDate: string; shortDate: string };
 	};
 	expect(completeBody.item).toMatchObject({ displayDate: 'c. 1994', shortDate: 'c. 1994' });
+
+	// The upload lands in needs_review; approve it so it counts on the timeline
+	// (checked below) and shows on the year page after the delete/restore round-trip.
+	await approveItems(page, [completeBody.item.id]);
 
 	const range = await page.request.get(completeBody.item.urls.original, {
 		headers: { range: 'bytes=2-4' }

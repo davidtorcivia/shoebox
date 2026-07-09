@@ -4,6 +4,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { E2E_ENV, E2E_INGEST_DIR } from './env';
 import { FIXTURE_MP4 } from './fixtures/generate';
+import { approveAllPending } from './helpers/arrivals';
 import { ensureOwner } from './helpers/auth';
 
 test.describe.configure({ mode: 'serial' });
@@ -34,6 +35,9 @@ function dropIntoIngest(relPath: string): void {
 
 test('folder drop to Arrivals approve to timeline with sprite hover-scrub', async ({ page }) => {
 	await ensureOwner(page);
+	// Other specs (running earlier in this shared DB) leave approved-pending uploads
+	// in the queue; drain them so this test's count assertions see only its drop.
+	await approveAllPending(page);
 
 	dropIntoIngest('1994/christmas/clip.mp4');
 

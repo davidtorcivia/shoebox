@@ -10,8 +10,9 @@ test('item room video, neighbors, photo lightbox, and edit panel', async ({ page
 	const context = `y=1994&people=${seeded.personId}`;
 
 	await page.goto(`/item/${seeded.videoId}?${context}`);
-	// People render as avatar buttons that carry the name and expand on tap.
-	await expect(page.getByRole('button', { name: 'Aunt June' }).first()).toBeVisible();
+	// On desktop each person is a labelled link to their page (mobile keeps the
+	// tap-to-expand avatar button).
+	await expect(page.getByRole('link', { name: 'Aunt June' }).first()).toBeVisible();
 	await expect(page.getByText('Player E2E Album')).toBeVisible();
 	await expect(page.getByText('June 14, 1994')).toBeVisible();
 	await expect(page.getByTestId('comments-slot')).toBeVisible();
@@ -35,7 +36,7 @@ test('item room video, neighbors, photo lightbox, and edit panel', async ({ page
 	await page.getByLabel('Title').fill('Edited Player Clip');
 	await page.getByLabel('Type').selectOption('year');
 	await page.getByRole('textbox', { name: 'Tags' }).fill('Reunion, PLAYER-room');
-	await page.getByRole('button', { name: 'Save' }).click();
+	await page.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page.getByText('Saved')).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Edited Player Clip' })).toBeVisible();
 	await expect(page.getByText('1996')).toBeVisible();

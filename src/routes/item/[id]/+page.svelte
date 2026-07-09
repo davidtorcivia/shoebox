@@ -306,7 +306,7 @@
 					type="button"
 					data-testid="favorite-button"
 					aria-pressed={favorited}
-					aria-label={favorited ? 'Remove from saved' : 'Save'}
+					aria-label={favorited ? 'Remove from saved' : 'Add to saved'}
 					onclick={() => void toggleFavorite()}
 				>
 					{favorited ? '♥ Saved' : '♡ Save'}

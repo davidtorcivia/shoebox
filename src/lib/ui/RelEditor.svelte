@@ -91,6 +91,7 @@
 				placeholder="Search people…"
 				autocomplete="off"
 				onfocus={() => (showList = true)}
+				onclick={() => (showList = true)}
 				onblur={() => setTimeout(() => (showList = false), 150)}
 			/>
 			{#if showList && matches.length}

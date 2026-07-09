@@ -2,6 +2,7 @@ import { expect, type Page } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { approveItems } from './arrivals';
 import { OWNER } from './auth';
 
 const DB_PATH = 'e2e/.data/shoebox.db';
@@ -98,6 +99,10 @@ export async function seedPlayerRoom(page: Page): Promise<SeededPlayer> {
 		1
 	);
 	db.close();
+
+	// Items post through /api/items into needs_review; approve them so the room,
+	// timeline, and neighbours behave like an approved library.
+	await approveItems(page, [videoId, photoId]);
 
 	return { videoId, photoId, personId, albumId };
 }

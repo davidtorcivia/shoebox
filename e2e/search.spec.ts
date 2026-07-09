@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { approveItems } from './helpers/arrivals';
 import { ensureOwner } from './helpers/auth';
 
 test.describe.configure({ mode: 'serial' });
@@ -123,6 +124,9 @@ test.beforeAll(async ({ browser }) => {
 		title: 'Old photo',
 		date: '1985-05-05'
 	});
+
+	// Uploads land in needs_review; approve so they're searchable/timeline-visible.
+	await approveItems(page, [items.lake, items.bike, items.xmas, items.old]);
 });
 
 test('text search finds an item by its description', async () => {
