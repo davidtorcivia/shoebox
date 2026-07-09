@@ -8,7 +8,12 @@ export default defineConfig({
 	fullyParallel: false,
 	workers: 1,
 	snapshotPathTemplate: '{testDir}/__screenshots__/{testFilePath}/{arg}{ext}',
-	expect: { toHaveScreenshot: { threshold: 0.2, animations: 'disabled' } },
+	// A small diff-ratio tolerance absorbs sub-pixel font antialiasing differences
+	// between the baseline-generation image and the CI runner without hiding real
+	// layout/colour regressions.
+	expect: {
+		toHaveScreenshot: { threshold: 0.2, maxDiffPixelRatio: 0.02, animations: 'disabled' }
+	},
 	use: {
 		baseURL: 'http://localhost:4173'
 	},
