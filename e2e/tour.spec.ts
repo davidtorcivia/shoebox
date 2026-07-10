@@ -53,12 +53,15 @@ test('walks a plain user through the item demonstrations', async ({ browser }) =
 	await page.getByTestId('tour-next').click(); // clip (video sample)
 	await expect(page).toHaveURL(/\/item\//);
 
-	await page.getByTestId('tour-next').click(); // saved moments
-	await expect(page).toHaveURL('/favorites');
 	await page.getByTestId('tour-next').click();
 	await expect(page).toHaveURL('/people');
 	await page.getByTestId('tour-next').click();
 	await expect(page).toHaveURL('/albums');
+	// Saved is taught in place, on the albums page, spotlighting the Saved card.
+	await page.getByTestId('tour-next').click();
+	await expect(page).toHaveURL('/albums');
+	await expect(page.getByTestId('tour-counter')).toHaveText('Step 11 of 13');
+	await expect(page.locator('div.halo')).toBeVisible();
 	await page.getByTestId('tour-next').click();
 	await expect(page).toHaveURL('/search');
 	await page.getByTestId('tour-next').click();
@@ -126,15 +129,23 @@ test('an admin gets the gated stops: edit, share, upload, and admin', async ({ b
 	await page.getByTestId('tour-comfort-no').click();
 
 	const visited = new Set<string>();
+	let editOpened = false;
 	for (let i = 2; i < total; i += 1) {
 		await page.getByTestId('tour-next').click();
 		await expect(page.getByTestId('tour-counter')).toHaveText(`Step ${i + 1} of ${total}`);
 		visited.add(new URL(page.url()).pathname);
+		const content = await page.getByTestId('tour-card').textContent();
+		if (content?.includes('Fix the details')) {
+			// The edit stop opens the metadata form so people see the real thing.
+			await expect(page.locator('details[data-tour="edit"]')).toHaveAttribute('open', '');
+			editOpened = true;
+		}
 	}
 	await expect(page.getByTestId('tour-counter')).toHaveText(`Step ${total} of ${total}`);
 	await expect(page).toHaveURL('/profile');
 	expect(visited).toContain('/upload');
 	expect(visited.has('/admin/users') || visited.has('/admin')).toBe(true);
+	expect(editOpened).toBe(true);
 
 	await context.close();
 });

@@ -25,9 +25,9 @@ describe('buildSteps', () => {
 		expect(ids).toEqual([
 			'welcome',
 			'timeline',
-			'favorites',
 			'people',
 			'albums',
+			'saved',
 			'search',
 			'upload',
 			'admin',
@@ -46,12 +46,26 @@ describe('buildSteps', () => {
 			'memories',
 			'people-row',
 			'clip',
-			'favorites',
 			'people',
 			'albums',
+			'saved',
 			'search',
 			'profile'
 		]);
+	});
+
+	it('teaches Saved on the albums page, right after the albums stop', () => {
+		const steps = buildSteps('user', 0, null);
+		const albumsIndex = steps.findIndex((s) => s.id === 'albums');
+		const saved = steps[albumsIndex + 1];
+		expect(saved.id).toBe('saved');
+		expect(saved.route).toBe('/albums');
+		expect(saved.spot).toEqual(['[data-tour="saved-card"]']);
+	});
+
+	it('opens the edit metadata form while its step is showing', () => {
+		const edit = buildSteps('editor', 0, PHOTO).find((s) => s.id === 'edit');
+		expect(edit?.expand).toBe('[data-tour="edit"]');
 	});
 
 	it('shows the clip stop only for a video sample', () => {

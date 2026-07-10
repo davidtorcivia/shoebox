@@ -76,13 +76,21 @@ test('comfort type scale, chrome opacity, and hit areas', async ({ page }) => {
 		)
 		.toBe(0.75);
 
-	const tooSmall = await page.evaluate(() =>
-		[...document.querySelectorAll('button')]
-			.filter((button) => button.offsetParent !== null)
-			.filter((button) => button.getBoundingClientRect().height < 48)
-			.map((button) => button.textContent?.trim() || button.getAttribute('aria-label') || '')
-	);
-	expect(tooSmall).toEqual([]);
+	// Poll: entrance animations (masonry scale-in) and the post-hydration
+	// comfort-class style pass need a frame or two to settle before every
+	// button reaches its 48px comfort floor.
+	await expect
+		.poll(
+			() =>
+				page.evaluate(() =>
+					[...document.querySelectorAll('button')]
+						.filter((button) => button.offsetParent !== null)
+						.filter((button) => button.getBoundingClientRect().height < 48)
+						.map((button) => button.textContent?.trim() || button.getAttribute('aria-label') || '')
+				),
+			{ timeout: 10_000 }
+		)
+		.toEqual([]);
 });
 
 for (const scheme of ['dark', 'light'] as const) {

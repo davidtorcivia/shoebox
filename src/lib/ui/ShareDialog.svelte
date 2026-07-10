@@ -278,11 +278,11 @@
 				),
 				linear-gradient(
 					158deg,
-					color-mix(in srgb, var(--cream) 10%, color-mix(in srgb, var(--ink) 84%, transparent)) 0%,
-					color-mix(in srgb, var(--ink) 84%, transparent) 100%
+					color-mix(in srgb, var(--cream) 10%, color-mix(in srgb, var(--ink) 87%, transparent)) 0%,
+					color-mix(in srgb, var(--ink) 87%, transparent) 100%
 				);
-			backdrop-filter: blur(18px) saturate(1.35);
-			-webkit-backdrop-filter: blur(18px) saturate(1.35);
+			backdrop-filter: blur(10px) saturate(1.25);
+			-webkit-backdrop-filter: blur(10px) saturate(1.25);
 		}
 	}
 

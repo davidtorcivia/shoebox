@@ -253,9 +253,9 @@
 		.confirm-modal {
 			background:
 				linear-gradient(135deg, color-mix(in srgb, var(--dawn) 16%, transparent), transparent),
-				color-mix(in srgb, color-mix(in srgb, var(--ink) 92%, var(--cream)) 84%, transparent);
-			backdrop-filter: blur(18px) saturate(1.35);
-			-webkit-backdrop-filter: blur(18px) saturate(1.35);
+				color-mix(in srgb, color-mix(in srgb, var(--ink) 92%, var(--cream)) 87%, transparent);
+			backdrop-filter: blur(10px) saturate(1.25);
+			-webkit-backdrop-filter: blur(10px) saturate(1.25);
 		}
 	}
 

@@ -30,7 +30,6 @@ export type TourRoute =
 	| '/arrivals'
 	| '/admin'
 	| '/profile'
-	| '/favorites'
 	| '/item/[id]';
 
 export type TourStepId =
@@ -44,9 +43,9 @@ export type TourStepId =
 	| 'edit'
 	| 'share'
 	| 'clip'
-	| 'favorites'
 	| 'people'
 	| 'albums'
+	| 'saved'
 	| 'search'
 	| 'upload'
 	| 'arrivals'
@@ -70,6 +69,8 @@ export type TourStep = {
 	 * nothing matches, the whole page dims evenly behind the card.
 	 */
 	spot?: string[];
+	/** A <details> element to open while this step is showing (edit metadata). */
+	expand?: string;
 	eyebrow: string;
 	title: string;
 	body: string;
@@ -108,7 +109,7 @@ export function buildSteps(
 			title: 'Every memory, in order.',
 			body:
 				'This is the front door. Every photo and film lives here, from the oldest to the newest. Scroll gently and drift through the years.' +
-				(sample ? ' Tap any picture to step inside it. Let us look at one together.' : '')
+				(sample ? ' Tap any moment to step inside it. Let us look at one together.' : '')
 		}
 	];
 
@@ -120,8 +121,8 @@ export function buildSteps(
 				...itemStop,
 				highlight: null,
 				eyebrow: 'A Single Memory',
-				title: 'Every photo has its own page.',
-				body: 'Here is the picture up close, with its date, its story, and the people in it. Everything on this page belongs to this one memory. The next few steps show what you can do here.'
+				title: 'Every memory has its own page.',
+				body: 'Here it is up close, with its date, its story, and the people in it. Everything on this page belongs to this one moment. The next few steps show what you can do here.'
 			},
 			{
 				id: 'save',
@@ -130,7 +131,7 @@ export function buildSteps(
 				spot: ['[data-tour="save"]'],
 				eyebrow: 'Saving',
 				title: 'Keep what you love.',
-				body: 'Tap the heart to save a moment to your own collection. It stays saved just for you, ready whenever you want to visit it again.'
+				body: 'Tap the heart to keep this moment in Saved, your own private collection. We will visit it in a little while.'
 			},
 			{
 				id: 'react',
@@ -148,7 +149,7 @@ export function buildSteps(
 				spot: ['[data-tour="memories"]'],
 				eyebrow: 'Memories',
 				title: 'Tell the story behind it.',
-				body: 'Write a memory in the box, or record a voice memory just above it. Who was there? What was the day like? The stories matter as much as the pictures.'
+				body: 'Write a memory in the box, or record a voice memory just above it. Who was there? What was the day like? The stories are worth keeping too.'
 			},
 			{
 				id: 'people-row',
@@ -156,8 +157,8 @@ export function buildSteps(
 				highlight: null,
 				spot: ['[data-tour="people-row"]'],
 				eyebrow: 'People',
-				title: 'Who is in the picture?',
-				body: 'The people in this photo appear here. Tap a face to visit their page and see every moment they are part of.'
+				title: 'Who is in this moment?',
+				body: 'The people in it appear here. Tap a name to visit their page and see every moment they are part of.'
 			}
 		);
 
@@ -167,11 +168,12 @@ export function buildSteps(
 				...itemStop,
 				highlight: null,
 				spot: ['[data-tour="edit"]'],
+				expand: '[data-tour="edit"]',
 				eyebrow: 'Editing',
 				title: 'Fix the details.',
 				body: editor
-					? 'Open Edit metadata to correct the title, the date, the place, or to tag the people in the picture. Tidy details keep the whole collection easy to find.'
-					: 'On anything you upload, open Edit metadata to fix the title, the date, the place, or the people in it. Tidy details keep the whole collection easy to find.'
+					? 'This form is where details get fixed. Correct the title, the date, or the place, and tag the people who appear. Tidy details keep the whole collection easy to find.'
+					: 'On anything you upload, this form works the same way. Correct the title, the date, or the place, and tag the people who appear.'
 			});
 		}
 
@@ -204,15 +206,6 @@ export function buildSteps(
 
 	steps.push(
 		{
-			id: 'favorites',
-			route: '/favorites',
-			highlight: null,
-			spot: ['[data-tour="share-saved"]'],
-			eyebrow: 'Saved Moments',
-			title: 'Your own collection.',
-			body: 'Every moment you save gathers here. Once you have saved a few, the Share button sends your whole collection to someone with a single link.'
-		},
-		{
 			id: 'people',
 			route: '/people',
 			highlight: 'people',
@@ -233,6 +226,15 @@ export function buildSteps(
 			body:
 				'Albums gather related memories in one place. A wedding, a holiday, a whole summer at the lake.' +
 				(uploader ? ' Tap New album to start one of your own.' : '')
+		},
+		{
+			id: 'saved',
+			route: '/albums',
+			highlight: 'albums',
+			spot: ['[data-tour="saved-card"]'],
+			eyebrow: 'Saved',
+			title: 'Your own private album.',
+			body: 'The moments you save with the heart gather here, in an album only you can see. Open it any time, and share the whole collection with a single link when you want to.'
 		},
 		{
 			id: 'search',
@@ -268,7 +270,7 @@ export function buildSteps(
 			menuHint: true,
 			eyebrow: 'Arrivals',
 			title: 'New things wait here.',
-			body: 'Freshly added photos rest here for a quick look before they join the timeline. You decide what goes in.'
+			body: 'Freshly added memories rest here for a quick look before they join the timeline. You decide what goes in.'
 		});
 	}
 

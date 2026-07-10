@@ -239,7 +239,7 @@
 			<section>
 				<div class="label">Tutorial</div>
 				<p class="linked">
-					New here, or want a refresher? Take the short walk through Shoebox again.
+					New here, or want a refresher? Take the guided walk through Shoebox again.
 				</p>
 				<button
 					type="button"
@@ -647,9 +647,9 @@
 					color-mix(in srgb, var(--profile-accent) 18%, transparent),
 					transparent
 				),
-				color-mix(in srgb, color-mix(in srgb, var(--ink) 92%, var(--cream)) 84%, transparent);
-			backdrop-filter: blur(18px) saturate(1.35);
-			-webkit-backdrop-filter: blur(18px) saturate(1.35);
+				color-mix(in srgb, color-mix(in srgb, var(--ink) 92%, var(--cream)) 87%, transparent);
+			backdrop-filter: blur(10px) saturate(1.25);
+			-webkit-backdrop-filter: blur(10px) saturate(1.25);
 		}
 	}
 

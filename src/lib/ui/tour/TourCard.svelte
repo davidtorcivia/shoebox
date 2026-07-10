@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { fade } from 'svelte/transition';
 	import { CREAM, FONT, INK } from '$lib/ui/tokens';
 	import { comfortMode } from '$lib/ui/theme';
 	import { tour } from './tour.svelte';
@@ -41,6 +42,8 @@
 	// Track the spotlighted element's rectangle while the tour is running. A
 	// frame loop is the simple, robust way to follow scrolling, images loading
 	// in, and layout shifts; it reads one rectangle per frame, which is cheap.
+	// The same loop opens a step's <details> (edit metadata) so people see the
+	// real form, and folds it closed again when the walk moves on.
 	$effect(() => {
 		if (!tour.active) {
 			spotRect = null;
@@ -48,10 +51,25 @@
 		}
 		let raf = 0;
 		let scrolledForIndex = -1;
+		let expanded: HTMLDetailsElement | null = null;
 		const PAD = 8;
 		const tick = () => {
 			viewportH = window.innerHeight;
 			const current = tour.step;
+
+			const expandSel = current?.expand ?? null;
+			if (expanded && (!expandSel || !expanded.matches(expandSel))) {
+				expanded.open = false;
+				expanded = null;
+			}
+			if (expandSel && !expanded) {
+				const details = document.querySelector(expandSel);
+				if (details instanceof HTMLDetailsElement && !details.open) {
+					details.open = true;
+					expanded = details;
+				}
+			}
+
 			const el = findSpot(current?.spot);
 			if (el) {
 				// Bring an off-screen target into view once per stop, then follow it.
@@ -84,7 +102,10 @@
 			raf = requestAnimationFrame(tick);
 		};
 		raf = requestAnimationFrame(tick);
-		return () => cancelAnimationFrame(raf);
+		return () => {
+			cancelAnimationFrame(raf);
+			if (expanded) expanded.open = false;
+		};
 	});
 
 	// The card sits dead centre unless that would cover the spotlight; then it
@@ -132,46 +153,49 @@
 <svelte:window onkeydown={onWindowKey} />
 
 {#if tour.active && step}
-	<!-- The veil: gently dim and soften everything except the spotlighted
-	     control. Four panes leave a clear window over the target; with no
-	     target the veil covers the whole page evenly. -->
-	{#if spotRect}
-		<div
-			class="veil"
-			style:inset="0 0 auto 0"
-			style:height={`${Math.max(spotRect.top, 0)}px`}
-		></div>
-		<div
-			class="veil"
-			style:top={`${spotRect.top + spotRect.height}px`}
-			style:left="0"
-			style:right="0"
-			style:bottom="0"
-		></div>
-		<div
-			class="veil"
-			style:top={`${Math.max(spotRect.top, 0)}px`}
-			style:left="0"
-			style:width={`${Math.max(spotRect.left, 0)}px`}
-			style:height={`${spotRect.height}px`}
-		></div>
-		<div
-			class="veil"
-			style:top={`${Math.max(spotRect.top, 0)}px`}
-			style:left={`${spotRect.left + spotRect.width}px`}
-			style:right="0"
-			style:height={`${spotRect.height}px`}
-		></div>
-		<div
-			class="halo"
-			style:top={`${spotRect.top}px`}
-			style:left={`${spotRect.left}px`}
-			style:width={`${spotRect.width}px`}
-			style:height={`${spotRect.height}px`}
-		></div>
-	{:else}
-		<div class="veil" style:inset="0"></div>
-	{/if}
+	<!-- The veil: a whisper of dim and blur over everything the tour is not
+	     pointing at. Four panes leave a clear window over the target; with no
+	     target the veil covers the whole page evenly. The wrapper carries the
+	     entrance fade; comfort mode and reduced motion zero every duration. -->
+	<div in:fade={{ duration: 250 }}>
+		{#if spotRect}
+			<div
+				class="veil"
+				style:inset="0 0 auto 0"
+				style:height={`${Math.max(spotRect.top, 0)}px`}
+			></div>
+			<div
+				class="veil"
+				style:top={`${spotRect.top + spotRect.height}px`}
+				style:left="0"
+				style:right="0"
+				style:bottom="0"
+			></div>
+			<div
+				class="veil"
+				style:top={`${Math.max(spotRect.top, 0)}px`}
+				style:left="0"
+				style:width={`${Math.max(spotRect.left, 0)}px`}
+				style:height={`${spotRect.height}px`}
+			></div>
+			<div
+				class="veil"
+				style:top={`${Math.max(spotRect.top, 0)}px`}
+				style:left={`${spotRect.left + spotRect.width}px`}
+				style:right="0"
+				style:height={`${spotRect.height}px`}
+			></div>
+			<div
+				class="halo"
+				style:top={`${spotRect.top}px`}
+				style:left={`${spotRect.left}px`}
+				style:width={`${spotRect.width}px`}
+				style:height={`${spotRect.height}px`}
+			></div>
+		{:else}
+			<div class="veil" style:inset="0"></div>
+		{/if}
+	</div>
 
 	<div
 		class="card"
@@ -182,22 +206,28 @@
 		bind:this={card}
 		bind:offsetHeight={cardHeight}
 		onkeydown={onCardKey}
+		in:fade={{ duration: 250 }}
 		style={`--ink:${INK}; --cream:${CREAM}; --serif:${FONT.serif}; --sans:${FONT.sans};`}
 		style:top={cardTop === null ? '50%' : `${cardTop}px`}
 	>
 		<div aria-live="polite">
-			<div class="eyebrow">
-				<span>{step.eyebrow}</span>
-				<span class="counter" data-testid="tour-counter">Step {tour.index + 1} of {tour.count}</span
-				>
-			</div>
-			<h2>{step.title}</h2>
-			<p class="body">{step.body}</p>
-			{#if step.menuHint}
-				<p class="body menu-hint">
-					You will find it behind the menu button at the top of the screen.
-				</p>
-			{/if}
+			{#key tour.index}
+				<div class="step-content" in:fade={{ duration: 180 }}>
+					<div class="eyebrow">
+						<span>{step.eyebrow}</span>
+						<span class="counter" data-testid="tour-counter"
+							>Step {tour.index + 1} of {tour.count}</span
+						>
+					</div>
+					<h2>{step.title}</h2>
+					<p class="body">{step.body}</p>
+					{#if step.menuHint}
+						<p class="body menu-hint">
+							You will find it behind the menu button at the top of the screen.
+						</p>
+					{/if}
+				</div>
+			{/key}
 		</div>
 
 		{#if isWelcome}
@@ -251,18 +281,25 @@
 
 <style>
 	/* A very slight dim and soften over everything the tour is not pointing at.
-	   Where backdrop-filter is unavailable the dim alone carries the effect. */
+	   Where backdrop-filter is unavailable the dim alone carries the effect.
+	   Geometry eases so the clear window glides between spotlights (comfort
+	   mode and reduced motion collapse the easing to instant). */
 	.veil {
 		position: fixed;
 		z-index: 45;
-		background: rgb(23 20 18 / 0.4);
+		background: rgb(23 20 18 / 0.38);
+		transition:
+			top 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+			left 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+			width 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+			height 240ms cubic-bezier(0.22, 0.61, 0.36, 1);
 	}
 
 	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
 		.veil {
-			background: rgb(23 20 18 / 0.32);
-			backdrop-filter: blur(2.5px);
-			-webkit-backdrop-filter: blur(2.5px);
+			background: rgb(23 20 18 / 0.3);
+			backdrop-filter: blur(1.5px);
+			-webkit-backdrop-filter: blur(1.5px);
 		}
 	}
 
@@ -272,9 +309,14 @@
 		position: fixed;
 		z-index: 46;
 		box-shadow:
-			inset 0 0 0 2px color-mix(in srgb, var(--dawn, #fa7b62) 70%, transparent),
-			0 0 24px color-mix(in srgb, var(--dawn, #fa7b62) 28%, transparent);
+			inset 0 0 0 1.5px color-mix(in srgb, var(--dawn, #fa7b62) 65%, transparent),
+			0 0 20px color-mix(in srgb, var(--dawn, #fa7b62) 22%, transparent);
 		pointer-events: none;
+		transition:
+			top 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+			left 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+			width 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+			height 240ms cubic-bezier(0.22, 0.61, 0.36, 1);
 	}
 
 	.card {
@@ -287,8 +329,8 @@
 		overflow-y: auto;
 		padding: 24px 26px;
 		/* Ethereal material: room-family tints over a faintly translucent ink
-		   pane that blurs the page behind it. The near-opaque gradient is the
-		   fallback where backdrop-filter is absent or misbehaves. */
+		   pane that softly blurs the page behind it. The near-opaque gradient is
+		   the fallback where backdrop-filter is absent or misbehaves. */
 		background:
 			radial-gradient(
 				90% 60% at 92% -12%,
@@ -306,8 +348,11 @@
 				color-mix(in srgb, var(--ink) 96%, transparent) 100%
 			);
 		color: var(--cream);
-		box-shadow: 0 30px 70px rgb(0 0 0 / 0.5);
+		box-shadow:
+			inset 0 0 0 1px color-mix(in srgb, var(--cream) 12%, transparent),
+			0 30px 70px rgb(0 0 0 / 0.45);
 		transform: translate(-50%, -50%);
+		transition: top 240ms cubic-bezier(0.22, 0.61, 0.36, 1);
 	}
 
 	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -325,11 +370,11 @@
 				),
 				linear-gradient(
 					158deg,
-					color-mix(in srgb, var(--cream) 10%, color-mix(in srgb, var(--ink) 84%, transparent)) 0%,
-					color-mix(in srgb, var(--ink) 84%, transparent) 100%
+					color-mix(in srgb, var(--cream) 10%, color-mix(in srgb, var(--ink) 87%, transparent)) 0%,
+					color-mix(in srgb, var(--ink) 87%, transparent) 100%
 				);
-			backdrop-filter: blur(18px) saturate(1.35);
-			-webkit-backdrop-filter: blur(18px) saturate(1.35);
+			backdrop-filter: blur(10px) saturate(1.25);
+			-webkit-backdrop-filter: blur(10px) saturate(1.25);
 		}
 	}
 

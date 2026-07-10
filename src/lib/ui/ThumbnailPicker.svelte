@@ -145,9 +145,9 @@
 		}
 
 		.sheet {
-			background: color-mix(in srgb, var(--ink, #1a1714) 84%, transparent);
-			backdrop-filter: blur(18px) saturate(1.35);
-			-webkit-backdrop-filter: blur(18px) saturate(1.35);
+			background: color-mix(in srgb, var(--ink, #1a1714) 87%, transparent);
+			backdrop-filter: blur(10px) saturate(1.25);
+			-webkit-backdrop-filter: blur(10px) saturate(1.25);
 		}
 	}
 

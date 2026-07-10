@@ -63,7 +63,12 @@
 		</header>
 
 		<div class="grid" data-testid="albums-grid">
-			<a class="card saved-card" href={resolve('/favorites')} data-testid="saved-card">
+			<a
+				class="card saved-card"
+				href={resolve('/favorites')}
+				data-testid="saved-card"
+				data-tour="saved-card"
+			>
 				<div class="cover">
 					{#if data.saved.coverUrl}
 						<img src={data.saved.coverUrl} alt="Saved" />
