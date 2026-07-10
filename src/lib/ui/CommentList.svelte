@@ -9,6 +9,8 @@
 </script>
 
 <script lang="ts">
+	import { flip } from 'svelte/animate';
+	import { fade, fly } from 'svelte/transition';
 	import Avatar from '$lib/ui/Avatar.svelte';
 	import { relativeTime } from './relative-time';
 
@@ -25,7 +27,13 @@
 
 <ul class="comments" data-testid="comment-list">
 	{#each comments as comment (comment.id)}
-		<li>
+		<!-- A fresh memory rises gently into place; a deleted one fades while
+		     the rest close the gap. -->
+		<li
+			animate:flip={{ duration: 260 }}
+			in:fly={{ y: 12, duration: 300 }}
+			out:fade={{ duration: 170 }}
+		>
 			<div class="head">
 				<Avatar
 					name={comment.user.username}

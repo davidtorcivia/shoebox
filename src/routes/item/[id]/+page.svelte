@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { quintOut } from 'svelte/easing';
+	import { fly } from 'svelte/transition';
 	import { yearOf } from '$lib/domain/dates';
 	import { eyebrowFor } from '$lib/domain/provenance';
 	import type { PlayerAction } from '$lib/ui/player-keys';
@@ -82,8 +84,13 @@
 		facesVisible = data.item.type === 'photo' && data.faces.length > 0;
 	});
 
+	// Which way the room travels when stepping between neighbours; drives the
+	// directional slide of the incoming item (0 = a fresh landing, no motion).
+	let travelDirection = $state(0);
+
 	function navigateTo(id: string | null) {
 		if (!id) return;
+		travelDirection = id === data.neighbors.nextId ? 1 : id === data.neighbors.prevId ? -1 : 0;
 		void goto(resolve(`/item/${id}${data.contextQuery ? `?${data.contextQuery}` : ''}`));
 	}
 
@@ -225,219 +232,235 @@
 		<span class="topbar-spacer" aria-hidden="true"></span>
 	</header>
 
-	<div class="room-grid">
-		<div class="stage-column">
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="stage" onpointerdown={onStagePointerDown} onpointerup={onStagePointerUp}>
-				<div class="media-frame">
-					{#if item.type === 'video'}
-						<Player
-							bind:this={player}
-							src={mediaSrc}
-							hls={item.urls.hls ?? null}
-							{poster}
-							duration={item.duration}
-							{title}
-							itemId={item.id}
-							spriteUrl={item.urls.sprite ?? null}
-							canShareClip={data.canShare}
-							onShareSegment={shareWithSegment}
-						/>
-					{:else}
-						<Lightbox src={mediaSrc} alt={item.title ?? 'Photo'} />
-					{/if}
-					{#if facesVisible && item.type === 'photo' && data.faces.length > 0}
-						<FaceBoxes faces={data.faces} />
-					{/if}
-				</div>
-
-				<button
-					class="edge prev"
-					type="button"
-					disabled={!data.neighbors.prevId}
-					aria-label="Previous item"
-					onclick={() => navigateTo(data.neighbors.prevId)}>‹</button
-				>
-				<button
-					class="edge next"
-					type="button"
-					disabled={!data.neighbors.nextId}
-					aria-label="Next item"
-					onclick={() => navigateTo(data.neighbors.nextId)}>›</button
-				>
-			</div>
-
-			<div class="social" data-tour="people-row">
-				<PeopleRow people={item.people} />
-				<TagsRow tags={item.tags} albums={item.albums} />
-			</div>
-		</div>
-
-		<aside class="rail">
-			<p class="eyebrow">{eyebrowFor(item.date, null)}</p>
-			{#if hasKnownDate}
-				<p class="date">{item.displayDate}</p>
-			{/if}
-			{#if item.location}
-				<p class="place" data-testid="item-location">{item.location}</p>
-			{/if}
-			{#if item.description}
-				<p class="story">{item.description}</p>
-			{/if}
-
-			{#if item.type === 'video' && videoFacePeople.length > 0}
-				<div class="faces-note" data-testid="faces-in-video">
-					<span class="faces-note-label">In this video</span>
-					<span class="faces-note-people">
-						{#each videoFacePeople as person (person.id)}
-							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- person slug is dynamic -->
-							<a href={`/people/${person.slug}`} style:--accent={person.accentColor}
-								>{person.name}</a
-							>
-						{/each}
-					</span>
-				</div>
-			{/if}
-
-			<div class="rail-actions">
-				<button
-					class="fav-action"
-					class:on={favorited}
-					type="button"
-					data-testid="favorite-button"
-					data-tour="save"
-					aria-pressed={favorited}
-					aria-label={favorited ? 'Remove from saved' : 'Add to saved'}
-					onclick={() => void toggleFavorite()}
-				>
-					{favorited ? '♥ Saved' : '♡ Save'}
-				</button>
-				{#if item.urls.original}
-					<!-- eslint-disable svelte/no-navigation-without-resolve -- storage adapters return media URLs, not app routes -->
-					<a
-						class="download-original"
-						data-testid="download-original"
-						href={item.urls.original}
-						download>Download original</a
-					>
-					<!-- eslint-enable svelte/no-navigation-without-resolve -->
-				{/if}
-				{#if data.canShare}
-					<button
-						class="share-action"
-						data-testid="share-button"
-						data-tour="share"
-						onclick={() => {
-							pendingSegment = null;
-							shareOpen = true;
-						}}
-					>
-						Share
-					</button>
-					<ShareDialog
-						targetType="item"
-						targetId={item.id}
-						segmentStart={pendingSegment?.start ?? null}
-						segmentEnd={pendingSegment?.end ?? null}
-						open={shareOpen}
-						onClose={() => {
-							shareOpen = false;
-							pendingSegment = null;
-						}}
-					/>
-				{/if}
-				{#if data.facesEnabled && item.type === 'photo' && data.faces.length > 0}
-					<button
-						class="face-toggle"
-						type="button"
-						aria-pressed={facesVisible}
-						onclick={() => (facesVisible = !facesVisible)}
-					>
-						Faces
-					</button>
-				{/if}
-				{#if data.canDelete}
-					{#if confirmingDelete}
-						<button
-							class="delete-action confirm"
-							type="button"
-							data-testid="delete-confirm"
-							onclick={() => void deleteMedia()}
-						>
-							Confirm delete
-						</button>
-						<button class="delete-action" type="button" onclick={() => (confirmingDelete = false)}>
-							Cancel
-						</button>
-					{:else}
-						<button
-							class="delete-action"
-							type="button"
-							data-testid="delete-button"
-							onclick={() => (confirmingDelete = true)}
-						>
-							Delete
-						</button>
-					{/if}
-					{#if deleteState}
-						<span class="delete-state" role="status">{deleteState}</span>
-					{/if}
-				{/if}
-			</div>
-
-			<div class="reactions-slot" data-tour="react">
-				<Reactions itemId={item.id} reactions={data.reactions} />
-			</div>
-
-			<div class="voice-slot">
-				<VoiceMemories itemId={item.id} notes={data.voiceNotes} />
-			</div>
-
-			<div data-testid="comments-slot" data-tour="memories">
-				<Comments itemId={item.id} currentUser={data.me} />
-			</div>
-
-			{#if data.canEdit}
-				<details class="edit" data-tour="edit">
-					<summary>Edit metadata</summary>
-					<MetaForm
-						{item}
-						people={data.people}
-						canCreatePeople={data.canCreatePeople}
-						onsubmit={(payload) => void save(payload)}
-					/>
-					<AlbumToggle itemId={item.id} memberships={item.albums} />
-					{#if item.type === 'video' && item.urls.sprite}
-						<div class="thumb-picker">
-							<button
-								class="thumb-action"
-								type="button"
-								data-testid="choose-thumbnail"
-								onclick={() => (thumbPickerOpen = true)}
-							>
-								Choose thumbnail
-							</button>
-							<ThumbnailPicker
-								open={thumbPickerOpen}
-								spriteUrl={item.urls.sprite}
+	<!-- Keyed on the item: stepping to a neighbour slides the whole room in from
+	     the direction of travel; a fresh landing renders without motion. -->
+	{#key item.id}
+		<div
+			class="room-grid"
+			in:fly={{
+				x: 56 * travelDirection,
+				duration: travelDirection === 0 ? 0 : 340,
+				easing: quintOut
+			}}
+		>
+			<div class="stage-column">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="stage" onpointerdown={onStagePointerDown} onpointerup={onStagePointerUp}>
+					<div class="media-frame">
+						{#if item.type === 'video'}
+							<Player
+								bind:this={player}
+								src={mediaSrc}
+								hls={item.urls.hls ?? null}
+								{poster}
 								duration={item.duration}
-								currentPosterTime={item.posterTime ?? null}
-								saving={savingThumb}
-								onClose={() => (thumbPickerOpen = false)}
-								onChoose={(time) => void chooseThumbnail(time)}
+								{title}
+								itemId={item.id}
+								spriteUrl={item.urls.sprite ?? null}
+								canShareClip={data.canShare}
+								onShareSegment={shareWithSegment}
 							/>
-							{#if thumbState}
-								<span class="thumb-state" role="status">{thumbState}</span>
-							{/if}
-						</div>
+						{:else}
+							<Lightbox src={mediaSrc} alt={item.title ?? 'Photo'} />
+						{/if}
+						{#if facesVisible && item.type === 'photo' && data.faces.length > 0}
+							<FaceBoxes faces={data.faces} />
+						{/if}
+					</div>
+
+					<button
+						class="edge prev"
+						type="button"
+						disabled={!data.neighbors.prevId}
+						aria-label="Previous item"
+						onclick={() => navigateTo(data.neighbors.prevId)}>‹</button
+					>
+					<button
+						class="edge next"
+						type="button"
+						disabled={!data.neighbors.nextId}
+						aria-label="Next item"
+						onclick={() => navigateTo(data.neighbors.nextId)}>›</button
+					>
+				</div>
+
+				<div class="social" data-tour="people-row">
+					<PeopleRow people={item.people} />
+					<TagsRow tags={item.tags} albums={item.albums} />
+				</div>
+			</div>
+
+			<aside class="rail">
+				<p class="eyebrow">{eyebrowFor(item.date, null)}</p>
+				{#if hasKnownDate}
+					<p class="date">{item.displayDate}</p>
+				{/if}
+				{#if item.location}
+					<p class="place" data-testid="item-location">{item.location}</p>
+				{/if}
+				{#if item.description}
+					<p class="story">{item.description}</p>
+				{/if}
+
+				{#if item.type === 'video' && videoFacePeople.length > 0}
+					<div class="faces-note" data-testid="faces-in-video">
+						<span class="faces-note-label">In this video</span>
+						<span class="faces-note-people">
+							{#each videoFacePeople as person (person.id)}
+								<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- person slug is dynamic -->
+								<a href={`/people/${person.slug}`} style:--accent={person.accentColor}
+									>{person.name}</a
+								>
+							{/each}
+						</span>
+					</div>
+				{/if}
+
+				<div class="rail-actions">
+					<button
+						class="fav-action"
+						class:on={favorited}
+						type="button"
+						data-testid="favorite-button"
+						data-tour="save"
+						aria-pressed={favorited}
+						aria-label={favorited ? 'Remove from saved' : 'Add to saved'}
+						onclick={() => void toggleFavorite()}
+					>
+						<span class="fav-glyph" aria-hidden="true">{favorited ? '♥' : '♡'}</span>
+						{favorited ? 'Saved' : 'Save'}
+					</button>
+					{#if item.urls.original}
+						<!-- eslint-disable svelte/no-navigation-without-resolve -- storage adapters return media URLs, not app routes -->
+						<a
+							class="download-original"
+							data-testid="download-original"
+							href={item.urls.original}
+							download>Download original</a
+						>
+						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					{/if}
-					{#if saveState}
-						<p class="save-state">{saveState}</p>
+					{#if data.canShare}
+						<button
+							class="share-action"
+							data-testid="share-button"
+							data-tour="share"
+							onclick={() => {
+								pendingSegment = null;
+								shareOpen = true;
+							}}
+						>
+							Share
+						</button>
+						<ShareDialog
+							targetType="item"
+							targetId={item.id}
+							segmentStart={pendingSegment?.start ?? null}
+							segmentEnd={pendingSegment?.end ?? null}
+							open={shareOpen}
+							onClose={() => {
+								shareOpen = false;
+								pendingSegment = null;
+							}}
+						/>
 					{/if}
-				</details>
-			{/if}
-		</aside>
-	</div>
+					{#if data.facesEnabled && item.type === 'photo' && data.faces.length > 0}
+						<button
+							class="face-toggle"
+							type="button"
+							aria-pressed={facesVisible}
+							onclick={() => (facesVisible = !facesVisible)}
+						>
+							Faces
+						</button>
+					{/if}
+					{#if data.canDelete}
+						{#if confirmingDelete}
+							<button
+								class="delete-action confirm"
+								type="button"
+								data-testid="delete-confirm"
+								onclick={() => void deleteMedia()}
+							>
+								Confirm delete
+							</button>
+							<button
+								class="delete-action"
+								type="button"
+								onclick={() => (confirmingDelete = false)}
+							>
+								Cancel
+							</button>
+						{:else}
+							<button
+								class="delete-action"
+								type="button"
+								data-testid="delete-button"
+								onclick={() => (confirmingDelete = true)}
+							>
+								Delete
+							</button>
+						{/if}
+						{#if deleteState}
+							<span class="delete-state" role="status">{deleteState}</span>
+						{/if}
+					{/if}
+				</div>
+
+				<div class="reactions-slot" data-tour="react">
+					<Reactions itemId={item.id} reactions={data.reactions} />
+				</div>
+
+				<div class="voice-slot">
+					<VoiceMemories itemId={item.id} notes={data.voiceNotes} />
+				</div>
+
+				<div data-testid="comments-slot" data-tour="memories">
+					<Comments itemId={item.id} currentUser={data.me} />
+				</div>
+
+				{#if data.canEdit}
+					<details class="edit" data-tour="edit">
+						<summary>Edit metadata</summary>
+						<MetaForm
+							{item}
+							people={data.people}
+							canCreatePeople={data.canCreatePeople}
+							onsubmit={(payload) => void save(payload)}
+						/>
+						<AlbumToggle itemId={item.id} memberships={item.albums} />
+						{#if item.type === 'video' && item.urls.sprite}
+							<div class="thumb-picker">
+								<button
+									class="thumb-action"
+									type="button"
+									data-testid="choose-thumbnail"
+									onclick={() => (thumbPickerOpen = true)}
+								>
+									Choose thumbnail
+								</button>
+								<ThumbnailPicker
+									open={thumbPickerOpen}
+									spriteUrl={item.urls.sprite}
+									duration={item.duration}
+									currentPosterTime={item.posterTime ?? null}
+									saving={savingThumb}
+									onClose={() => (thumbPickerOpen = false)}
+									onChoose={(time) => void chooseThumbnail(time)}
+								/>
+								{#if thumbState}
+									<span class="thumb-state" role="status">{thumbState}</span>
+								{/if}
+							</div>
+						{/if}
+						{#if saveState}
+							<p class="save-state">{saveState}</p>
+						{/if}
+					</details>
+				{/if}
+			</aside>
+		</div>
+	{/key}
 </section>
 
 <style>
@@ -627,6 +650,30 @@
 	.fav-action.on {
 		color: var(--dawn);
 		font-weight: 800;
+	}
+
+	.fav-glyph {
+		display: inline-block;
+	}
+
+	/* A joyful little overshoot when a moment is saved (the pop replays each
+	   time the .on class lands; comfort mode and reduced motion zero it). */
+	.fav-action.on .fav-glyph {
+		animation: heart-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+	}
+
+	@keyframes heart-pop {
+		0% {
+			transform: scale(0.4);
+		}
+
+		45% {
+			transform: scale(1.35);
+		}
+
+		100% {
+			transform: scale(1);
+		}
 	}
 
 	.download-original,

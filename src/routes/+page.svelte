@@ -4,6 +4,7 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import CenturyRail from '$lib/ui/CenturyRail.svelte';
 	import DecadeRoom from '$lib/ui/DecadeRoom.svelte';
+	import { desktopColumns } from '$lib/ui/density';
 	import MasonryGrid from '$lib/ui/MasonryGrid.svelte';
 	import MobileRail from '$lib/ui/MobileRail.svelte';
 	import SelectionBar from '$lib/ui/SelectionBar.svelte';
@@ -101,7 +102,7 @@
 			     to drift decades while trying to scroll the page. Years move by click,
 			     drag, the arrow keys, and the rails. -->
 			<div class="year-scroll-zone">
-				<YearBand {activeYear} {years} now={data.now} onStep={jump} />
+				<YearBand {activeYear} {years} now={data.now} direction={motionDirection} onStep={jump} />
 				<CenturyRail {years} earliest={data.timeline.earliest} {activeYear} now={data.now} />
 			</div>
 			<MasonryGrid
@@ -109,6 +110,7 @@
 				{activeYear}
 				{motionDirection}
 				{selecting}
+				desktopColumns={$desktopColumns}
 				isSelected={(id) => selectedIds.has(id)}
 				onselect={toggleSelect}
 				onbeginselect={beginSelect}
@@ -135,6 +137,22 @@
 		ondeleted={onDeleted}
 	/>
 {/if}
+
+<!-- Tile size: slide toward the big square for larger media, toward the small
+     one to see more at once. Desktop only; tiles glide to their new places. -->
+<div class="tile-size" data-testid="tile-size">
+	<span class="ts-glyph ts-small" aria-hidden="true"></span>
+	<input
+		type="range"
+		min="3"
+		max="6"
+		step="1"
+		aria-label="Media size"
+		value={9 - $desktopColumns}
+		oninput={(event) => desktopColumns.set(9 - Number(event.currentTarget.value))}
+	/>
+	<span class="ts-glyph ts-large" aria-hidden="true"></span>
+</div>
 
 <style>
 	/* "On this day" entry point — a quiet pill pinned below the nav, shown only
@@ -214,6 +232,56 @@
 		}
 
 		.otd-text {
+			display: none;
+		}
+	}
+
+	/* Tile-size control: a quiet ethereal sliver in the lower-left corner, only
+	   where a mouse and a wide viewport make density worth trading. */
+	.tile-size {
+		position: fixed;
+		bottom: 1.25rem;
+		left: 1.5rem;
+		z-index: 10;
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		padding: 0.55rem 0.85rem;
+		background: color-mix(in srgb, var(--ink) 78%, transparent);
+		border: 1px solid color-mix(in srgb, var(--cream) 16%, transparent);
+		box-shadow: 0 10px 30px rgb(0 0 0 / 0.28);
+	}
+
+	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+		.tile-size {
+			background: color-mix(in srgb, var(--ink) 62%, transparent);
+			backdrop-filter: blur(10px) saturate(1.25);
+			-webkit-backdrop-filter: blur(10px) saturate(1.25);
+		}
+	}
+
+	.tile-size input[type='range'] {
+		width: 96px;
+		accent-color: var(--dawn);
+		cursor: pointer;
+	}
+
+	.ts-glyph {
+		background: color-mix(in srgb, var(--cream) 60%, transparent);
+	}
+
+	.ts-small {
+		width: 6px;
+		height: 6px;
+	}
+
+	.ts-large {
+		width: 12px;
+		height: 12px;
+	}
+
+	@media (max-width: 919px) {
+		.tile-size {
 			display: none;
 		}
 	}

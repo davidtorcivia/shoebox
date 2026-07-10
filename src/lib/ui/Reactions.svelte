@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { flip } from 'svelte/animate';
+	import { scale } from 'svelte/transition';
+
 	// Mirrors REACTION_EMOJI in src/lib/server/reactions.ts (kept small on purpose).
 	const PALETTE = ['❤️', '😂', '😮', '😢', '👍', '🎉'];
 
@@ -32,6 +35,8 @@
 
 <div class="reactions" aria-label="Reactions">
 	{#each list as reaction (reaction.emoji)}
+		<!-- New chips bloom in, cleared ones shrink away, and the rest glide
+		     aside; the count pops whenever it changes. -->
 		<button
 			type="button"
 			class="chip"
@@ -39,8 +44,14 @@
 			disabled={busy}
 			aria-pressed={reaction.mine}
 			onclick={() => react(reaction.emoji)}
+			animate:flip={{ duration: 260 }}
+			in:scale={{ duration: 240, start: 0.5 }}
+			out:scale={{ duration: 180, start: 0.5 }}
 		>
-			<span class="emoji">{reaction.emoji}</span><span class="n">{reaction.count}</span>
+			<span class="emoji">{reaction.emoji}</span>
+			{#key reaction.count}
+				<span class="n" in:scale={{ duration: 220, start: 0.4 }}>{reaction.count}</span>
+			{/key}
 		</button>
 	{/each}
 
@@ -53,7 +64,7 @@
 			onclick={() => (paletteOpen = !paletteOpen)}>＋</button
 		>
 		{#if paletteOpen}
-			<div class="palette" role="menu">
+			<div class="palette" role="menu" transition:scale={{ duration: 170, start: 0.86 }}>
 				{#each PALETTE as emoji (emoji)}
 					<button type="button" role="menuitem" onclick={() => react(emoji)}>{emoji}</button>
 				{/each}
@@ -82,6 +93,13 @@
 		cursor: pointer;
 		font-family: var(--font-sans);
 		font-size: 13px;
+		transition:
+			border-color 200ms ease,
+			background 200ms ease;
+	}
+
+	.palette {
+		transform-origin: 0 100%;
 	}
 
 	.chip.mine {

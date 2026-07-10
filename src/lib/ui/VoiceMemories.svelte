@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { flip } from 'svelte/animate';
+	import { fade, fly } from 'svelte/transition';
 	import VoiceNoteItem from './VoiceNoteItem.svelte';
 
 	interface VoiceNote {
@@ -120,7 +122,11 @@
 	{#if list.length > 0}
 		<ul class="notes">
 			{#each list as note (note.id)}
-				<li>
+				<li
+					animate:flip={{ duration: 260 }}
+					in:fly={{ y: 12, duration: 300 }}
+					out:fade={{ duration: 170 }}
+				>
 					<VoiceNoteItem {note} onDelete={(id) => (pendingDelete = id)} />
 				</li>
 			{/each}

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { quintOut } from 'svelte/easing';
+	import { fly } from 'svelte/transition';
 	import { resolve } from '$app/paths';
 	import type { YearCount } from './rail-math';
 
@@ -6,10 +8,12 @@
 		activeYear: number;
 		years: YearCount[];
 		now: number;
+		/** Direction of the last year change; the big numeral rolls with it. */
+		direction?: number;
 		onStep?: (delta: number) => void;
 	}
 
-	let { activeYear, years, now, onStep }: Props = $props();
+	let { activeYear, years, now, direction = 0, onStep }: Props = $props();
 	const current = $derived(years.find((year) => year.year === activeYear));
 	const count = $derived(current?.count ?? 0);
 	const people = $derived(current?.people ?? 0);
@@ -29,7 +33,18 @@
 				>{year}</a
 			>
 		{/each}
-		<h1>{activeYear}<small>{count} moments · {people} people</small></h1>
+		<h1>
+			{#key activeYear}
+				<span
+					class="roll"
+					in:fly={{
+						y: 26 * direction,
+						duration: direction === 0 ? 0 : 420,
+						easing: quintOut
+					}}>{activeYear}<small>{count} moments · {people} people</small></span
+				>
+			{/key}
+		</h1>
 		{#if neighborYears[2] <= now}
 			<a class="near" href={resolve(`/?y=${neighborYears[2]}`)}>{neighborYears[2]}</a>
 		{/if}
@@ -84,6 +99,10 @@
 		font-weight: 760;
 		line-height: 0.8;
 		letter-spacing: 0;
+	}
+
+	.roll {
+		display: inline-block;
 	}
 
 	small {

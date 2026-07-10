@@ -10,6 +10,8 @@
 		motionDirection?: number;
 		captionRightFor?: ((item: ItemDTO) => string | null) | null;
 		selecting?: boolean;
+		/** Column count on desktop widths (the timeline's tile-size control). */
+		desktopColumns?: number;
 		isSelected?: (id: string) => boolean;
 		onselect?: (id: string) => void;
 		onbeginselect?: (id: string) => void;
@@ -21,12 +23,13 @@
 		motionDirection = 0,
 		captionRightFor = null,
 		selecting = false,
+		desktopColumns = 4,
 		isSelected,
 		onselect,
 		onbeginselect
 	}: Props = $props();
 	let width = $state(1120);
-	const columns = $derived(columnCount(width));
+	const columns = $derived(width >= 920 ? desktopColumns : columnCount(width));
 	const columnWidth = $derived((width - 12 * (columns - 1)) / columns);
 	// Estimate item heights at the *actual* column width — otherwise tall images
 	// overflow their reserved cells and the next month header lands on top of the
@@ -46,7 +49,7 @@
 				<div
 					class="cell"
 					class:month={positioned.entry.kind === 'month'}
-					style={`--delay: ${Math.min(index, 10) * 34}ms; transform: translate(${positioned.x}px, ${positioned.y}px); width: ${positioned.width}px; height: ${positioned.height}px`}
+					style={`--delay: ${Math.min(index, 14) * 26}ms; transform: translate(${positioned.x}px, ${positioned.y}px); width: ${positioned.width}px; height: ${positioned.height}px`}
 				>
 					{#if positioned.entry.kind === 'month'}
 						<MonthBreak label={positioned.entry.label} />
@@ -86,9 +89,16 @@
 		position: absolute;
 		top: 0;
 		left: 0;
-		animation: cell-arrive 540ms cubic-bezier(0.16, 1, 0.3, 1) both;
+		animation: cell-arrive 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
 		animation-delay: var(--delay);
 		will-change: opacity, translate, filter;
+		/* When the layout re-flows in place (the tile-size control, a resize),
+		   tiles glide to their new homes instead of teleporting. The entrance
+		   animation uses translate/scale, so it never fights this transform. */
+		transition:
+			transform 420ms cubic-bezier(0.22, 0.61, 0.36, 1),
+			width 420ms cubic-bezier(0.22, 0.61, 0.36, 1),
+			height 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
 	}
 
 	.month {
@@ -118,23 +128,33 @@
 		}
 	}
 
+	/* Tiles drift in from the direction of travel while rising and settling,
+	   a soft cascade rather than a sideways shove. */
 	@keyframes cell-arrive {
 		from {
 			opacity: 0;
-			filter: blur(8px);
-			translate: var(--cell-offset) 0;
+			filter: blur(6px);
+			translate: var(--cell-offset) 18px;
+			scale: 0.97;
+		}
+
+		60% {
+			opacity: 1;
+			filter: blur(0);
 		}
 
 		to {
 			opacity: 1;
 			filter: blur(0);
 			translate: 0 0;
+			scale: 1;
 		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {
 		.cell {
 			animation: none;
+			transition: none;
 		}
 	}
 </style>
