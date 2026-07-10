@@ -4,6 +4,8 @@
 	import AccentSwatches from '$lib/ui/AccentSwatches.svelte';
 	import Gradient from '$lib/ui/Gradient.svelte';
 	import { comfortMode, themePref } from '$lib/ui/theme';
+	import { buildSteps } from '$lib/ui/tour/steps';
+	import { tour } from '$lib/ui/tour/tour.svelte';
 	import { accentOn, personRoomFor } from '$lib/ui/tokens';
 	import type { SubmitFunction } from '@sveltejs/kit';
 
@@ -233,6 +235,20 @@
 				{:else}
 					<p class="linked">Not linked to a person.</p>
 				{/if}
+			</section>
+
+			<section>
+				<div class="label">Tutorial</div>
+				<p class="linked">
+					New here, or want a refresher? Take the short walk through Shoebox again.
+				</p>
+				<button
+					type="button"
+					data-testid="replay-tour"
+					onclick={() => tour.start(buildSteps(data.profile.role, data.arrivalsCount ?? 0))}
+				>
+					Play the tour
+				</button>
 			</section>
 
 			<section class="danger-zone">

@@ -2,6 +2,7 @@
 	import { ACCENTS } from '$lib/ui/tokens';
 	import { resolve } from '$app/paths';
 	import { afterNavigate } from '$app/navigation';
+	import { tour } from '$lib/ui/tour/tour.svelte';
 
 	interface NavUser {
 		username: string;
@@ -39,6 +40,7 @@
 	<button
 		class="hamburger"
 		class:open={menuOpen}
+		class:tour-glow={tour.highlight !== null && !menuOpen}
 		type="button"
 		aria-label="Toggle navigation menu"
 		aria-expanded={menuOpen}
@@ -51,20 +53,45 @@
 	</button>
 	<div class="nav-groups" class:open={menuOpen} id="primary-nav">
 		<nav aria-label="Primary">
-			<a href={resolve('/')}>Timeline</a>
-			<a href={resolve('/people')}>People</a>
-			<a href={resolve('/albums')}>Albums</a>
-			<a href={resolve('/search')}>Search</a>
-			{#if showUpload}<a href={resolve('/upload')}>Upload</a>{/if}
-			{#if showArrivals}
-				<a href={resolve('/arrivals')} data-testid="nav-arrivals">Arrivals ({arrivalsCount})</a>
+			<a href={resolve('/')} data-tour="timeline" class:tour-glow={tour.highlight === 'timeline'}
+				>Timeline</a
+			>
+			<a href={resolve('/people')} data-tour="people" class:tour-glow={tour.highlight === 'people'}
+				>People</a
+			>
+			<a href={resolve('/albums')} data-tour="albums" class:tour-glow={tour.highlight === 'albums'}
+				>Albums</a
+			>
+			<a href={resolve('/search')} data-tour="search" class:tour-glow={tour.highlight === 'search'}
+				>Search</a
+			>
+			{#if showUpload}
+				<a
+					href={resolve('/upload')}
+					data-tour="upload"
+					class:tour-glow={tour.highlight === 'upload'}>Upload</a
+				>
 			{/if}
-			{#if showAdmin}<a href={resolve('/admin')}>Admin</a>{/if}
+			{#if showArrivals}
+				<a
+					href={resolve('/arrivals')}
+					data-testid="nav-arrivals"
+					data-tour="arrivals"
+					class:tour-glow={tour.highlight === 'arrivals'}>Arrivals ({arrivalsCount})</a
+				>
+			{/if}
+			{#if showAdmin}
+				<a href={resolve('/admin')} data-tour="admin" class:tour-glow={tour.highlight === 'admin'}
+					>Admin</a
+				>
+			{/if}
 		</nav>
 		<div class="account">
 			<a
 				class="profile-link"
 				href={resolve('/profile')}
+				data-tour="profile"
+				class:tour-glow={tour.highlight === 'profile'}
 				style:--user-accent={user.accentColor}
 				aria-label={`Edit account for ${user.username}`}
 			>
@@ -187,6 +214,15 @@
 	nav a:hover,
 	nav a:focus-visible {
 		opacity: 1;
+	}
+
+	/* The guided tour's soft spotlight on the current stop's nav entry. On small
+	   screens the links sit inside the collapsed menu, so the hamburger carries
+	   the same glow until the panel is opened. */
+	.tour-glow {
+		opacity: 1;
+		background: color-mix(in srgb, var(--dawn) 22%, transparent);
+		box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--dawn) 65%, transparent);
 	}
 
 	.account {

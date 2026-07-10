@@ -112,6 +112,8 @@ export async function redeemInvite(
 		personId: null,
 		comfortMode: false,
 		theme: 'system',
+		tourCompletedAt: null,
+		tourVersion: 0,
 		createdAt: new Date()
 	};
 	try {

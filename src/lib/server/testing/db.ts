@@ -33,6 +33,8 @@ export async function makeUser(
 		personId: over.personId ?? null,
 		comfortMode: over.comfortMode ?? false,
 		theme: over.theme ?? 'system',
+		tourCompletedAt: over.tourCompletedAt ?? null,
+		tourVersion: over.tourVersion ?? 0,
 		createdAt: over.createdAt ?? new Date()
 	});
 	return (await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1))[0];
@@ -135,6 +137,7 @@ export function sessionUser(row: typeof schema.users.$inferSelect): SessionUser 
 		avatarStorageKey: row.avatarStorageKey,
 		personId: row.personId,
 		comfortMode: row.comfortMode,
-		theme: row.theme
+		theme: row.theme,
+		tourVersion: row.tourVersion
 	};
 }

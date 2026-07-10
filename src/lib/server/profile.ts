@@ -101,6 +101,27 @@ export async function updateAppearance(
 	}
 }
 
+/**
+ * Mark the guided tour as done for this user (finishing and skipping are the
+ * same signal: stop prompting). The version only ever moves forward, so a
+ * stale tab posting an old version cannot re-arm the tour.
+ */
+export async function completeTour(db: Db, userId: string, version: number): Promise<void> {
+	if (!Number.isInteger(version) || version < 1) throw new Error('Invalid tour version');
+	const row = (
+		await db
+			.select({ tourVersion: users.tourVersion })
+			.from(users)
+			.where(eq(users.id, userId))
+			.limit(1)
+	)[0];
+	if (!row) throw new Error('Account not found.');
+	await db
+		.update(users)
+		.set({ tourCompletedAt: new Date(), tourVersion: Math.max(version, row.tourVersion) })
+		.where(eq(users.id, userId));
+}
+
 export async function updateAvatar(
 	db: Db,
 	storage: StorageAdapter,

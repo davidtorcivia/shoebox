@@ -16,7 +16,8 @@ const owner = {
 	avatarStorageKey: null,
 	personId: null,
 	comfortMode: false,
-	theme: 'system'
+	theme: 'system',
+	tourVersion: 0
 } as const;
 const admin = {
 	id: 'u_admin0000001',
@@ -26,7 +27,8 @@ const admin = {
 	avatarStorageKey: null,
 	personId: null,
 	comfortMode: false,
-	theme: 'system'
+	theme: 'system',
+	tourVersion: 0
 } as const;
 const uploaderId = 'u_up0000000001';
 

@@ -53,10 +53,12 @@ export function seedPhase05(): Phase05Seed {
 	db.prepare("delete from people where id like 'e2e05-%'").run();
 
 	const linkedUserId = 'e2e05-user-margaret';
+	// tour_version is parked far ahead so the guided onboarding walk never
+	// autostarts for this seeded account (tour.spec.ts owns tour coverage).
 	db.prepare(
 		`insert into users
-			(id, username, password_hash, role, accent_color, person_id, comfort_mode, theme, created_at)
-			values (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+			(id, username, password_hash, role, accent_color, person_id, comfort_mode, theme, tour_version, created_at)
+			values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	).run(
 		linkedUserId,
 		PHASE05_USER.username,
@@ -66,6 +68,7 @@ export function seedPhase05(): Phase05Seed {
 		null,
 		0,
 		'system',
+		999,
 		Date.now()
 	);
 

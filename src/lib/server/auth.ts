@@ -17,6 +17,7 @@ export type SessionUser = {
 	personId: string | null;
 	comfortMode: boolean;
 	theme: 'system' | 'dark' | 'light';
+	tourVersion: number;
 };
 
 function toB64(bytes: Uint8Array): string {
@@ -119,7 +120,8 @@ export async function validateSession(db: Db, token: string): Promise<SessionUse
 		avatarStorageKey: user.avatarStorageKey,
 		personId: user.personId,
 		comfortMode: user.comfortMode,
-		theme: user.theme
+		theme: user.theme,
+		tourVersion: user.tourVersion
 	};
 }
 

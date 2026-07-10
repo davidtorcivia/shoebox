@@ -12,7 +12,8 @@ function userWith(role: SessionUser['role']): { user: SessionUser } {
 			avatarStorageKey: null,
 			personId: null,
 			comfortMode: false,
-			theme: 'system'
+			theme: 'system',
+			tourVersion: 0
 		}
 	};
 }

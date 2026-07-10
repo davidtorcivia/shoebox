@@ -22,6 +22,10 @@ export const users = sqliteTable('users', {
 	theme: text('theme', { enum: ['system', 'dark', 'light'] })
 		.notNull()
 		.default('system'),
+	// Guided-walk onboarding: the tour autostarts while tour_version is behind the
+	// current TOUR_VERSION constant; completed_at is the audit stamp (skip counts).
+	tourCompletedAt: integer('tour_completed_at', { mode: 'timestamp' }),
+	tourVersion: integer('tour_version').notNull().default(0),
 	createdAt: integer('created_at', { mode: 'timestamp' }).notNull()
 });
 

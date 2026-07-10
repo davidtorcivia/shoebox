@@ -4,13 +4,24 @@
 	import Meta from '$lib/ui/Meta.svelte';
 	import Nav from '$lib/ui/Nav.svelte';
 	import { comfortMode, initTheme, themePref } from '$lib/ui/theme';
+	import { buildSteps, TOUR_VERSION } from '$lib/ui/tour/steps';
+	import { tour } from '$lib/ui/tour/tour.svelte';
+	import TourCard from '$lib/ui/tour/TourCard.svelte';
 	import { onMount } from 'svelte';
 	import type { LayoutData } from './$types';
 	import type { Snippet } from 'svelte';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
-	onMount(() => initTheme(data.user));
+	onMount(() => {
+		// The guided walk greets anyone who has not finished (or skipped) the
+		// current tour. onMount runs once per full page load, so the tour's own
+		// client-side navigations never re-trigger it.
+		if (data.user && data.user.tourVersion < TOUR_VERSION && !data.pathname.startsWith('/share')) {
+			tour.start(buildSteps(data.user.role, data.arrivalsCount));
+		}
+		return initTheme(data.user);
+	});
 
 	$effect(() => {
 		if (!data.user) return;
@@ -59,6 +70,7 @@
 		arrivalsCount={data.arrivalsCount}
 		linkedPersonSlug={data.linkedPersonSlug}
 	/>
+	<TourCard />
 {/if}
 <main>
 	{@render children()}

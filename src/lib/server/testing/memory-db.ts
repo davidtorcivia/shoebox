@@ -45,7 +45,8 @@ export async function seedUser(
 		avatarStorageKey: null,
 		personId: null,
 		comfortMode: false,
-		theme: 'system'
+		theme: 'system',
+		tourVersion: 0
 	};
 }
 

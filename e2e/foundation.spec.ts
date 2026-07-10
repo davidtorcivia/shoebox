@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { approveItems } from './helpers/arrivals';
-import { OWNER, ensureOwner } from './helpers/auth';
+import { OWNER, dismissTour, ensureOwner } from './helpers/auth';
 import { readFile } from 'node:fs/promises';
 import { FIXTURE_MP4 } from './fixtures/generate';
 
@@ -52,6 +52,7 @@ test('owner setup, invite creation, redemption as user, role-gated nav', async (
 	await guest.getByLabel('Password').fill('another-secret-8');
 	await guest.getByRole('button', { name: 'Join Shoebox' }).click();
 	await guest.waitForURL('/');
+	await dismissTour(guest);
 
 	const guestNav = guest.getByRole('navigation', { name: 'Primary' });
 	await expect(guestNav.getByRole('link', { name: 'Timeline' })).toBeVisible();
