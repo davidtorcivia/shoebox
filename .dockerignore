@@ -8,8 +8,11 @@ build-worker
 /media/
 /ingest/
 docs
-e2e/fixtures
-e2e/.data
+e2e
+e2e-cf
+.github
+.claude
+__screenshots__
 test-results
 playwright-report
 *.db

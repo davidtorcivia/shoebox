@@ -2,7 +2,9 @@ name: shoebox
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      target: app
     image: shoebox-app:0.1.0
     restart: unless-stopped
     ports:
@@ -20,7 +22,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.worker
+      target: worker
     image: shoebox-worker:0.1.0
     restart: unless-stopped
     env_file: .env
@@ -29,7 +31,7 @@ services:
       DATABASE_PATH: /data/shoebox.db
       MEDIA_PATH: /media
       INGEST_PATH: /ingest
-      MIGRATIONS_PATH: /app/migrations
+      MIGRATIONS_PATH: /app/src/lib/server/db/migrations
     volumes:
       - ${SHOEBOX_DATA_DIR:-./data}:/data
       - ${SHOEBOX_MEDIA_DIR:-./media}:/media
