@@ -5,7 +5,7 @@ import { requireRole } from '$lib/server/roles';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals }) => {
-	requireRole(locals, 'editor');
+	requireRole(locals, 'admin');
 	const { items } = await listItems(locals.db, locals.platform.storage, {
 		status: 'needs_review',
 		limit: 100
@@ -14,7 +14,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-	requireRole(locals, 'editor');
+	requireRole(locals, 'admin');
 	const body = (await request.json()) as Partial<ArrivalsRequest>;
 	if (
 		!Array.isArray(body.itemIds) ||

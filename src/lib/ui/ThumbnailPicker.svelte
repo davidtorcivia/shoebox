@@ -62,57 +62,51 @@
 </script>
 
 {#if open}
+	<!-- Backdrop and pane are siblings: nesting a backdrop-filter inside
+	     another element that also has one cancels the child's blur. -->
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-	<div class="scrim" onclick={onClose}>
-		<div
-			class="sheet"
-			role="dialog"
-			aria-modal="true"
-			aria-label="Choose thumbnail"
-			tabindex="-1"
-			onclick={(e) => e.stopPropagation()}
-		>
-			<header>
-				<h2>Choose a thumbnail</h2>
-				<button class="close" type="button" aria-label="Close" onclick={onClose}>×</button>
-			</header>
+	<div class="scrim" onclick={onClose}></div>
+	<div class="sheet" role="dialog" aria-modal="true" aria-label="Choose thumbnail" tabindex="-1">
+		<header>
+			<h2>Choose a thumbnail</h2>
+			<button class="close" type="button" aria-label="Close" onclick={onClose}>×</button>
+		</header>
 
-			<div class="grid" data-testid="thumb-grid">
-				{#each frames as i (i)}
-					<button
-						type="button"
-						class="tile"
-						class:selected={selected === i}
-						aria-label={`Frame at ${timeForIndex(i).toFixed(1)} seconds`}
-						aria-pressed={selected === i}
-						style={tileStyle(i)}
-						onclick={() => (selected = i)}
-					></button>
-				{/each}
-			</div>
-
-			<footer>
-				<span class="hint">
-					{#if selected != null}
-						Frame at {timeForIndex(selected).toFixed(1)}s
-					{:else}
-						Tap a frame to pick it
-					{/if}
-				</span>
-				<div class="actions">
-					<button type="button" class="ghost" onclick={onClose}>Cancel</button>
-					<button
-						type="button"
-						class="primary"
-						data-testid="thumb-confirm"
-						disabled={selected == null || saving}
-						onclick={confirm}
-					>
-						{saving ? 'Saving…' : 'Set as thumbnail'}
-					</button>
-				</div>
-			</footer>
+		<div class="grid" data-testid="thumb-grid">
+			{#each frames as i (i)}
+				<button
+					type="button"
+					class="tile"
+					class:selected={selected === i}
+					aria-label={`Frame at ${timeForIndex(i).toFixed(1)} seconds`}
+					aria-pressed={selected === i}
+					style={tileStyle(i)}
+					onclick={() => (selected = i)}
+				></button>
+			{/each}
 		</div>
+
+		<footer>
+			<span class="hint">
+				{#if selected != null}
+					Frame at {timeForIndex(selected).toFixed(1)}s
+				{:else}
+					Tap a frame to pick it
+				{/if}
+			</span>
+			<div class="actions">
+				<button type="button" class="ghost" onclick={onClose}>Cancel</button>
+				<button
+					type="button"
+					class="primary"
+					data-testid="thumb-confirm"
+					disabled={selected == null || saving}
+					onclick={confirm}
+				>
+					{saving ? 'Saving…' : 'Set as thumbnail'}
+				</button>
+			</div>
+		</footer>
 	</div>
 {/if}
 
@@ -121,21 +115,40 @@
 		position: fixed;
 		inset: 0;
 		z-index: 60;
-		display: grid;
-		place-items: center;
-		padding: 20px;
-		background: rgb(0 0 0 / 0.62);
+		background: rgb(23 20 18 / 0.62);
 	}
 
 	.sheet {
+		position: fixed;
+		top: 50%;
+		left: 50%;
+		z-index: 61;
 		display: flex;
 		flex-direction: column;
-		width: min(880px, 100%);
+		width: min(880px, calc(100vw - 40px));
 		max-height: min(84vh, 720px);
 		overflow: hidden;
 		background: var(--ink, #1a1714);
 		color: var(--cream, #f3ece1);
 		box-shadow: 0 18px 60px rgb(0 0 0 / 0.5);
+		transform: translate(-50%, -50%);
+	}
+
+	/* Ethereal dialog material: gently dim and soften the page behind, and let
+	   the pane itself go faintly translucent over a blur. The opaque styles
+	   above are the fallback where backdrop-filter is absent or misbehaves. */
+	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+		.scrim {
+			background: rgb(23 20 18 / 0.45);
+			backdrop-filter: blur(3px);
+			-webkit-backdrop-filter: blur(3px);
+		}
+
+		.sheet {
+			background: color-mix(in srgb, var(--ink, #1a1714) 84%, transparent);
+			backdrop-filter: blur(18px) saturate(1.35);
+			-webkit-backdrop-filter: blur(18px) saturate(1.35);
+		}
 	}
 
 	header {

@@ -27,6 +27,7 @@
 						class="share-btn"
 						type="button"
 						data-testid="share-saved"
+						data-tour="share-saved"
 						onclick={() => (shareOpen = true)}>Share</button
 					>
 				{/if}

@@ -7,7 +7,7 @@ import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	if (!locals.platform.features.ingestion) throw error(404, 'Arrivals needs the ingestion worker');
-	requireRole(locals, 'editor');
+	requireRole(locals, 'admin');
 	const { items } = await listItems(locals.db, locals.platform.storage, {
 		status: 'needs_review',
 		limit: 100

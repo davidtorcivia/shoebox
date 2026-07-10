@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { ROLE_RANK } from '$lib/server/roles';
 import { buildSteps, TOUR_ROLE_RANK, TOUR_VERSION } from './steps';
 
+const VIDEO = { id: 'it_video', type: 'video' } as const;
+const PHOTO = { id: 'it_photo', type: 'photo' } as const;
+
 describe('buildSteps', () => {
 	it('keeps the client role ranks in parity with the server', () => {
 		expect(TOUR_ROLE_RANK).toEqual(ROLE_RANK);
@@ -9,38 +12,79 @@ describe('buildSteps', () => {
 
 	it('starts with the welcome step and ends on the profile', () => {
 		for (const role of ['user', 'uploader', 'editor', 'admin', 'owner'] as const) {
-			const steps = buildSteps(role, 0);
-			expect(steps[0].id).toBe('welcome');
-			expect(steps.at(-1)?.id).toBe('profile');
+			for (const sample of [null, VIDEO, PHOTO]) {
+				const steps = buildSteps(role, 0, sample);
+				expect(steps[0].id).toBe('welcome');
+				expect(steps.at(-1)?.id).toBe('profile');
+			}
 		}
 	});
 
-	it('gives a plain user the ungated walk only', () => {
-		const ids = buildSteps('user', 5).map((step) => step.id);
-		expect(ids).toEqual(['welcome', 'timeline', 'people', 'albums', 'search', 'profile']);
+	it('drops the item stops entirely on an empty library', () => {
+		const ids = buildSteps('owner', 0, null).map((step) => step.id);
+		expect(ids).toEqual([
+			'welcome',
+			'timeline',
+			'favorites',
+			'people',
+			'albums',
+			'search',
+			'upload',
+			'admin',
+			'profile'
+		]);
 	});
 
-	it('adds upload for uploaders', () => {
-		const ids = buildSteps('uploader', 0).map((step) => step.id);
-		expect(ids).toContain('upload');
-		expect(ids).not.toContain('arrivals');
-		expect(ids).not.toContain('admin');
+	it('walks a plain user through the item demonstrations without gated stops', () => {
+		const ids = buildSteps('user', 5, VIDEO).map((step) => step.id);
+		expect(ids).toEqual([
+			'welcome',
+			'timeline',
+			'item',
+			'save',
+			'react',
+			'memories',
+			'people-row',
+			'clip',
+			'favorites',
+			'people',
+			'albums',
+			'search',
+			'profile'
+		]);
 	});
 
-	it('shows arrivals to editors only while the queue has items', () => {
-		expect(buildSteps('editor', 0).map((s) => s.id)).not.toContain('arrivals');
-		expect(buildSteps('editor', 3).map((s) => s.id)).toContain('arrivals');
-		expect(buildSteps('uploader', 3).map((s) => s.id)).not.toContain('arrivals');
+	it('shows the clip stop only for a video sample', () => {
+		expect(buildSteps('user', 0, PHOTO).map((s) => s.id)).not.toContain('clip');
+		expect(buildSteps('user', 0, VIDEO).map((s) => s.id)).toContain('clip');
 	});
 
-	it('adds admin for admins and the owner', () => {
-		expect(buildSteps('admin', 0).map((s) => s.id)).toContain('admin');
-		expect(buildSteps('owner', 0).map((s) => s.id)).toContain('admin');
-		expect(buildSteps('editor', 0).map((s) => s.id)).not.toContain('admin');
+	it('adds edit and upload for uploaders, share for editors', () => {
+		const uploaderIds = buildSteps('uploader', 0, PHOTO).map((s) => s.id);
+		expect(uploaderIds).toContain('edit');
+		expect(uploaderIds).toContain('upload');
+		expect(uploaderIds).not.toContain('share');
+
+		const editorIds = buildSteps('editor', 0, PHOTO).map((s) => s.id);
+		expect(editorIds).toContain('share');
+		expect(editorIds).not.toContain('admin');
+	});
+
+	it('shows arrivals to admins only, and only while the queue has items', () => {
+		expect(buildSteps('editor', 3, null).map((s) => s.id)).not.toContain('arrivals');
+		expect(buildSteps('admin', 0, null).map((s) => s.id)).not.toContain('arrivals');
+		expect(buildSteps('admin', 3, null).map((s) => s.id)).toContain('arrivals');
+		expect(buildSteps('owner', 3, null).map((s) => s.id)).toContain('arrivals');
+	});
+
+	it('routes every item stop at the sample memory', () => {
+		const itemSteps = buildSteps('owner', 0, VIDEO).filter((s) => s.route === '/item/[id]');
+		expect(itemSteps.length).toBeGreaterThanOrEqual(6);
+		for (const step of itemSteps) expect(step.params).toEqual({ id: VIDEO.id });
 	});
 
 	it('only the welcome step stays in place; every stop names a route', () => {
-		const steps = buildSteps('owner', 1);
+		const steps = buildSteps('owner', 1, VIDEO);
 		expect(steps[0].route).toBeNull();
 		for (const step of steps.slice(1)) expect(step.route).toBeTruthy();
 	});

@@ -99,17 +99,22 @@ test('uploader can init uploads and comment', async ({ browser }) => {
 	await context.close();
 });
 
-test('editor can edit another user item but not mint invites', async ({ browser }) => {
+test('editor can edit another user item but not mint invites or review arrivals', async ({
+	browser
+}) => {
 	const { page, context } = await createUserWithRole(browser, 'editor');
 	const patch = await page.request.patch(`/api/items/${photoId}`, { data: { title: 'Edited' } });
 	expect(patch.ok()).toBe(true);
 	expect((await page.request.post('/api/invites', { data: { role: 'user' } })).status()).toBe(403);
+	// Arrivals review is admin-only.
+	expect((await page.request.get('/api/arrivals')).status()).toBe(403);
 	await context.close();
 });
 
-test('admin can list invites and users', async ({ browser }) => {
+test('admin can list invites, users, and arrivals', async ({ browser }) => {
 	const { page, context } = await createUserWithRole(browser, 'admin');
 	expect((await page.request.get('/api/invites')).status()).toBe(200);
 	expect((await page.request.get('/api/admin/users')).status()).toBe(200);
+	expect((await page.request.get('/api/arrivals')).status()).toBe(200);
 	await context.close();
 });

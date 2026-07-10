@@ -646,6 +646,7 @@
 							class="control-button clip-toggle"
 							class:on={clipMode}
 							type="button"
+							data-tour="clip"
 							onclick={toggleClip}
 							aria-label="Clip a segment"
 							aria-pressed={clipMode}

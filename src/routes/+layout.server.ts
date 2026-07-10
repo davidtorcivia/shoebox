@@ -18,9 +18,9 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 		linkedPersonSlug = row?.slug ?? null;
 	}
 
-	// Only editors+ see arrivals, and only when something is actually waiting —
+	// Only admins+ see arrivals, and only when something is actually waiting —
 	// the nav entry hides itself when the queue is empty.
-	const canReview = locals.user ? ROLE_RANK[locals.user.role] >= ROLE_RANK.editor : false;
+	const canReview = locals.user ? ROLE_RANK[locals.user.role] >= ROLE_RANK.admin : false;
 	const arrivalsCount =
 		canReview && locals.platform.features.ingestion ? await countNeedsReview(locals.db) : 0;
 

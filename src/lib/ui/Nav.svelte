@@ -42,6 +42,7 @@
 		class:open={menuOpen}
 		class:tour-glow={tour.highlight !== null && !menuOpen}
 		type="button"
+		data-tour="menu"
 		aria-label="Toggle navigation menu"
 		aria-expanded={menuOpen}
 		aria-controls="primary-nav"

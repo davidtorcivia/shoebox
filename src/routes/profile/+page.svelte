@@ -4,8 +4,7 @@
 	import AccentSwatches from '$lib/ui/AccentSwatches.svelte';
 	import Gradient from '$lib/ui/Gradient.svelte';
 	import { comfortMode, themePref } from '$lib/ui/theme';
-	import { buildSteps } from '$lib/ui/tour/steps';
-	import { tour } from '$lib/ui/tour/tour.svelte';
+	import { startGuidedTour } from '$lib/ui/tour/tour.svelte';
 	import { accentOn, personRoomFor } from '$lib/ui/tokens';
 	import type { SubmitFunction } from '@sveltejs/kit';
 
@@ -245,7 +244,7 @@
 				<button
 					type="button"
 					data-testid="replay-tour"
-					onclick={() => tour.start(buildSteps(data.profile.role, data.arrivalsCount ?? 0))}
+					onclick={() => void startGuidedTour(data.profile.role, data.arrivalsCount ?? 0)}
 				>
 					Play the tour
 				</button>
@@ -269,24 +268,25 @@
 		</div>
 	</section>
 	{#if confirmDeleteAvatar}
-		<div class="modal-backdrop">
-			<div
-				class="confirm-modal"
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="delete-avatar-title"
-			>
-				<div class="label">Confirm</div>
-				<h2 id="delete-avatar-title">Delete avatar?</h2>
-				<p>The uploaded image will be removed from your account.</p>
-				<div class="modal-actions">
-					<button class="secondary" type="button" onclick={() => (confirmDeleteAvatar = false)}>
-						Cancel
-					</button>
-					<form method="POST" action="?/deleteAvatar">
-						<button class="danger" type="submit">Delete avatar</button>
-					</form>
-				</div>
+		<!-- Backdrop and pane are siblings: nesting a backdrop-filter inside
+		     another element that also has one cancels the child's blur. -->
+		<div class="modal-backdrop"></div>
+		<div
+			class="confirm-modal"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="delete-avatar-title"
+		>
+			<div class="label">Confirm</div>
+			<h2 id="delete-avatar-title">Delete avatar?</h2>
+			<p>The uploaded image will be removed from your account.</p>
+			<div class="modal-actions">
+				<button class="secondary" type="button" onclick={() => (confirmDeleteAvatar = false)}>
+					Cancel
+				</button>
+				<form method="POST" action="?/deleteAvatar">
+					<button class="danger" type="submit">Delete avatar</button>
+				</form>
 			</div>
 		</div>
 	{/if}
@@ -608,16 +608,18 @@
 		position: fixed;
 		inset: 0;
 		z-index: 40;
-		display: grid;
-		place-items: center;
-		padding: 20px;
 		background: rgb(23 20 18 / 0.72);
 	}
 
 	.confirm-modal {
-		width: min(420px, 100%);
+		position: fixed;
+		top: 50%;
+		left: 50%;
+		z-index: 41;
+		width: min(420px, calc(100vw - 40px));
 		margin: 0;
 		padding: 24px;
+		transform: translate(-50%, -50%);
 		background:
 			linear-gradient(
 				135deg,
@@ -626,6 +628,29 @@
 			),
 			color-mix(in srgb, var(--ink) 92%, var(--cream));
 		box-shadow: 0 22px 70px rgb(0 0 0 / 0.38);
+	}
+
+	/* Ethereal dialog material: gently dim and soften the page behind, and let
+	   the pane itself go faintly translucent over a blur. The opaque styles
+	   above are the fallback where backdrop-filter is absent or misbehaves. */
+	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+		.modal-backdrop {
+			background: rgb(23 20 18 / 0.45);
+			backdrop-filter: blur(3px);
+			-webkit-backdrop-filter: blur(3px);
+		}
+
+		.confirm-modal {
+			background:
+				linear-gradient(
+					135deg,
+					color-mix(in srgb, var(--profile-accent) 18%, transparent),
+					transparent
+				),
+				color-mix(in srgb, color-mix(in srgb, var(--ink) 92%, var(--cream)) 84%, transparent);
+			backdrop-filter: blur(18px) saturate(1.35);
+			-webkit-backdrop-filter: blur(18px) saturate(1.35);
+		}
 	}
 
 	.confirm-modal h2 {

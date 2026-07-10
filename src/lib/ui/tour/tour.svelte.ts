@@ -1,7 +1,8 @@
 import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
+import { page } from '$app/state';
 import { comfortMode } from '$lib/ui/theme';
-import { TOUR_VERSION, type TourStep } from './steps';
+import { buildSteps, TOUR_VERSION, type TourRole, type TourSample, type TourStep } from './steps';
 
 /**
  * The guided walk's state machine. Lives at module scope so the card (rendered
@@ -38,15 +39,13 @@ class Tour {
 			await this.finish();
 			return;
 		}
-		const target = this.steps[this.index + 1];
-		if (target.route) await goto(resolve(target.route));
+		await this.navigateTo(this.steps[this.index + 1]);
 		this.index += 1;
 	}
 
 	async back(): Promise<void> {
 		if (!this.active || this.index === 0) return;
-		const target = this.steps[this.index - 1];
-		if (target.route) await goto(resolve(target.route));
+		await this.navigateTo(this.steps[this.index - 1]);
 		this.index -= 1;
 	}
 
@@ -72,6 +71,18 @@ class Tour {
 		await this.post({ action: 'complete', version: TOUR_VERSION });
 	}
 
+	/** Consecutive stops on the same page must not re-run a navigation. */
+	private async navigateTo(target: TourStep): Promise<void> {
+		const path =
+			target.route === '/item/[id]' && target.params
+				? resolve('/item/[id]', { id: target.params.id })
+				: target.route && target.route !== '/item/[id]'
+					? resolve(target.route)
+					: null;
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- path is built via resolve() just above
+		if (path && path !== page.url.pathname) await goto(path);
+	}
+
 	private async post(body: Record<string, unknown>): Promise<void> {
 		try {
 			await fetch('/api/onboarding', {
@@ -86,3 +97,28 @@ class Tour {
 }
 
 export const tour = new Tour();
+
+/**
+ * Find one real memory for the walk to visit, preferring a film so the clip
+ * step can show itself. Returns null on an empty library, which simply drops
+ * the item stops from the walk.
+ */
+async function pickSampleItem(): Promise<TourSample> {
+	for (const type of ['video', 'photo'] as const) {
+		try {
+			const res = await fetch(`/api/search?q=type:${type}&limit=1`);
+			if (!res.ok) continue;
+			const body = (await res.json()) as { items?: Array<{ id?: string }> };
+			const id = body.items?.[0]?.id;
+			if (id) return { id, type };
+		} catch {
+			// Network hiccup: fall through and try the next type or give up.
+		}
+	}
+	return null;
+}
+
+/** Build the role-aware walk (including a sample memory if one exists) and start it. */
+export async function startGuidedTour(role: TourRole, arrivalsCount: number): Promise<void> {
+	tour.start(buildSteps(role, arrivalsCount, await pickSampleItem()));
+}

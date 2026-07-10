@@ -220,6 +220,15 @@
 		background: color-mix(in srgb, var(--ink) 60%, transparent);
 	}
 
+	/* Gently dim and soften the page behind an open dialog. */
+	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+		.scrim {
+			background: color-mix(in srgb, var(--ink) 42%, transparent);
+			backdrop-filter: blur(3px);
+			-webkit-backdrop-filter: blur(3px);
+		}
+	}
+
 	.dialog {
 		position: fixed;
 		z-index: 51;
@@ -229,23 +238,52 @@
 		max-height: 85vh;
 		overflow-y: auto;
 		padding: 24px;
-		/* Joyous gradient in the family of the timeline rooms — a warm dawn glow and
-		   a cool verdigris pool over a dark base. */
+		/* Ethereal material: the room-family tints (warm dawn glow, cool verdigris
+		   pool) over a faintly translucent ink pane that blurs whatever sits behind
+		   it. The near-opaque base is the fallback where backdrop-filter is absent
+		   or misbehaves (iOS renders translucent blurred panes as solid black). */
 		background:
 			radial-gradient(
 				90% 60% at 92% -12%,
-				color-mix(in srgb, var(--dawn) 42%, transparent),
+				color-mix(in srgb, var(--dawn) 34%, transparent),
 				transparent 55%
 			),
 			radial-gradient(
 				80% 72% at -12% 112%,
-				color-mix(in srgb, #48929b 34%, transparent),
+				color-mix(in srgb, #48929b 28%, transparent),
 				transparent 60%
 			),
-			linear-gradient(158deg, color-mix(in srgb, var(--cream) 8%, var(--ink)) 0%, var(--ink) 100%);
+			linear-gradient(
+				158deg,
+				color-mix(in srgb, var(--cream) 8%, var(--ink)) 0%,
+				color-mix(in srgb, var(--ink) 96%, transparent) 100%
+			);
 		color: var(--cream);
 		box-shadow: 0 30px 70px rgb(0 0 0 / 0.5);
 		transform: translate(-50%, -50%);
+	}
+
+	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+		.dialog {
+			background:
+				radial-gradient(
+					90% 60% at 92% -12%,
+					color-mix(in srgb, var(--dawn) 34%, transparent),
+					transparent 55%
+				),
+				radial-gradient(
+					80% 72% at -12% 112%,
+					color-mix(in srgb, #48929b 28%, transparent),
+					transparent 60%
+				),
+				linear-gradient(
+					158deg,
+					color-mix(in srgb, var(--cream) 10%, color-mix(in srgb, var(--ink) 84%, transparent)) 0%,
+					color-mix(in srgb, var(--ink) 84%, transparent) 100%
+				);
+			backdrop-filter: blur(18px) saturate(1.35);
+			-webkit-backdrop-filter: blur(18px) saturate(1.35);
+		}
 	}
 
 	header {

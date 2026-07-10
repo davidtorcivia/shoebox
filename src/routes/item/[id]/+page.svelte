@@ -267,7 +267,7 @@
 				>
 			</div>
 
-			<div class="social">
+			<div class="social" data-tour="people-row">
 				<PeopleRow people={item.people} />
 				<TagsRow tags={item.tags} albums={item.albums} />
 			</div>
@@ -305,6 +305,7 @@
 					class:on={favorited}
 					type="button"
 					data-testid="favorite-button"
+					data-tour="save"
 					aria-pressed={favorited}
 					aria-label={favorited ? 'Remove from saved' : 'Add to saved'}
 					onclick={() => void toggleFavorite()}
@@ -325,6 +326,7 @@
 					<button
 						class="share-action"
 						data-testid="share-button"
+						data-tour="share"
 						onclick={() => {
 							pendingSegment = null;
 							shareOpen = true;
@@ -383,7 +385,7 @@
 				{/if}
 			</div>
 
-			<div class="reactions-slot">
+			<div class="reactions-slot" data-tour="react">
 				<Reactions itemId={item.id} reactions={data.reactions} />
 			</div>
 
@@ -391,12 +393,12 @@
 				<VoiceMemories itemId={item.id} notes={data.voiceNotes} />
 			</div>
 
-			<div data-testid="comments-slot">
+			<div data-testid="comments-slot" data-tour="memories">
 				<Comments itemId={item.id} currentUser={data.me} />
 			</div>
 
 			{#if data.canEdit}
-				<details class="edit">
+				<details class="edit" data-tour="edit">
 					<summary>Edit metadata</summary>
 					<MetaForm
 						{item}

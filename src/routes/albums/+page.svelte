@@ -50,7 +50,12 @@
 					</form>
 					{#if createError}<span class="err">{createError}</span>{/if}
 				{:else}
-					<button class="new" data-testid="new-album" onclick={() => (creating = true)}>
+					<button
+						class="new"
+						data-testid="new-album"
+						data-tour="new-album"
+						onclick={() => (creating = true)}
+					>
 						New album
 					</button>
 				{/if}

@@ -226,7 +226,7 @@
 <div class="room">
 	<Gradient stops={room.stops} pools={room.pools} />
 	<section class="page">
-		<form class="omnibox" role="search" onsubmit={submit}>
+		<form class="omnibox" role="search" data-tour="search-box" onsubmit={submit}>
 			<input
 				class="omnibox-input"
 				type="search"

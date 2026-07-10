@@ -129,17 +129,16 @@
 </section>
 
 {#if pendingDelete}
-	<div class="modal-backdrop">
-		<div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-voice-title">
-			<div class="label">Confirm</div>
-			<h2 id="delete-voice-title">Delete this voice memory?</h2>
-			<p>This recording will be permanently removed from this moment.</p>
-			<div class="modal-actions">
-				<button class="secondary" type="button" onclick={() => (pendingDelete = null)}
-					>Cancel</button
-				>
-				<button class="danger" type="button" onclick={() => void confirmDelete()}>Delete</button>
-			</div>
+	<!-- Backdrop and pane are siblings: nesting a backdrop-filter inside
+	     another element that also has one cancels the child's blur. -->
+	<div class="modal-backdrop"></div>
+	<div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-voice-title">
+		<div class="label">Confirm</div>
+		<h2 id="delete-voice-title">Delete this voice memory?</h2>
+		<p>This recording will be permanently removed from this moment.</p>
+		<div class="modal-actions">
+			<button class="secondary" type="button" onclick={() => (pendingDelete = null)}>Cancel</button>
+			<button class="danger" type="button" onclick={() => void confirmDelete()}>Delete</button>
 		</div>
 	</div>
 {/if}
@@ -223,20 +222,41 @@
 		position: fixed;
 		inset: 0;
 		z-index: 40;
-		display: grid;
-		place-items: center;
-		padding: 20px;
 		background: rgb(23 20 18 / 0.72);
 	}
 
 	.confirm-modal {
-		width: min(420px, 100%);
+		position: fixed;
+		top: 50%;
+		left: 50%;
+		z-index: 41;
+		width: min(420px, calc(100vw - 40px));
 		margin: 0;
 		padding: 24px;
 		background:
 			linear-gradient(135deg, color-mix(in srgb, var(--dawn) 16%, transparent), transparent),
 			color-mix(in srgb, var(--ink) 92%, var(--cream));
 		box-shadow: 0 22px 70px rgb(0 0 0 / 0.38);
+		transform: translate(-50%, -50%);
+	}
+
+	/* Ethereal dialog material: gently dim and soften the page behind, and let
+	   the pane itself go faintly translucent over a blur. The opaque styles
+	   above are the fallback where backdrop-filter is absent or misbehaves. */
+	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+		.modal-backdrop {
+			background: rgb(23 20 18 / 0.45);
+			backdrop-filter: blur(3px);
+			-webkit-backdrop-filter: blur(3px);
+		}
+
+		.confirm-modal {
+			background:
+				linear-gradient(135deg, color-mix(in srgb, var(--dawn) 16%, transparent), transparent),
+				color-mix(in srgb, color-mix(in srgb, var(--ink) 92%, var(--cream)) 84%, transparent);
+			backdrop-filter: blur(18px) saturate(1.35);
+			-webkit-backdrop-filter: blur(18px) saturate(1.35);
+		}
 	}
 
 	.confirm-modal .label {

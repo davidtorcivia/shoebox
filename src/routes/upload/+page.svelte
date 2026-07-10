@@ -236,7 +236,7 @@
 			}}
 		>
 			<section class="picker">
-				<label class="file-pick">
+				<label class="file-pick" data-tour="file-pick">
 					<input type="file" multiple accept={mediaAccept} onchange={chooseFiles} />
 					<span class="choose">Choose media</span>
 					<span class="file-copy">
