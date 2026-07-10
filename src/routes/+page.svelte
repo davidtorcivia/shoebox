@@ -42,8 +42,6 @@
 	}
 	let previousYear = $state<number | null>(null);
 	let motionDirection = $state(0);
-	let wheelDelta = 0;
-	let wheelLocked = false;
 
 	$effect(() => {
 		if (previousYear === null) {
@@ -67,21 +65,6 @@
 		if (target === activeYear) return;
 		motionDirection = target > activeYear ? 1 : -1;
 		void goto(resolve(`/?y=${target}`));
-	}
-
-	function scrollYear(event: WheelEvent) {
-		if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
-		const axisDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-		wheelDelta += axisDelta;
-		if (wheelLocked || Math.abs(wheelDelta) < 90) return;
-
-		event.preventDefault();
-		wheelLocked = true;
-		jump(wheelDelta > 0 ? 1 : -1);
-		wheelDelta = 0;
-		window.setTimeout(() => {
-			wheelLocked = false;
-		}, 520);
 	}
 </script>
 
@@ -114,7 +97,10 @@
 <DecadeRoom year={activeYear} {motionDirection}>
 	{#key activeYear}
 		<div class="timeline-stage" data-direction={motionDirection}>
-			<div class="year-scroll-zone" onwheel={scrollYear}>
+			<!-- The wheel deliberately does NOT change years here: it was far too easy
+			     to drift decades while trying to scroll the page. Years move by click,
+			     drag, the arrow keys, and the rails. -->
+			<div class="year-scroll-zone">
 				<YearBand {activeYear} {years} now={data.now} onStep={jump} />
 				<CenturyRail {years} earliest={data.timeline.earliest} {activeYear} now={data.now} />
 			</div>
@@ -152,7 +138,9 @@
 
 <style>
 	/* "On this day" entry point — a quiet pill pinned below the nav, shown only
-	   when there's something to resurface today. */
+	   when there's something to resurface today. Ethereal material: a warm dawn
+	   tint over faintly translucent ink that softly blurs whatever drifts
+	   beneath it. */
 	.on-this-day {
 		position: fixed;
 		top: 68px;
@@ -162,21 +150,38 @@
 		align-items: center;
 		gap: 0.55rem;
 		padding: 0.5rem 0.85rem;
-		background: color-mix(in srgb, var(--ink) 78%, transparent);
+		background:
+			radial-gradient(
+				130% 100% at 88% -30%,
+				color-mix(in srgb, var(--dawn) 30%, transparent),
+				transparent 62%
+			),
+			color-mix(in srgb, var(--ink) 78%, transparent);
 		border: 1px solid color-mix(in srgb, var(--dawn) 55%, transparent);
-		border-radius: 999px;
 		color: var(--cream);
 		font-family: var(--font-sans);
 		font-size: 0.7rem;
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		text-decoration: none;
-		backdrop-filter: blur(10px);
-		-webkit-backdrop-filter: blur(10px);
 		box-shadow: 0 10px 30px rgb(0 0 0 / 0.28);
 		transition:
 			border-color 200ms ease,
 			transform 200ms ease;
+	}
+
+	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+		.on-this-day {
+			background:
+				radial-gradient(
+					130% 100% at 88% -30%,
+					color-mix(in srgb, var(--dawn) 30%, transparent),
+					transparent 62%
+				),
+				color-mix(in srgb, var(--ink) 62%, transparent);
+			backdrop-filter: blur(10px) saturate(1.25);
+			-webkit-backdrop-filter: blur(10px) saturate(1.25);
+		}
 	}
 
 	.on-this-day:hover,
@@ -198,7 +203,6 @@
 		padding: 0 0.35rem;
 		background: var(--dawn);
 		color: var(--ink);
-		border-radius: 999px;
 		font-weight: 700;
 	}
 
@@ -222,10 +226,6 @@
 
 	.timeline-stage[data-direction='-1'] {
 		animation-name: year-arrive-reverse;
-	}
-
-	.year-scroll-zone {
-		cursor: ew-resize;
 	}
 
 	@keyframes year-arrive {

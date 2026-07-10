@@ -122,7 +122,19 @@
 		gap: 2px;
 		padding: 4px;
 		background: color-mix(in srgb, var(--ink, #171412) 94%, transparent);
-		box-shadow: 0 10px 28px rgb(0 0 0 / 0.45);
+		box-shadow:
+			inset 0 0 0 1px color-mix(in srgb, var(--cream, #fff5e8) 12%, transparent),
+			0 10px 28px rgb(0 0 0 / 0.45);
+	}
+
+	/* Ethereal chrome: faintly translucent ink over a soft blur, matching the
+	   dialogs. The near-opaque background above is the no-backdrop fallback. */
+	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+		.palette {
+			background: color-mix(in srgb, var(--ink, #171412) 76%, transparent);
+			backdrop-filter: blur(10px) saturate(1.25);
+			-webkit-backdrop-filter: blur(10px) saturate(1.25);
+		}
 	}
 
 	.palette button {

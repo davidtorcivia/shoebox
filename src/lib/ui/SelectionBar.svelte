@@ -184,9 +184,21 @@
 		max-width: min(680px, calc(100% - 1.5rem));
 		padding: 12px 16px;
 		background: color-mix(in srgb, var(--ink) 94%, transparent);
-		box-shadow: 0 16px 44px rgb(0 0 0 / 0.5);
+		box-shadow:
+			inset 0 0 0 1px color-mix(in srgb, var(--cream) 12%, transparent),
+			0 16px 44px rgb(0 0 0 / 0.5);
 		color: var(--cream);
 		transform: translateX(-50%);
+	}
+
+	/* Ethereal chrome: faintly translucent ink over a soft blur, matching the
+	   dialogs. The near-opaque background above is the no-backdrop fallback. */
+	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+		.bar {
+			background: color-mix(in srgb, var(--ink) 76%, transparent);
+			backdrop-filter: blur(10px) saturate(1.25);
+			-webkit-backdrop-filter: blur(10px) saturate(1.25);
+		}
 	}
 
 	.count {

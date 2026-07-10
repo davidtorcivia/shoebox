@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
+	import { scale } from 'svelte/transition';
 	import { formatTimecode } from '$lib/domain/timecode';
 	import { SHUTTLE_PAUSED, shuttleNext, togglePlay, type Shuttle } from '$lib/domain/shuttle';
 	import { CREAM, DAWN, FONT, INK, MOTION } from '$lib/ui/tokens';
@@ -599,9 +600,20 @@
 					{spriteUrl}
 				/>
 				<div class="right-controls">
-					<span class="volume-wrap">
+					<!-- The slider grows straight out of the speaker icon, bare on the
+					     glass (no panel behind it), and follows the mouse in and out. -->
+					<span
+						class="volume-wrap"
+						role="presentation"
+						onpointerenter={(e) => {
+							if (e.pointerType === 'mouse') volumeOpen = true;
+						}}
+						onpointerleave={(e) => {
+							if (e.pointerType === 'mouse') volumeOpen = false;
+						}}
+					>
 						{#if volumeOpen}
-							<span class="volume-pop">
+							<span class="volume-pop" transition:scale={{ duration: 160, start: 0.7 }}>
 								<input
 									type="range"
 									min="0"
@@ -614,11 +626,20 @@
 							</span>
 						{/if}
 						<button
-							class="control-button"
+							class="control-button volume-toggle"
 							class:dim={muted}
 							type="button"
-							onclick={() => (volumeOpen = !volumeOpen)}>Vol</button
+							aria-label="Volume"
+							aria-expanded={volumeOpen}
+							onclick={() => (volumeOpen = !volumeOpen)}
 						>
+							<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+								<path
+									fill="currentColor"
+									d="M3 9v6h4l5 5V4L7 9H3Zm13.5 3A4.5 4.5 0 0 0 14 8.2v7.6a4.5 4.5 0 0 0 2.5-3.8ZM14 3.6v2.06a6.5 6.5 0 0 1 0 12.68v2.06a8.5 8.5 0 0 0 0-16.8Z"
+								/>
+							</svg>
+						</button>
 					</span>
 					{#if castAvailable}
 						<button
@@ -1034,19 +1055,39 @@
 		display: inline-flex;
 	}
 
+	/* A bare vertical slider rising out of the speaker icon — no panel behind
+	   it, just the control floating on the player glass. */
 	.volume-pop {
 		position: absolute;
-		right: 0;
 		bottom: 100%;
+		left: 0;
+		right: 0;
 		z-index: 3;
-		padding: 14px 16px;
-		margin-bottom: 4px;
-		background: var(--ink);
+		display: flex;
+		justify-content: center;
+		padding: 8px 0 4px;
+		transform-origin: 50% 100%;
 	}
 
 	.volume-pop input[type='range'] {
-		width: 120px;
+		width: 22px;
+		height: 96px;
+		writing-mode: vertical-lr;
+		direction: rtl;
 		accent-color: var(--dawn);
+		cursor: pointer;
+		filter: drop-shadow(0 2px 6px rgb(0 0 0 / 0.55));
+	}
+
+	.control-button.volume-toggle {
+		display: inline-grid;
+		place-items: center;
+		padding: 0;
+	}
+
+	.control-button.volume-toggle svg {
+		width: 20px;
+		height: 20px;
 	}
 
 	.error-state {
