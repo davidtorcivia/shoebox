@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, preloadData } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { quintOut } from 'svelte/easing';
 	import { fly } from 'svelte/transition';
@@ -87,6 +87,16 @@
 	// Which way the room travels when stepping between neighbours; drives the
 	// directional slide of the incoming item (0 = a fresh landing, no motion).
 	let travelDirection = $state(0);
+
+	// Arrows, keys, and swipes step to the neighbours, none of which hover-
+	// preload can warm; fetch both ahead so stepping through a roll of film
+	// feels immediate.
+	$effect(() => {
+		const suffix = data.contextQuery ? `?${data.contextQuery}` : '';
+		for (const id of [data.neighbors.nextId, data.neighbors.prevId]) {
+			if (id) void preloadData(resolve(`/item/${id}${suffix}`)).catch(() => {});
+		}
+	});
 
 	function navigateTo(id: string | null) {
 		if (!id) return;

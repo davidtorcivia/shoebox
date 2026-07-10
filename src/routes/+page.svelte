@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, invalidateAll, preloadData } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { SvelteSet } from 'svelte/reactivity';
 	import CenturyRail from '$lib/ui/CenturyRail.svelte';
@@ -54,6 +54,16 @@
 		previousYear = activeYear;
 	});
 
+	// Stepping through years uses buttons and arrow keys, which hover-preload
+	// never warms; fetch both neighbours ahead so the jump lands instantly.
+	$effect(() => {
+		for (const year of [activeYear - 1, activeYear + 1]) {
+			if (year >= 1 && year <= data.now) {
+				void preloadData(resolve(`/?y=${year}`)).catch(() => {});
+			}
+		}
+	});
+
 	function jump(delta: number) {
 		const year = Math.min(data.now, Math.max(1, activeYear + delta));
 		if (year === activeYear) return;
@@ -105,6 +115,22 @@
 				<YearBand {activeYear} {years} now={data.now} direction={motionDirection} onStep={jump} />
 				<CenturyRail {years} earliest={data.timeline.earliest} {activeYear} now={data.now} />
 			</div>
+			<!-- Tile size: slide toward the big square for larger media, toward the
+			     small one to see more at once. Desktop only; sits quietly in the
+			     grid's own margin and tiles glide to their new places. -->
+			<div class="tile-size" data-testid="tile-size">
+				<span class="ts-glyph ts-small" aria-hidden="true"></span>
+				<input
+					type="range"
+					min="3"
+					max="6"
+					step="1"
+					aria-label="Media size"
+					value={9 - $desktopColumns}
+					oninput={(event) => desktopColumns.set(9 - Number(event.currentTarget.value))}
+				/>
+				<span class="ts-glyph ts-large" aria-hidden="true"></span>
+			</div>
 			<MasonryGrid
 				items={visibleItems}
 				{activeYear}
@@ -137,22 +163,6 @@
 		ondeleted={onDeleted}
 	/>
 {/if}
-
-<!-- Tile size: slide toward the big square for larger media, toward the small
-     one to see more at once. Desktop only; tiles glide to their new places. -->
-<div class="tile-size" data-testid="tile-size">
-	<span class="ts-glyph ts-small" aria-hidden="true"></span>
-	<input
-		type="range"
-		min="3"
-		max="6"
-		step="1"
-		aria-label="Media size"
-		value={9 - $desktopColumns}
-		oninput={(event) => desktopColumns.set(9 - Number(event.currentTarget.value))}
-	/>
-	<span class="ts-glyph ts-large" aria-hidden="true"></span>
-</div>
 
 <style>
 	/* "On this day" entry point — a quiet pill pinned below the nav, shown only
@@ -236,28 +246,25 @@
 		}
 	}
 
-	/* Tile-size control: a quiet ethereal sliver in the lower-left corner, only
-	   where a mouse and a wide viewport make density worth trading. */
+	/* Tile-size control: a quiet inline row in the grid's own top margin,
+	   right-aligned with the media below it. No chrome, no float; it fades
+	   forward when the pointer visits. Desktop only. */
 	.tile-size {
-		position: fixed;
-		bottom: 1.25rem;
-		left: 1.5rem;
-		z-index: 10;
+		position: relative;
+		z-index: 3;
 		display: flex;
 		align-items: center;
+		justify-content: flex-end;
 		gap: 0.6rem;
-		padding: 0.55rem 0.85rem;
-		background: color-mix(in srgb, var(--ink) 78%, transparent);
-		border: 1px solid color-mix(in srgb, var(--cream) 16%, transparent);
-		box-shadow: 0 10px 30px rgb(0 0 0 / 0.28);
+		padding: 0.75rem 1.875rem 0;
+		margin-bottom: -0.5rem;
+		opacity: 0.55;
+		transition: opacity 180ms ease;
 	}
 
-	@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-		.tile-size {
-			background: color-mix(in srgb, var(--ink) 62%, transparent);
-			backdrop-filter: blur(10px) saturate(1.25);
-			-webkit-backdrop-filter: blur(10px) saturate(1.25);
-		}
+	.tile-size:hover,
+	.tile-size:focus-within {
+		opacity: 1;
 	}
 
 	.tile-size input[type='range'] {
@@ -280,64 +287,19 @@
 		height: 12px;
 	}
 
+	@media (max-width: 1100px) {
+		.tile-size {
+			padding-inline: 1rem;
+		}
+	}
+
 	@media (max-width: 919px) {
 		.tile-size {
 			display: none;
 		}
 	}
 
-	.timeline-stage {
-		animation: year-arrive 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
-		transform-origin: 50% 16rem;
-		will-change: opacity, transform, filter;
-	}
-
-	.timeline-stage[data-direction='-1'] {
-		animation-name: year-arrive-reverse;
-	}
-
-	@keyframes year-arrive {
-		from {
-			opacity: 0;
-			filter: blur(12px);
-			transform: translate3d(3.5rem, 0, 0) scale(0.985);
-		}
-
-		55% {
-			opacity: 1;
-			filter: blur(0);
-		}
-
-		to {
-			opacity: 1;
-			filter: blur(0);
-			transform: translate3d(0, 0, 0) scale(1);
-		}
-	}
-
-	@keyframes year-arrive-reverse {
-		from {
-			opacity: 0;
-			filter: blur(12px);
-			transform: translate3d(-3.5rem, 0, 0) scale(0.985);
-		}
-
-		55% {
-			opacity: 1;
-			filter: blur(0);
-		}
-
-		to {
-			opacity: 1;
-			filter: blur(0);
-			transform: translate3d(0, 0, 0) scale(1);
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.timeline-stage {
-			animation: none;
-			transform: none;
-		}
-	}
+	/* The stage itself stays still on a year change: the numeral roll and the
+	   tile cascade carry the motion. A whole-stage slide on top of those read
+	   as the same animation firing twice. */
 </style>
