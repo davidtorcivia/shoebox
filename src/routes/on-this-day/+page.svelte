@@ -155,6 +155,10 @@
 	}
 
 	@media (max-width: 640px) {
+		.hero {
+			padding-inline: 18px;
+		}
+
 		.year-head {
 			padding-inline: 18px;
 		}

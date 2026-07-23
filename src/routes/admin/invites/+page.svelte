@@ -60,32 +60,34 @@
 	<button type="submit">Create invite</button>
 </form>
 
-<table>
-	<thead>
-		<tr>
-			<th>Link</th>
-			<th>Role</th>
-			<th>Usage</th>
-			<th>Expires</th>
-			<th></th>
-		</tr>
-	</thead>
-	<tbody>
-		{#each data.invites as invite (invite.id)}
+<div class="table-scroll">
+	<table>
+		<thead>
 			<tr>
-				<td>
-					<button type="button" onclick={() => copy(invite.token)}>
-						{copied === invite.token ? 'Copied' : 'Copy link'}
-					</button>
-				</td>
-				<td>{invite.role}</td>
-				<td>{invite.useCount} / {invite.maxUses}</td>
-				<td>{invite.expiresAt ? new Date(invite.expiresAt).toLocaleDateString() : 'never'}</td>
-				<td><button type="button" onclick={() => revoke(invite.id)}>Revoke</button></td>
+				<th>Link</th>
+				<th>Role</th>
+				<th>Usage</th>
+				<th>Expires</th>
+				<th></th>
 			</tr>
-		{/each}
-	</tbody>
-</table>
+		</thead>
+		<tbody>
+			{#each data.invites as invite (invite.id)}
+				<tr>
+					<td>
+						<button type="button" onclick={() => copy(invite.token)}>
+							{copied === invite.token ? 'Copied' : 'Copy link'}
+						</button>
+					</td>
+					<td>{invite.role}</td>
+					<td>{invite.useCount} / {invite.maxUses}</td>
+					<td>{invite.expiresAt ? new Date(invite.expiresAt).toLocaleDateString() : 'never'}</td>
+					<td><button type="button" onclick={() => revoke(invite.id)}>Revoke</button></td>
+				</tr>
+			{/each}
+		</tbody>
+	</table>
+</div>
 
 <style>
 	h2 {
@@ -130,8 +132,13 @@
 		width: 90px;
 	}
 
+	.table-scroll {
+		overflow-x: auto;
+	}
+
 	table {
 		width: 100%;
+		min-width: 560px;
 		border-collapse: collapse;
 	}
 

@@ -691,9 +691,11 @@
 
 	.suggestion {
 		display: inline-flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.5rem;
 		justify-self: start;
+		max-width: 100%;
 		padding: 0.3rem 0.6rem;
 		border-left: 2px solid var(--accent, currentColor);
 		background: color-mix(in srgb, currentColor 7%, transparent);
@@ -703,7 +705,8 @@
 
 	.suggestion button {
 		border: 0;
-		padding: 0.25rem 0.55rem;
+		min-height: 44px;
+		padding: 0.25rem 0.7rem;
 		background: color-mix(in srgb, currentColor 14%, transparent);
 		color: inherit;
 		font-family: var(--font-sans);

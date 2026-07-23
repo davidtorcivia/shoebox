@@ -156,8 +156,9 @@
 
 	.meta {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 22px;
+		gap: 12px 22px;
 		margin-top: 14px;
 		color: color-mix(in srgb, var(--cream) 75%, transparent);
 		font-family: var(--font-sans);

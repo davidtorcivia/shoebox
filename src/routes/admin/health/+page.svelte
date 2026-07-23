@@ -93,30 +93,36 @@
 		</div>
 	</div>
 
-	<table>
-		<thead>
-			<tr>
-				<th>Kind</th>
-				<th class="num">Pending</th>
-				<th class="num">Running</th>
-				<th class="num">Failed</th>
-				<th class="num">Done</th>
-			</tr>
-		</thead>
-		<tbody>
-			{#each health.jobs.byKind as row (row.kind)}
-				<tr data-testid={`jobkind-${row.kind}`}>
-					<td class="kind">{row.kind}</td>
-					<td class="num">{fmtCount(row.pending)}</td>
-					<td class="num">{fmtCount(row.running)}</td>
-					<td class="num" class:danger={row.failed > 0} data-testid={`jobkind-${row.kind}-failed`}>
-						{fmtCount(row.failed)}
-					</td>
-					<td class="num muted">{fmtCount(row.done)}</td>
+	<div class="table-scroll">
+		<table>
+			<thead>
+				<tr>
+					<th>Kind</th>
+					<th class="num">Pending</th>
+					<th class="num">Running</th>
+					<th class="num">Failed</th>
+					<th class="num">Done</th>
 				</tr>
-			{/each}
-		</tbody>
-	</table>
+			</thead>
+			<tbody>
+				{#each health.jobs.byKind as row (row.kind)}
+					<tr data-testid={`jobkind-${row.kind}`}>
+						<td class="kind">{row.kind}</td>
+						<td class="num">{fmtCount(row.pending)}</td>
+						<td class="num">{fmtCount(row.running)}</td>
+						<td
+							class="num"
+							class:danger={row.failed > 0}
+							data-testid={`jobkind-${row.kind}-failed`}
+						>
+							{fmtCount(row.failed)}
+						</td>
+						<td class="num muted">{fmtCount(row.done)}</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+	</div>
 </section>
 
 <section aria-labelledby="ingest-h">
@@ -311,8 +317,13 @@
 		opacity: 1;
 	}
 
+	.table-scroll {
+		overflow-x: auto;
+	}
+
 	table {
 		width: 100%;
+		min-width: 560px;
 		margin-top: 14px;
 		border-collapse: collapse;
 	}

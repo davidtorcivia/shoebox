@@ -358,6 +358,7 @@
 
 	.time-controls {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 	}
 
@@ -381,7 +382,7 @@
 	}
 
 	.inline-action {
-		min-height: 32px;
+		min-height: 44px;
 		padding: 0;
 		color: var(--dawn);
 		background: transparent;
@@ -402,7 +403,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.45rem;
-		min-height: 38px;
+		min-height: 44px;
 		padding: 0 0.65rem 0 0.45rem;
 		color: var(--cream);
 		background: color-mix(in srgb, var(--cream) 11%, transparent);

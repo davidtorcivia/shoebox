@@ -92,7 +92,7 @@
 	}
 
 	.share-btn {
-		min-height: 40px;
+		min-height: 44px;
 		padding: 0 16px;
 		border: 1px solid color-mix(in srgb, var(--cream) 30%, transparent);
 		background: none;

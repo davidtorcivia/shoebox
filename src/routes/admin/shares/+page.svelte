@@ -21,33 +21,35 @@
 {#if data.shares.length === 0}
 	<p class="empty">No share links yet.</p>
 {:else}
-	<table>
-		<thead>
-			<tr>
-				<th>Target</th>
-				<th>Protection</th>
-				<th>Expires</th>
-				<th>Downloads</th>
-				<th></th>
-			</tr>
-		</thead>
-		<tbody>
-			{#each data.shares as share (share.id)}
+	<div class="table-scroll">
+		<table>
+			<thead>
 				<tr>
-					<td>{share.targetType === 'album' ? 'Album' : 'Item'} / {share.targetTitle}</td>
-					<td>{share.hasPassword ? 'Password' : 'Open'}</td>
-					<td>{share.expiresAt ? new Date(share.expiresAt).toLocaleDateString() : 'never'}</td>
-					<td>{share.allowDownload ? 'allowed' : 'view only'}</td>
-					<td class="actions">
-						<button type="button" onclick={() => copy(share.token)}>
-							{copied === share.token ? 'Copied' : 'Copy link'}
-						</button>
-						<button type="button" onclick={() => revoke(share.id)}>Revoke</button>
-					</td>
+					<th>Target</th>
+					<th>Protection</th>
+					<th>Expires</th>
+					<th>Downloads</th>
+					<th></th>
 				</tr>
-			{/each}
-		</tbody>
-	</table>
+			</thead>
+			<tbody>
+				{#each data.shares as share (share.id)}
+					<tr>
+						<td>{share.targetType === 'album' ? 'Album' : 'Item'} / {share.targetTitle}</td>
+						<td>{share.hasPassword ? 'Password' : 'Open'}</td>
+						<td>{share.expiresAt ? new Date(share.expiresAt).toLocaleDateString() : 'never'}</td>
+						<td>{share.allowDownload ? 'allowed' : 'view only'}</td>
+						<td class="actions">
+							<button type="button" onclick={() => copy(share.token)}>
+								{copied === share.token ? 'Copied' : 'Copy link'}
+							</button>
+							<button type="button" onclick={() => revoke(share.id)}>Revoke</button>
+						</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+	</div>
 {/if}
 
 <style>
@@ -63,8 +65,13 @@
 		font-size: 17px;
 	}
 
+	.table-scroll {
+		overflow-x: auto;
+	}
+
 	table {
 		width: 100%;
+		min-width: 560px;
 		border-collapse: collapse;
 	}
 

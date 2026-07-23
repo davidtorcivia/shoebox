@@ -37,69 +37,72 @@
 </script>
 
 <h2>Users</h2>
-<table>
-	<thead>
-		<tr>
-			<th>Username</th>
-			<th>Role</th>
-			<th>Linked person</th>
-			<th>Actions</th>
-		</tr>
-	</thead>
-	<tbody>
-		{#each data.users as user (user.id)}
+<div class="table-scroll">
+	<table>
+		<thead>
 			<tr>
-				<td class="name" style:--accent={user.accentColor}>{user.username}</td>
-				<td>
-					{#if user.role === 'owner'}
-						<span class="owner-badge">Owner</span>
-					{:else}
+				<th>Username</th>
+				<th>Role</th>
+				<th>Linked person</th>
+				<th>Actions</th>
+			</tr>
+		</thead>
+		<tbody>
+			{#each data.users as user (user.id)}
+				<tr>
+					<td class="name" style:--accent={user.accentColor}>{user.username}</td>
+					<td>
+						{#if user.role === 'owner'}
+							<span class="owner-badge">Owner</span>
+						{:else}
+							<select
+								aria-label={`Role for ${user.username}`}
+								value={user.role}
+								disabled={user.role === 'admin' && !isOwner}
+								onchange={(event) => patch(user.id, { role: event.currentTarget.value })}
+							>
+								{#each roleOptions(user) as role (role)}
+									<option value={role}>{role}</option>
+								{/each}
+							</select>
+						{/if}
+					</td>
+					<td>
 						<select
-							aria-label={`Role for ${user.username}`}
-							value={user.role}
-							disabled={user.role === 'admin' && !isOwner}
-							onchange={(event) => patch(user.id, { role: event.currentTarget.value })}
+							aria-label={`Linked person for ${user.username}`}
+							value={user.personId ?? ''}
+							onchange={(event) => patch(user.id, { personId: event.currentTarget.value || null })}
 						>
-							{#each roleOptions(user) as role (role)}
-								<option value={role}>{role}</option>
+							<option value="">none</option>
+							{#each data.people as person (person.id)}
+								<option value={person.id}>{person.name}</option>
 							{/each}
 						</select>
-					{/if}
-				</td>
-				<td>
-					<select
-						aria-label={`Linked person for ${user.username}`}
-						value={user.personId ?? ''}
-						onchange={(event) => patch(user.id, { personId: event.currentTarget.value || null })}
-					>
-						<option value="">none</option>
-						{#each data.people as person (person.id)}
-							<option value={person.id}>{person.name}</option>
-						{/each}
-					</select>
-				</td>
-				<td class="actions">
-					<button type="button" onclick={() => patch(user.id, { resetPassword: true })}>
-						Reset password
-					</button>
-					{#if tempPasswords[user.id]}<code class="temp">{tempPasswords[user.id]}</code>{/if}
-					{#if user.role !== 'owner' && user.id !== data.user.id}
-						{#if confirmingDelete === user.id}
-							<span class="confirm">Reassigns their uploads, albums and comments to the owner.</span
-							>
-							<button class="danger" type="button" onclick={() => remove(user.id)}>
-								Delete {user.username}
-							</button>
-							<button type="button" onclick={() => (confirmingDelete = null)}>Cancel</button>
-						{:else}
-							<button type="button" onclick={() => (confirmingDelete = user.id)}>Delete</button>
+					</td>
+					<td class="actions">
+						<button type="button" onclick={() => patch(user.id, { resetPassword: true })}>
+							Reset password
+						</button>
+						{#if tempPasswords[user.id]}<code class="temp">{tempPasswords[user.id]}</code>{/if}
+						{#if user.role !== 'owner' && user.id !== data.user.id}
+							{#if confirmingDelete === user.id}
+								<span class="confirm"
+									>Reassigns their uploads, albums and comments to the owner.</span
+								>
+								<button class="danger" type="button" onclick={() => remove(user.id)}>
+									Delete {user.username}
+								</button>
+								<button type="button" onclick={() => (confirmingDelete = null)}>Cancel</button>
+							{:else}
+								<button type="button" onclick={() => (confirmingDelete = user.id)}>Delete</button>
+							{/if}
 						{/if}
-					{/if}
-				</td>
-			</tr>
-		{/each}
-	</tbody>
-</table>
+					</td>
+				</tr>
+			{/each}
+		</tbody>
+	</table>
+</div>
 
 <style>
 	h2 {
@@ -109,8 +112,13 @@
 		font-weight: 500;
 	}
 
+	.table-scroll {
+		overflow-x: auto;
+	}
+
 	table {
 		width: 100%;
+		min-width: 560px;
 		border-collapse: collapse;
 	}
 

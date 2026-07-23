@@ -307,6 +307,9 @@
 	}
 
 	.portrait-action {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
 		color: color-mix(in srgb, var(--cream) 68%, transparent);
 		font-family: var(--font-sans);
 		font-size: 10px;
@@ -370,7 +373,8 @@
 
 	.stats {
 		display: flex;
-		gap: 34px;
+		flex-wrap: wrap;
+		gap: 14px 34px;
 		margin-top: auto;
 		color: color-mix(in srgb, var(--cream) 70%, transparent);
 		font-family: var(--font-sans);
@@ -550,7 +554,7 @@
 		}
 
 		.who {
-			height: 160px;
+			min-height: 160px;
 		}
 
 		h1 {

@@ -237,7 +237,8 @@
 	@media (max-width: 640px) {
 		.on-this-day {
 			top: auto;
-			bottom: 1rem;
+			/* Clear the 52px MobileRail pinned to the viewport bottom. */
+			bottom: calc(1rem + 56px + env(safe-area-inset-bottom, 0px));
 			right: 1rem;
 		}
 

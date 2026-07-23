@@ -962,7 +962,7 @@
 	/* Play/pause the selection, looping with sound. */
 	.clip-play {
 		display: inline-flex;
-		min-height: 40px;
+		min-height: 44px;
 		align-items: center;
 		gap: 8px;
 		padding: 0 16px;
@@ -1017,7 +1017,7 @@
 
 	.clip-btn {
 		min-width: 52px;
-		min-height: 40px;
+		min-height: 44px;
 		padding: 0 12px;
 		background: color-mix(in srgb, var(--cream) 14%, transparent);
 		color: var(--cream);
@@ -1133,7 +1133,7 @@
 		}
 
 		button {
-			min-width: 40px;
+			min-width: 44px;
 		}
 	}
 </style>

@@ -221,12 +221,22 @@
 		display: inline-flex;
 		align-items: baseline;
 		gap: 7px;
+		/* Invisible padding grows the tap target to ~44px without visual bulk. */
+		margin: -14px 0;
+		padding: 14px 0;
 		color: var(--cream);
 		font-family: var(--sans);
 		font-size: 12px;
 		text-decoration: none;
 		opacity: 0.45;
 		transition: opacity 160ms ease;
+	}
+
+	/* Touch has no hover to wake the link — keep it readable from the start. */
+	@media (hover: none) {
+		.download {
+			opacity: 0.8;
+		}
 	}
 
 	.download:hover {
