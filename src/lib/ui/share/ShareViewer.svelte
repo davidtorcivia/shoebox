@@ -146,10 +146,12 @@
 					href={clip.url}
 					download={`${item.title ?? 'clip'}.mp4`}
 				>
-					Download clip (MP4)
+					<span class="download-glyph" aria-hidden="true">↓</span>
+					Download clip
 				</a>
 			{:else if canDownload && item.urls.original}
 				<a class="download" data-testid="share-download" href={item.urls.original} download>
+					<span class="download-glyph" aria-hidden="true">↓</span>
 					Download original
 				</a>
 			{/if}
@@ -204,15 +206,43 @@
 
 	.close,
 	.arrow,
-	.download {
-		font-family: var(--sans);
-	}
-
 	.close,
 	.download {
 		font-size: 12px;
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
+	}
+
+	/* A quiet ghost pill: present when wanted, invisible until then. */
+	.download {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 16px;
+		padding: 8px 16px;
+		border: 1px solid color-mix(in srgb, var(--cream) 25%, transparent);
+		border-radius: 999px;
+		color: var(--cream);
+		font-family: var(--sans);
+		font-size: 11px;
+		text-decoration: none;
+		opacity: 0.55;
+		transition:
+			opacity 160ms ease,
+			background-color 160ms ease,
+			border-color 160ms ease;
+	}
+
+	.download:hover {
+		background: color-mix(in srgb, var(--cream) 12%, transparent);
+		border-color: color-mix(in srgb, var(--cream) 45%, transparent);
+		opacity: 1;
+	}
+
+	.download-glyph {
+		font-size: 13px;
+		line-height: 1;
+		transform: translateY(1px);
 	}
 
 	h1 {
