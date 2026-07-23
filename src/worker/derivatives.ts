@@ -392,8 +392,9 @@ export const spriteHandler: JobHandler = async (payload, ctx) => {
 	}
 };
 
-/** Drop any leftover `playback` derivative from the earlier keep-both policy so a
- * re-run under the replace policy converges on a single H.264 `original`. */
+/** Drop a `playback` derivative that no longer has a reason to exist (the
+ * original is web-safe, e.g. after the source file was re-uploaded), so re-runs
+ * converge instead of serving a stale encode. */
 async function removeStalePlayback(ctx: Parameters<JobHandler>[1], itemId: string): Promise<void> {
 	const rows = ctx.db
 		.select()
@@ -410,10 +411,11 @@ async function removeStalePlayback(ctx: Parameters<JobHandler>[1], itemId: strin
 
 /**
  * Make a video browser-playable when its source codec (HEVC/H.265 and other
- * archival codecs) is not decodable in browsers. Storage policy is **replace**:
- * the H.264 encode overwrites the original in place — no HEVC master is kept and
- * no separate playback derivative is produced. No-op for photos or already
- * web-safe videos.
+ * archival codecs) is not decodable in browsers. Storage policy is **keep-both**:
+ * the camera master stays untouched as `original` (it remains the download and
+ * the source for HLS/clip encodes), and the H.264 encode is written as a
+ * separate `playback` derivative the player falls back to when there is no HLS.
+ * No-op for photos or already web-safe videos.
  */
 export const transcodeHandler: JobHandler = async (payload, ctx) => {
 	const itemId = String(payload.itemId ?? '');
@@ -429,7 +431,7 @@ export const transcodeHandler: JobHandler = async (payload, ctx) => {
 
 	const tmp = await mkdtemp(join(tmpdir(), 'shoebox-transcode-'));
 	try {
-		const outMp4 = join(tmp, 'transcode.mp4');
+		const outMp4 = join(tmp, 'playback.mp4');
 		await runFfmpeg(
 			(cmd) =>
 				cmd.outputOptions([
@@ -440,8 +442,9 @@ export const transcodeHandler: JobHandler = async (payload, ctx) => {
 					'-crf 20',
 					// format=yuv420p forces 8-bit 4:2:0: HEVC sources are frequently 10-bit
 					// (yuv420p10le), which browsers cannot decode even re-wrapped as H.264.
-					// Cap the long edge at 1080p for a sane streaming size; even dimensions
-					// (-2) are mandatory for yuv420p H.264.
+					// Cap the long edge at 1080p — this file is the progressive fallback;
+					// full-resolution playback rides the HLS ladder. Even dimensions (-2)
+					// are mandatory for yuv420p H.264.
 					"-vf scale='min(1920,iw)':-2:flags=lanczos,format=yuv420p",
 					'-c:a aac',
 					'-b:a 160k',
@@ -452,24 +455,20 @@ export const transcodeHandler: JobHandler = async (payload, ctx) => {
 			TRANSCODE_TIMEOUT_MS
 		);
 
-		// Overwrite the original in place with the H.264 encode (replace policy).
+		const playbackKey = `media/${itemId}/playback.mp4`;
 		const data = await readFile(outMp4);
-		await ctx.storage.put(originalKey, new Uint8Array(data), { contentType: 'video/mp4' });
+		await ctx.storage.put(playbackKey, new Uint8Array(data), { contentType: 'video/mp4' });
 
-		// The 1080p cap may have changed the dimensions; re-probe and record them on
-		// both the item and its `original` file row.
-		const after = await probeVideo(join(ctx.mediaPath, originalKey));
-		ctx.db
-			.update(schema.items)
-			.set({ width: after.width, height: after.height })
-			.where(eq(schema.items.id, itemId))
-			.run();
-		ctx.db
-			.update(schema.itemFiles)
-			.set({ mime: 'video/mp4', width: after.width, height: after.height })
-			.where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'original')))
-			.run();
-		await removeStalePlayback(ctx, itemId);
+		const after = await probeVideo(join(ctx.mediaPath, playbackKey));
+		replaceItemFiles(ctx.db, itemId, [
+			{
+				kind: 'playback',
+				storageKey: playbackKey,
+				mime: 'video/mp4',
+				width: after.width,
+				height: after.height
+			}
+		]);
 	} finally {
 		await rm(tmp, { recursive: true, force: true });
 	}
@@ -485,21 +484,31 @@ export interface HlsRung {
 /** Per-rung H.264 bitrate ceilings (kbit/s). Bounds each rung's size so the
  * ladder can't balloon the library — CRF still lets simple footage come in well
  * under these caps. */
-const HLS_MAXRATE_K: Record<number, number> = { 1080: 4500, 720: 2500, 480: 1200 };
+const HLS_MAXRATE_K: Record<number, number> = {
+	2160: 16000,
+	1440: 9000,
+	1080: 4500,
+	720: 2500,
+	480: 1200
+};
 
 /**
  * Storage-conscious HLS ladder. Videos shorter than 720p get none — they stream
  * fine as a single file and a segmented ladder would only multiply bytes. Above
- * that we emit at most three rungs, capped at 1080p and never upscaled, so a 4K
- * source and a 1080p source both top out at a 1080p rung.
+ * that the top rung sits at the source resolution (capped at 4K, never
+ * upscaled), so high-res footage actually plays at full quality where bandwidth
+ * allows instead of being pinned to 1080p.
  */
 export function hlsLadder(srcW: number, srcH: number): HlsRung[] {
 	if (srcW <= 0 || srcH < 720) return [];
-	const capped = Math.min(srcH, 1080);
-	const heights = [1080, 720, 480].filter((h) => h <= capped);
+	const capped = Math.min(srcH, 2160);
+	const heights = [2160, 1440, 1080, 720, 480].filter((h) => h <= capped);
 	// Guarantee a lower rung to actually adapt to (e.g. an exactly-720p source).
 	if (heights.length === 1 && capped > 480) heights.push(480);
-	return [...new Set(heights)].slice(0, 3).map((height) => {
+	// At most four encodes: for a 4K source drop the 1440p intermediate —
+	// 2160/1080/720/480 spans the bandwidth range without a fifth pass.
+	while (heights.length > 4) heights.splice(1, 1);
+	return heights.map((height) => {
 		const width = Math.round((srcW * height) / srcH / 2) * 2;
 		const maxrateK = HLS_MAXRATE_K[height] ?? 1200;
 		return { height, width, maxrateK, bandwidth: maxrateK * 1000 + 128_000 };

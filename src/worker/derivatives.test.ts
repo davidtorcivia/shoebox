@@ -185,13 +185,16 @@ describe('hlsLadder', () => {
 		expect(hlsLadder(0, 0)).toEqual([]);
 	});
 
-	it('emits a full ladder for 1080p and caps 4K at 1080p, never upscaling', () => {
+	it('emits a full ladder for 1080p and a source-resolution top rung for 4K', () => {
 		const hd = hlsLadder(1920, 1080).map((r) => r.height);
 		expect(hd).toEqual([1080, 720, 480]);
+		// 4K plays at 4K: top rung at source res, 1440p dropped to bound encodes.
 		const uhd = hlsLadder(3840, 2160).map((r) => r.height);
-		expect(uhd).toEqual([1080, 720, 480]);
-		// A 4K rung is never produced.
-		expect(hlsLadder(3840, 2160).some((r) => r.height > 1080)).toBe(false);
+		expect(uhd).toEqual([2160, 1080, 720, 480]);
+		const qhd = hlsLadder(2560, 1440).map((r) => r.height);
+		expect(qhd).toEqual([1440, 1080, 720, 480]);
+		// Never upscaled past the source, and 8K still caps at 4K.
+		expect(hlsLadder(7680, 4320).map((r) => r.height)).toEqual([2160, 1080, 720, 480]);
 	});
 
 	it('keeps an exactly-720p source adaptive with a second rung', () => {
@@ -294,7 +297,7 @@ describe('transcodeHandler', () => {
 		expect(rows).toHaveLength(0);
 	}, 20_000);
 
-	it('replaces an HEVC original in place with a playable H.264 mp4', async () => {
+	it('keeps the HEVC master and writes a separate H.264 playback derivative', async () => {
 		const { ctx, itemId } = await setupVideo();
 		// Re-encode the fixture as HEVC in place so the original is a codec browsers
 		// cannot play, reproducing the real-world case.
@@ -311,24 +314,49 @@ describe('transcodeHandler', () => {
 
 		await transcodeHandler({ itemId }, ctx);
 
-		// The original file is overwritten with H.264 (replace policy) — no separate
-		// playback derivative, and the single `original` row now describes the H.264.
-		expect((await probeVideo(originalAbs)).codec).toBe('h264');
+		// The camera master is untouched (keep-both policy); the playable H.264
+		// lives in a separate `playback` row.
+		expect((await probeVideo(originalAbs)).codec).toBe('hevc');
 		const rows = ctx.db
 			.select()
 			.from(schema.itemFiles)
 			.where(eq(schema.itemFiles.itemId, itemId))
 			.all();
-		expect(rows.filter((row) => row.kind === 'playback')).toHaveLength(0);
-		const original = rows.find((row) => row.kind === 'original')!;
-		expect(original.mime).toBe('video/mp4');
-		expect(original.width).toBeGreaterThan(0);
+		const playback = rows.find((row) => row.kind === 'playback')!;
+		expect(playback).toBeDefined();
+		expect(playback.mime).toBe('video/mp4');
+		expect(playback.width).toBeGreaterThan(0);
+		const playbackAbs = join(ctx.mediaPath, playback.storageKey);
+		expect((await probeVideo(playbackAbs)).codec).toBe('h264');
 	}, 30_000);
 
-	it('deletes a stale playback derivative left by the old keep-both policy', async () => {
+	it('replaces a prior playback derivative instead of stacking rows on re-run', async () => {
 		const { ctx, itemId } = await setupVideo();
-		// Simulate a prior keep-both run: a playback row + file exists alongside a
-		// now web-safe (h264) original. The replace policy should clean it up.
+		const key = `media/${itemId}/original.mp4`;
+		const originalAbs = join(ctx.mediaPath, key);
+		const hevcAbs = join(ctx.mediaPath, 'media', itemId, 'hevc.mp4');
+		await runFfmpeg(
+			(cmd) => cmd.outputOptions(['-c:v libx265', '-preset ultrafast', '-crf 30', '-tag:v hvc1']),
+			originalAbs,
+			hevcAbs
+		);
+		await copyFile(hevcAbs, originalAbs);
+
+		await transcodeHandler({ itemId }, ctx);
+		await transcodeHandler({ itemId }, ctx);
+
+		const rows = ctx.db
+			.select()
+			.from(schema.itemFiles)
+			.where(and(eq(schema.itemFiles.itemId, itemId), eq(schema.itemFiles.kind, 'playback')))
+			.all();
+		expect(rows).toHaveLength(1);
+	}, 60_000);
+
+	it('deletes a stale playback derivative when the original is web-safe', async () => {
+		const { ctx, itemId } = await setupVideo();
+		// A playback row + file exists alongside a web-safe (h264) original (e.g.
+		// the source was re-uploaded); the handler should clean it up.
 		const staleKey = `media/${itemId}/playback.mp4`;
 		await ctx.storage.put(staleKey, new Uint8Array([1, 2, 3]), { contentType: 'video/mp4' });
 		ctx.db
