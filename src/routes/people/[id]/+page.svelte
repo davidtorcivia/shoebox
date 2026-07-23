@@ -503,7 +503,9 @@
 	}
 
 	.group-label {
-		width: 82px;
+		/* Wide enough for the longest label ("Grandparents" at 0.2em tracking);
+		 * at 82px it overflowed under the first avatar in the row. */
+		width: 106px;
 		flex: none;
 		color: color-mix(in srgb, var(--cream) 45%, transparent);
 		font-family: var(--font-sans);
