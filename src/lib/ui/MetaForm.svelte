@@ -53,6 +53,7 @@
 </script>
 
 <script lang="ts">
+	import { DAY_PERIODS, periodForTime } from '$lib/domain/day-period';
 	import DatePicker from '$lib/ui/DatePicker.svelte';
 	import { CREAM, DAWN, FONT, INK } from '$lib/ui/tokens';
 	import type { ItemDTO } from '$lib/dto';
@@ -80,12 +81,14 @@
 	let newPersonName = $state('');
 	let personError = $state('');
 	let tagsText = $state('');
-	// Time-of-day for same-day ordering. Prefilled only when the stored capture
-	// timestamp is a real time on the item's day (not a transfer timestamp from
-	// digitization); sent only when the user changes it, so an untouched form
-	// never clobbers a probe-derived value.
-	let timeOfDay = $state('');
-	let timeOfDayInitial = $state('');
+	// Time-of-day for same-day ordering: a coarse day-period (the common case for
+	// scans, whose real clock time is unknown) or an exact time. Prefilled only
+	// when the stored capture timestamp is anchored to the item's day (not a
+	// transfer timestamp from digitization); sent only when the user changes it,
+	// so an untouched form never clobbers a probe-derived value.
+	let timeChoice = $state(''); // '' | day-period id | 'exact'
+	let timeOfDay = $state(''); // "HH:MM" when timeChoice is 'exact'
+	let timeInitial = $state('');
 	let peopleOptions = $derived<PersonOption[]>(people);
 
 	$effect(() => {
@@ -102,9 +105,14 @@
 			item.date.precision === 'day' &&
 			item.date.dateStart != null &&
 			item.captureTime?.startsWith(`${item.date.dateStart}T`);
-		timeOfDay = onDay ? (item.captureTime?.slice(11, 16) ?? '') : '';
-		timeOfDayInitial = timeOfDay;
+		const timePart = onDay ? (item.captureTime?.slice(11) ?? '') : '';
+		const period = timePart ? periodForTime(timePart) : null;
+		timeChoice = period ?? (timePart ? 'exact' : '');
+		timeOfDay = period || !timePart ? '' : timePart.slice(0, 5);
+		timeInitial = `${timeChoice}~${timeOfDay}`;
 	});
+
+	const timeDirty = $derived(`${timeChoice}~${timeOfDay}` !== timeInitial);
 
 	const selectedPeopleDetail = $derived(
 		peopleOptions.filter((person) => selectedPeople.includes(person.id))
@@ -128,8 +136,13 @@
 			date,
 			tapeLabel,
 			location,
-			captureTime:
-				timeOfDay === timeOfDayInitial || date.precision !== 'day' ? undefined : timeOfDay || null,
+			captureTime: !timeDirty
+				? undefined
+				: date.precision !== 'day'
+					? undefined
+					: timeChoice === 'exact'
+						? timeOfDay || null
+						: timeChoice || null,
 			peopleIds: selectedPeople,
 			tagsText
 		})
@@ -209,7 +222,18 @@
 	{#if date.precision === 'day'}
 		<label class="time-field">
 			<span>Time of day (orders same-day items)</span>
-			<input type="time" name="captureTime" bind:value={timeOfDay} />
+			<div class="time-controls">
+				<select name="captureTimeChoice" bind:value={timeChoice}>
+					<option value="">Unknown</option>
+					{#each DAY_PERIODS as period (period.id)}
+						<option value={period.id}>{period.label}</option>
+					{/each}
+					<option value="exact">Exact time…</option>
+				</select>
+				{#if timeChoice === 'exact'}
+					<input type="time" name="captureTime" bind:value={timeOfDay} />
+				{/if}
+			</div>
 		</label>
 	{/if}
 
@@ -316,6 +340,7 @@
 	}
 
 	input,
+	select,
 	textarea {
 		width: 100%;
 		min-height: 44px;
@@ -325,6 +350,15 @@
 		color: var(--cream);
 		background: color-mix(in srgb, var(--cream) 13%, transparent);
 		border: 0;
+	}
+
+	select option {
+		color: var(--ink);
+	}
+
+	.time-controls {
+		display: flex;
+		gap: 0.5rem;
 	}
 
 	textarea {

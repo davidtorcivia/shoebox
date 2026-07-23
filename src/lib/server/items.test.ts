@@ -436,9 +436,17 @@ describe('update/delete/restore', () => {
 		});
 		expect(updated.captureTime).toBe('1994-06-14T15:30:00');
 
+		// Coarse day-periods map to their representative times (the common case
+		// for scans, whose real clock time is unknown).
+		const evening = await updateItem(db, storage, user, 'itm000000001', {
+			date: day,
+			captureTime: 'evening'
+		});
+		expect(evening.captureTime).toBe('1994-06-14T19:00:00');
+
 		// Undefined leaves it untouched; null clears it.
 		const untouched = await updateItem(db, storage, user, 'itm000000001', { title: 'x' });
-		expect(untouched.captureTime).toBe('1994-06-14T15:30:00');
+		expect(untouched.captureTime).toBe('1994-06-14T19:00:00');
 		const cleared = await updateItem(db, storage, user, 'itm000000001', { captureTime: null });
 		expect(cleared.captureTime).toBeNull();
 

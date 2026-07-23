@@ -29,9 +29,11 @@ export function contextFromParams(sp: URLSearchParams): NeighborContext {
 	return ctx;
 }
 
-// Mirrors listItems: sort_date extended with the capture timestamp so prev/next
-// walks same-day items in chronological order, not random-id order.
-const SORT_KEY = sql<string>`coalesce(${items.sortDate} || '|' || coalesce(${items.captureTime}, ''), '9999-12-31')`;
+// Mirrors listItems: sort_date extended with the capture timestamp's TIME
+// component so prev/next walks same-day items in chronological order, not
+// random-id order (time-only so manual day-periods interleave with transfer
+// timestamps whose date part is the digitization date).
+const SORT_KEY = sql<string>`coalesce(${items.sortDate} || '|' || coalesce(substr(${items.captureTime}, 12), ''), '9999-12-31')`;
 
 function csvParam(sp: URLSearchParams, key: string): string[] | undefined {
 	const values = sp
@@ -78,7 +80,9 @@ export async function neighborsOf(
 	if (!current) return { prevId: null, nextId: null };
 
 	const currentKey =
-		current.sortDate == null ? '9999-12-31' : `${current.sortDate}|${current.captureTime ?? ''}`;
+		current.sortDate == null
+			? '9999-12-31'
+			: `${current.sortDate}|${current.captureTime?.slice(11) ?? ''}`;
 	const conditions = baseConditions(ctx);
 
 	const [next] = await db

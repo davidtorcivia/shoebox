@@ -272,7 +272,7 @@ export async function executeSearch(
 	// Same-day tie-break by capture timestamp, mirroring the timeline ordering.
 	// Undated items keep coalescing to '' (last under DESC); the cursor carries
 	// the composite key and splits on the last '~', so the '|' separator is safe.
-	const sortExpr = sql`coalesce(i.sort_date || '|' || coalesce(i.capture_time, ''), '')`;
+	const sortExpr = sql`coalesce(i.sort_date || '|' || coalesce(substr(i.capture_time, 12), ''), '')`;
 	if (opts.cursor) {
 		const sep = opts.cursor.lastIndexOf('~');
 		const cursorSortDate = sep >= 0 ? opts.cursor.slice(0, sep) : '';

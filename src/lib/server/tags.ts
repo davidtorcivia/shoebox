@@ -73,7 +73,7 @@ export async function getTagOverview(
 		    INNER JOIN item_tags it ON it.item_id = i.id
 		    LEFT JOIN item_files f ON f.item_id = i.id AND f.kind = 'thumb_800'
 		    WHERE it.tag_id = ${tag.id} AND i.deleted_at IS NULL AND i.status = 'ready'
-		    ORDER BY coalesce(i.sort_date || '|' || coalesce(i.capture_time, ''), '') DESC, i.id DESC
+		    ORDER BY coalesce(i.sort_date || '|' || coalesce(substr(i.capture_time, 12), ''), '') DESC, i.id DESC
 		    LIMIT 1`
 	)) as Array<{ key: string | null; type: 'photo' | 'video'; posterTime: number | null }>;
 	const cover = coverRows[0];

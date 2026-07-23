@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
+import { periodTime } from '$lib/domain/day-period';
 import {
 	albumItems,
 	albums,
@@ -495,11 +496,14 @@ export async function listItems(
 	}
 
 	// NULL sortDates sort last (undated items), matching the previous in-memory
-	// ordering. The day-level sort_date is extended with the capture timestamp so
-	// same-day items order chronologically (unknown capture time sorts first
-	// within the day). Keyset pagination over (sortKey, id) avoids loading the
+	// ordering. The day-level sort_date is extended with the TIME component of the
+	// capture timestamp so same-day items order chronologically (unknown capture
+	// time sorts first within the day). Only the time-of-day is compared: for
+	// digitized tapes the date part is the transfer date, so a manually-set
+	// day-period ("afternoon") must interleave with transfer times, not sort into
+	// a different era. Keyset pagination over (sortKey, id) avoids loading the
 	// table; the cursor carries the composite key.
-	const sortKey = sql<string>`coalesce(${items.sortDate} || '|' || coalesce(${items.captureTime}, ''), '9999-12-31')`;
+	const sortKey = sql<string>`coalesce(${items.sortDate} || '|' || coalesce(substr(${items.captureTime}, 12), ''), '9999-12-31')`;
 	if (query.cursor) {
 		const cursor = decodeCursor(query.cursor);
 		const cursorKey = cursor.s ?? '9999-12-31';
@@ -521,7 +525,7 @@ export async function listItems(
 	const nextCursor =
 		hasMore && last
 			? encodeCursor({
-					s: last.sortDate == null ? null : `${last.sortDate}|${last.captureTime ?? ''}`,
+					s: last.sortDate == null ? null : `${last.sortDate}|${last.captureTime?.slice(11) ?? ''}`,
 					id: last.id
 				})
 			: null;
@@ -553,16 +557,24 @@ export async function updateItem(
 	if (!isValidItemDate(nextDate)) throw error(400, 'invalid date');
 	const afterYear = yearOf(nextDate);
 
-	// Manual time-of-day: anchored to the (possibly just-edited) day. Probe-derived
-	// values are full transfer timestamps, so a manual value simply replaces them.
+	// Manual time-of-day: an exact "HH:MM[:SS]" or a day-period token ("morning",
+	// "night", ...) mapped to its representative time — scans rarely have a real
+	// clock time. Anchored to the (possibly just-edited) day; a manual value
+	// simply replaces any probe-derived transfer timestamp.
 	let captureTime = row.captureTime;
 	if (patch.captureTime === null) captureTime = null;
 	else if (patch.captureTime !== undefined) {
-		if (!/^\d{2}:\d{2}(:\d{2})?$/.test(patch.captureTime)) throw error(400, 'invalid capture time');
+		const time =
+			periodTime(patch.captureTime) ??
+			(/^\d{2}:\d{2}(:\d{2})?$/.test(patch.captureTime)
+				? patch.captureTime.length === 5
+					? `${patch.captureTime}:00`
+					: patch.captureTime
+				: null);
+		if (!time) throw error(400, 'invalid capture time');
 		if (nextDate.precision !== 'day' || !nextDate.dateStart) {
 			throw error(400, 'capture time requires a day-precision date');
 		}
-		const time = patch.captureTime.length === 5 ? `${patch.captureTime}:00` : patch.captureTime;
 		captureTime = `${nextDate.dateStart}T${time}`;
 	}
 
