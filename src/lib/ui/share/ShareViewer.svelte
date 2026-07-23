@@ -136,26 +136,28 @@
 					Clip · {formatTimecode(clipRange.start)} – {formatTimecode(clipRange.end)}
 				</p>
 			{/if}
-			<p class="media-date">{item.displayDate}</p>
+			<div class="meta-row">
+				<p class="media-date">{item.displayDate}</p>
+				<!-- eslint-disable svelte/no-navigation-without-resolve -- media URLs, not app routes -->
+				{#if canDownloadClip && clip}
+					<a
+						class="download"
+						data-testid="share-download-mp4"
+						href={clip.url}
+						download={`${item.title ?? 'clip'}.mp4`}
+					>
+						<span class="download-glyph" aria-hidden="true">↓</span>
+						Download clip
+					</a>
+				{:else if canDownload && item.urls.original}
+					<a class="download" data-testid="share-download" href={item.urls.original} download>
+						<span class="download-glyph" aria-hidden="true">↓</span>
+						Download
+					</a>
+				{/if}
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+			</div>
 			{#if item.description}<p class="story">{item.description}</p>{/if}
-			<!-- eslint-disable svelte/no-navigation-without-resolve -- media URLs, not app routes -->
-			{#if canDownloadClip && clip}
-				<a
-					class="download"
-					data-testid="share-download-mp4"
-					href={clip.url}
-					download={`${item.title ?? 'clip'}.mp4`}
-				>
-					<span class="download-glyph" aria-hidden="true">↓</span>
-					Download clip
-				</a>
-			{:else if canDownload && item.urls.original}
-				<a class="download" data-testid="share-download" href={item.urls.original} download>
-					<span class="download-glyph" aria-hidden="true">↓</span>
-					Download original
-				</a>
-			{/if}
-			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 		</div>
 		{#if !single}
 			<button
@@ -206,43 +208,39 @@
 
 	.close,
 	.arrow,
-	.close,
 	.download {
 		font-size: 12px;
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 	}
 
-	/* A quiet ghost pill: present when wanted, invisible until then. */
+	/* Typographically part of the meta line: the download mirrors the date's
+	 * weight on the opposite edge — no box, no fill, just a quiet word that
+	 * wakes on hover. */
 	.download {
 		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		margin-top: 16px;
-		padding: 8px 16px;
-		border: 1px solid color-mix(in srgb, var(--cream) 25%, transparent);
-		border-radius: 999px;
+		align-items: baseline;
+		gap: 7px;
 		color: var(--cream);
 		font-family: var(--sans);
-		font-size: 11px;
+		font-size: 12px;
 		text-decoration: none;
-		opacity: 0.55;
-		transition:
-			opacity 160ms ease,
-			background-color 160ms ease,
-			border-color 160ms ease;
+		opacity: 0.45;
+		transition: opacity 160ms ease;
 	}
 
 	.download:hover {
-		background: color-mix(in srgb, var(--cream) 12%, transparent);
-		border-color: color-mix(in srgb, var(--cream) 45%, transparent);
-		opacity: 1;
+		opacity: 0.95;
+	}
+
+	.download:hover .download-glyph {
+		transform: translateY(2px);
 	}
 
 	.download-glyph {
 		font-size: 13px;
 		line-height: 1;
-		transform: translateY(1px);
+		transition: transform 160ms ease;
 	}
 
 	h1 {
@@ -306,8 +304,17 @@
 		height: auto;
 	}
 
+	.meta-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 10px 18px;
+		margin-top: 16px;
+	}
+
 	.media-date {
-		margin: 16px 0 0;
+		margin: 0;
 		font-family: var(--sans);
 		font-size: 12px;
 		letter-spacing: 0.14em;
@@ -330,17 +337,6 @@
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		color: var(--dawn);
-	}
-
-	.download {
-		display: inline-block;
-		min-height: 48px;
-		margin-top: 18px;
-		padding: 0 18px;
-		background: var(--cream);
-		color: var(--ink);
-		line-height: 48px;
-		text-decoration: none;
 	}
 
 	@media (max-width: 760px) {
