@@ -326,6 +326,35 @@ describe('listItems', () => {
 		expect(page2.nextCursor).toBeNull();
 	});
 
+	it('orders same-day items by capture time, unknown time first, cursor-stable', async () => {
+		await seedSix();
+		// itm_a2 and itm_a3 share 1994-06-14; give the lexicographically-later id
+		// the EARLIER capture time so the tie-break visibly overrides id order.
+		await db
+			.update(itemsTable)
+			.set({ captureTime: '2026-07-08T09:00:00' })
+			.where(eq(itemsTable.id, 'itm_a3'));
+		await db
+			.update(itemsTable)
+			.set({ captureTime: '2026-07-08T15:30:00' })
+			.where(eq(itemsTable.id, 'itm_a2'));
+
+		const all = await listItems(db, storage, {});
+		expect(all.items.map((item) => item.id)).toEqual(['itm_a1', 'itm_a3', 'itm_a2', 'itm_a4']);
+
+		// The keyset cursor carries the composite key: paginating between the two
+		// same-day items must not skip or repeat.
+		const page1 = await listItems(db, storage, { limit: 2 });
+		expect(page1.items.map((item) => item.id)).toEqual(['itm_a1', 'itm_a3']);
+		const page2 = await listItems(db, storage, { limit: 2, cursor: page1.nextCursor! });
+		expect(page2.items.map((item) => item.id)).toEqual(['itm_a2', 'itm_a4']);
+
+		// An item with no capture time sorts before timed same-day siblings.
+		await db.update(itemsTable).set({ captureTime: null }).where(eq(itemsTable.id, 'itm_a2'));
+		const rerun = await listItems(db, storage, {});
+		expect(rerun.items.map((item) => item.id)).toEqual(['itm_a1', 'itm_a2', 'itm_a3', 'itm_a4']);
+	});
+
 	it('filters by year, month, type, status, people, tags, and q', async () => {
 		const { mom, dad } = await seedSix();
 		expect((await listItems(db, storage, { year: 1994 })).items).toHaveLength(3);
@@ -394,6 +423,35 @@ describe('update/delete/restore', () => {
 		expect(updated.tags.map((tag) => tag.name)).toEqual(['new']);
 		// Recompute leaves only the years that still have approved items.
 		expect(await db.select().from(yearCounts)).toEqual([{ year: 1995, type: 'video', count: 1 }]);
+	});
+
+	it('sets, anchors, and clears the manual capture time', async () => {
+		await createItem(db, storage, queue, baseInput());
+		const user = await seedUser(db, { id: 'u_owner', username: 'owner', role: 'owner' });
+		const day = { dateStart: '1994-06-14', dateEnd: '1994-06-14', precision: 'day' as const };
+
+		const updated = await updateItem(db, storage, user, 'itm000000001', {
+			date: day,
+			captureTime: '15:30'
+		});
+		expect(updated.captureTime).toBe('1994-06-14T15:30:00');
+
+		// Undefined leaves it untouched; null clears it.
+		const untouched = await updateItem(db, storage, user, 'itm000000001', { title: 'x' });
+		expect(untouched.captureTime).toBe('1994-06-14T15:30:00');
+		const cleared = await updateItem(db, storage, user, 'itm000000001', { captureTime: null });
+		expect(cleared.captureTime).toBeNull();
+
+		// Time-of-day only makes sense against a single day.
+		await expect(
+			updateItem(db, storage, user, 'itm000000001', {
+				date: { dateStart: '1994-01-01', dateEnd: '1994-12-31', precision: 'year' },
+				captureTime: '10:00'
+			})
+		).rejects.toMatchObject({ status: 400 });
+		await expect(
+			updateItem(db, storage, user, 'itm000000001', { date: day, captureTime: 'noonish' })
+		).rejects.toMatchObject({ status: 400 });
 	});
 
 	it('lets uploaders edit only their own items', async () => {

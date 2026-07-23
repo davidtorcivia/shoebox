@@ -48,6 +48,9 @@
 	let deleteState = $state('');
 	// svelte-ignore state_referenced_locally
 	let facesVisible = $state(data.item.type === 'photo' && data.faces.length > 0);
+	// svelte-ignore state_referenced_locally
+	let suggestedPeople = $state(data.suggestedPeople);
+	let suggestionBusy = $state<string | null>(null);
 
 	const year = $derived(yearOf(item.date));
 	const roomYear = $derived(year ?? data.backYear ?? new Date().getFullYear());
@@ -159,6 +162,23 @@
 		const body = (await res.json()) as { item: ItemDTO };
 		item = body.item;
 		saveState = 'Saved';
+	}
+
+	async function actOnSuggestion(personId: string, action: 'confirm' | 'dismiss') {
+		suggestionBusy = personId;
+		const res = await fetch(`/api/items/${item.id}/faces`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ action, personId })
+		});
+		suggestionBusy = null;
+		if (!res.ok) return;
+		suggestedPeople = suggestedPeople.filter((s) => s.person.id !== personId);
+		if (action === 'confirm') {
+			// The person is now tagged; refresh the DTO so the people row updates.
+			const refreshed = await fetch(`/api/items/${item.id}`);
+			if (refreshed.ok) item = ((await refreshed.json()) as { item: ItemDTO }).item;
+		}
 	}
 
 	async function toggleFavorite() {
@@ -323,6 +343,34 @@
 								>
 							{/each}
 						</span>
+					</div>
+				{/if}
+
+				{#if data.canConfirmFaces && suggestedPeople.length > 0}
+					<div class="faces-note face-suggestions" data-testid="face-suggestions">
+						<span class="faces-note-label">Might be here</span>
+						{#each suggestedPeople as suggestion (suggestion.person.id)}
+							<span class="suggestion" style:--accent={suggestion.person.accentColor}>
+								<span class="suggestion-name">{suggestion.person.name}?</span>
+								<button
+									type="button"
+									data-testid="suggestion-confirm"
+									disabled={suggestionBusy === suggestion.person.id}
+									onclick={() => actOnSuggestion(suggestion.person.id, 'confirm')}
+								>
+									Add
+								</button>
+								<button
+									type="button"
+									class="quiet"
+									data-testid="suggestion-dismiss"
+									disabled={suggestionBusy === suggestion.person.id}
+									onclick={() => actOnSuggestion(suggestion.person.id, 'dismiss')}
+								>
+									Not them
+								</button>
+							</span>
+						{/each}
 					</div>
 				{/if}
 
@@ -639,6 +687,40 @@
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		opacity: 0.7;
+	}
+
+	.suggestion {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		justify-self: start;
+		padding: 0.3rem 0.6rem;
+		border-left: 2px solid var(--accent, currentColor);
+		background: color-mix(in srgb, currentColor 7%, transparent);
+		font-family: var(--font-sans);
+		font-size: 0.82rem;
+	}
+
+	.suggestion button {
+		border: 0;
+		padding: 0.25rem 0.55rem;
+		background: color-mix(in srgb, currentColor 14%, transparent);
+		color: inherit;
+		font-family: var(--font-sans);
+		font-size: 0.72rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		cursor: pointer;
+	}
+
+	.suggestion button.quiet {
+		background: transparent;
+		opacity: 0.65;
+	}
+
+	.suggestion button:disabled {
+		cursor: wait;
+		opacity: 0.5;
 	}
 
 	.faces-note-people {

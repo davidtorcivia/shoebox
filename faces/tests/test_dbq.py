@@ -175,6 +175,21 @@ def test_apply_person_suggestions_stamps_and_clears(db):
     assert row["suggested_person_id"] is None
 
 
+def test_apply_person_suggestions_honors_dismissals(db):
+    add_face(db, "a", item_id="it1", cluster_id="c1")
+    add_face(db, "b", item_id="it2", cluster_id="c1")
+    db.execute("INSERT INTO face_suggestion_dismissals (item_id, person_id) VALUES ('it1', 'p9')")
+
+    dbq.apply_person_suggestions(db, {"c1": "p9"})
+
+    rows = {
+        r["id"]: r["suggested_person_id"]
+        for r in db.execute("SELECT id, suggested_person_id FROM faces").fetchall()
+    }
+    # The dismissed (item, person) pair stays unstamped; other items still get it.
+    assert rows == {"a": None, "b": "p9"}
+
+
 def test_apply_cluster_assignments(db):
     add_face(db, "a")
     add_face(db, "b", cluster_id="stale")

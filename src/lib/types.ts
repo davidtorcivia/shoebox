@@ -11,6 +11,9 @@ export interface ItemDTO {
 	shortDate: string;
 	duration: number | null;
 	posterTime: number | null;
+	/** "YYYY-MM-DDTHH:MM:SS" capture timestamp used for intra-day ordering
+	 * (probed from metadata or set via the edit form); null = unknown. */
+	captureTime: string | null;
 	width: number;
 	height: number;
 	status: 'processing' | 'needs_review' | 'ready';

@@ -5,7 +5,7 @@ import { items } from '$lib/server/db/schema';
 import { isFavorited } from '$lib/server/favorites';
 import { listReactions } from '$lib/server/reactions';
 import { listVoiceNotes } from '$lib/server/voice';
-import { confirmedFacesForItem } from '$lib/server/faces';
+import { confirmedFacesForItem, suggestedPeopleForItem } from '$lib/server/faces';
 import { listPeople } from '$lib/server/people';
 import { requireRole, ROLE_RANK } from '$lib/server/roles';
 import type { ItemDTO } from '$lib/dto';
@@ -44,6 +44,11 @@ export const load: PageServerLoad = async ({ fetch, locals, params, url }) => {
 		canShare: ROLE_RANK[me.role] >= ROLE_RANK.editor,
 		facesEnabled,
 		faces: facesEnabled ? await confirmedFacesForItem(locals.db, item.id) : [],
+		suggestedPeople:
+			facesEnabled && ROLE_RANK[me.role] >= ROLE_RANK.editor
+				? await suggestedPeopleForItem(locals.db, item.id)
+				: [],
+		canConfirmFaces: ROLE_RANK[me.role] >= ROLE_RANK.editor,
 		favorited: await isFavorited(locals.db, me.id, item.id),
 		reactions: await listReactions(locals.db, item.id, me.id),
 		voiceNotes: await listVoiceNotes(locals.db, locals.platform.storage, item.id, me.id),

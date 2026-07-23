@@ -171,9 +171,11 @@ def apply_person_suggestions(conn: sqlite3.Connection, by_cluster: dict[str, str
     """Stamp each pending face with its cluster's best confirmed-person match.
 
     Suggestions are recomputed wholesale every run: stale ones are cleared first
-    so a cluster that drifted away from a person stops advertising them. Tolerant
-    of the column not existing yet (app migration not applied), since the Python
-    worker can restart ahead of the app after a joint deploy.
+    so a cluster that drifted away from a person stops advertising them. Pairs
+    the admin dismissed ("not them", face_suggestion_dismissals) are never
+    re-stamped. Tolerant of the column/table not existing yet (app migration not
+    applied), since the Python worker can restart ahead of the app after a joint
+    deploy.
     """
     try:
         conn.execute("BEGIN IMMEDIATE")
@@ -183,13 +185,16 @@ def apply_person_suggestions(conn: sqlite3.Connection, by_cluster: dict[str, str
         )
         for cluster_id, person_id in by_cluster.items():
             conn.execute(
-                "UPDATE faces SET suggested_person_id = ? WHERE cluster_id = ? AND status = 'pending'",
-                (person_id, cluster_id),
+                "UPDATE faces SET suggested_person_id = ? "
+                "WHERE cluster_id = ? AND status = 'pending' "
+                "AND NOT EXISTS (SELECT 1 FROM face_suggestion_dismissals d "
+                "WHERE d.item_id = faces.item_id AND d.person_id = ?)",
+                (person_id, cluster_id, person_id),
             )
         conn.execute("COMMIT")
     except sqlite3.OperationalError as exc:
         conn.execute("ROLLBACK")
-        if "suggested_person_id" in str(exc):
+        if "suggested_person_id" in str(exc) or "face_suggestion_dismissals" in str(exc):
             print(f"[faces] skipping person suggestions: {exc}", flush=True)
             return
         raise

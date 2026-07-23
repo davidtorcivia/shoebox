@@ -318,6 +318,7 @@ export async function buildItemDTOs(
 			shortDate: shortDate(date),
 			duration: row.duration,
 			posterTime: row.posterTime,
+			captureTime: row.captureTime,
 			width: row.width,
 			height: row.height,
 			status: row.status,
@@ -420,6 +421,9 @@ export interface UpdateItemInput {
 	tapeLabel?: string | null;
 	location?: string | null;
 	date?: ItemDate;
+	/** Time of day "HH:MM" or "HH:MM:SS" for intra-day ordering (day-precision
+	 * items only). Undefined = leave unchanged; null = clear. */
+	captureTime?: string | null;
 	people?: string[];
 	tags?: string[];
 }
@@ -491,8 +495,11 @@ export async function listItems(
 	}
 
 	// NULL sortDates sort last (undated items), matching the previous in-memory
-	// ordering. Keyset pagination over (sortKey, id) avoids loading the table.
-	const sortKey = sql<string>`coalesce(${items.sortDate}, '9999-12-31')`;
+	// ordering. The day-level sort_date is extended with the capture timestamp so
+	// same-day items order chronologically (unknown capture time sorts first
+	// within the day). Keyset pagination over (sortKey, id) avoids loading the
+	// table; the cursor carries the composite key.
+	const sortKey = sql<string>`coalesce(${items.sortDate} || '|' || coalesce(${items.captureTime}, ''), '9999-12-31')`;
 	if (query.cursor) {
 		const cursor = decodeCursor(query.cursor);
 		const cursorKey = cursor.s ?? '9999-12-31';
@@ -511,7 +518,13 @@ export async function listItems(
 	const page = rows.slice(0, limit);
 	const hasMore = rows.length > limit;
 	const last = page.at(-1);
-	const nextCursor = hasMore && last ? encodeCursor({ s: last.sortDate, id: last.id }) : null;
+	const nextCursor =
+		hasMore && last
+			? encodeCursor({
+					s: last.sortDate == null ? null : `${last.sortDate}|${last.captureTime ?? ''}`,
+					id: last.id
+				})
+			: null;
 
 	return { items: await buildItemDTOs(db, storage, page), nextCursor };
 }
@@ -540,6 +553,19 @@ export async function updateItem(
 	if (!isValidItemDate(nextDate)) throw error(400, 'invalid date');
 	const afterYear = yearOf(nextDate);
 
+	// Manual time-of-day: anchored to the (possibly just-edited) day. Probe-derived
+	// values are full transfer timestamps, so a manual value simply replaces them.
+	let captureTime = row.captureTime;
+	if (patch.captureTime === null) captureTime = null;
+	else if (patch.captureTime !== undefined) {
+		if (!/^\d{2}:\d{2}(:\d{2})?$/.test(patch.captureTime)) throw error(400, 'invalid capture time');
+		if (nextDate.precision !== 'day' || !nextDate.dateStart) {
+			throw error(400, 'capture time requires a day-precision date');
+		}
+		const time = patch.captureTime.length === 5 ? `${patch.captureTime}:00` : patch.captureTime;
+		captureTime = `${nextDate.dateStart}T${time}`;
+	}
+
 	await db
 		.update(items)
 		.set({
@@ -550,7 +576,8 @@ export async function updateItem(
 			dateStart: nextDate.dateStart,
 			dateEnd: nextDate.dateEnd,
 			datePrecision: nextDate.precision,
-			sortDate: computeSortDate(nextDate)
+			sortDate: computeSortDate(nextDate),
+			captureTime
 			// Status is left to the arrivals approval flow; editing metadata never
 			// silently pushes an unapproved item into the timeline.
 		})

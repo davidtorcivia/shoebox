@@ -29,7 +29,9 @@ export function contextFromParams(sp: URLSearchParams): NeighborContext {
 	return ctx;
 }
 
-const SORT_KEY = sql<string>`coalesce(${items.sortDate}, '9999-12-31')`;
+// Mirrors listItems: sort_date extended with the capture timestamp so prev/next
+// walks same-day items in chronological order, not random-id order.
+const SORT_KEY = sql<string>`coalesce(${items.sortDate} || '|' || coalesce(${items.captureTime}, ''), '9999-12-31')`;
 
 function csvParam(sp: URLSearchParams, key: string): string[] | undefined {
 	const values = sp
@@ -69,13 +71,14 @@ export async function neighborsOf(
 	ctx: NeighborContext
 ): Promise<{ prevId: string | null; nextId: string | null }> {
 	const [current] = await db
-		.select({ id: items.id, sortDate: items.sortDate })
+		.select({ id: items.id, sortDate: items.sortDate, captureTime: items.captureTime })
 		.from(items)
 		.where(eq(items.id, itemId))
 		.limit(1);
 	if (!current) return { prevId: null, nextId: null };
 
-	const currentKey = current.sortDate ?? '9999-12-31';
+	const currentKey =
+		current.sortDate == null ? '9999-12-31' : `${current.sortDate}|${current.captureTime ?? ''}`;
 	const conditions = baseConditions(ctx);
 
 	const [next] = await db

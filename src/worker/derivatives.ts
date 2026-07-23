@@ -27,6 +27,8 @@ export interface VideoProbe {
 	width: number;
 	height: number;
 	creationTime: string | null;
+	/** Full "YYYY-MM-DDTHH:MM:SS" UTC creation timestamp, when the tag is present. */
+	creationTimestamp: string | null;
 	/** ffprobe `codec_name` of the first video stream, lowercased (e.g. 'hevc'). */
 	codec: string | null;
 }
@@ -57,12 +59,17 @@ interface DerivedRow {
 }
 
 export function normalizeCreationTime(raw: string | null): string | null {
+	return normalizeCreationTimestamp(raw)?.slice(0, 10) ?? null;
+}
+
+/** Full "YYYY-MM-DDTHH:MM:SS" UTC timestamp from a creation_time tag, or null. */
+export function normalizeCreationTimestamp(raw: string | null): string | null {
 	if (!raw) return null;
 	const date = new Date(raw);
 	if (Number.isNaN(date.getTime())) return null;
 	const year = date.getUTCFullYear();
 	if (year <= 1970 || year > 2100) return null;
-	return date.toISOString().slice(0, 10);
+	return date.toISOString().slice(0, 19);
 }
 
 export function probeVideo(filePath: string, timeoutMs = FFPROBE_TIMEOUT_MS): Promise<VideoProbe> {
@@ -95,6 +102,9 @@ export function probeVideo(filePath: string, timeoutMs = FFPROBE_TIMEOUT_MS): Pr
 			width: stream.width ?? 0,
 			height: stream.height ?? 0,
 			creationTime: normalizeCreationTime(
+				(data.format.tags?.creation_time as string | undefined) ?? null
+			),
+			creationTimestamp: normalizeCreationTimestamp(
 				(data.format.tags?.creation_time as string | undefined) ?? null
 			),
 			codec: stream.codec_name ? stream.codec_name.toLowerCase() : null
@@ -298,6 +308,11 @@ export const derivativesHandler: JobHandler = async (payload, ctx) => {
 			) {
 				updates.width = probe.width;
 				updates.height = probe.height;
+			}
+			// Intra-day ordering key. Only fill when absent so a manually set time
+			// (edit form) survives derivative re-runs.
+			if (probe.creationTimestamp && item.captureTime == null) {
+				updates.captureTime = probe.creationTimestamp;
 			}
 			if (Object.keys(updates).length > 0) {
 				ctx.db.update(schema.items).set(updates).where(eq(schema.items.id, itemId)).run();

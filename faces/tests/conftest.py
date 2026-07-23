@@ -32,6 +32,10 @@ CREATE TABLE faces (
   embedding BLOB NOT NULL, cluster_id TEXT, person_id TEXT,
   suggested_person_id TEXT, status TEXT NOT NULL DEFAULT 'pending'
 );
+CREATE TABLE face_suggestion_dismissals (
+  item_id TEXT NOT NULL, person_id TEXT NOT NULL,
+  PRIMARY KEY(item_id, person_id)
+);
 CREATE TABLE jobs (
   id TEXT PRIMARY KEY, kind TEXT NOT NULL, payload TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0,

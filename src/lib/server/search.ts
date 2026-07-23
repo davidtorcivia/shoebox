@@ -269,24 +269,28 @@ export async function executeSearch(
 	if (built.impossible) return { itemIds: [], nextCursor: null, warnings };
 
 	const conds = [...built.conds];
+	// Same-day tie-break by capture timestamp, mirroring the timeline ordering.
+	// Undated items keep coalescing to '' (last under DESC); the cursor carries
+	// the composite key and splits on the last '~', so the '|' separator is safe.
+	const sortExpr = sql`coalesce(i.sort_date || '|' || coalesce(i.capture_time, ''), '')`;
 	if (opts.cursor) {
 		const sep = opts.cursor.lastIndexOf('~');
 		const cursorSortDate = sep >= 0 ? opts.cursor.slice(0, sep) : '';
 		const cursorId = sep >= 0 ? opts.cursor.slice(sep + 1) : opts.cursor;
 		conds.push(
 			sql`(
-				coalesce(i.sort_date, '') < ${cursorSortDate}
-				OR (coalesce(i.sort_date, '') = ${cursorSortDate} AND i.id < ${cursorId})
+				${sortExpr} < ${cursorSortDate}
+				OR (${sortExpr} = ${cursorSortDate} AND i.id < ${cursorId})
 			)`
 		);
 	}
 
 	const where = sql.join(conds, sql` AND `);
 	const rows = (await db.all(
-		sql`SELECT i.id AS id, coalesce(i.sort_date, '') AS sortDate
+		sql`SELECT i.id AS id, ${sortExpr} AS sortDate
 		    FROM items i
 		    WHERE ${where}
-		    ORDER BY coalesce(i.sort_date, '') DESC, i.id DESC
+		    ORDER BY ${sortExpr} DESC, i.id DESC
 		    LIMIT ${limit + 1}`
 	)) as Array<{ id: string; sortDate: string }>;
 

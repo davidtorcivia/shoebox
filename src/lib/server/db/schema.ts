@@ -62,6 +62,11 @@ export const items = sqliteTable(
 			.notNull()
 			.default('unknown'),
 		sortDate: text('sort_date'),
+		// Full "YYYY-MM-DDTHH:MM:SS" capture timestamp (probed creation_time, or a
+		// manual edit-form time). Intra-day chronological tie-break; sort_date stays
+		// date-only. For digitized tapes this is the transfer timestamp, which still
+		// preserves relative capture order within a day.
+		captureTime: text('capture_time'),
 		duration: real('duration'),
 		// Chosen poster frame timestamp (seconds) for videos; null = auto (10% in).
 		posterTime: real('poster_time'),
@@ -281,6 +286,18 @@ export const faces = sqliteTable(
 			.default('pending')
 	},
 	(t) => [index('faces_item').on(t.itemId)]
+);
+
+// "Not them" dismissals of per-item person suggestions. The faces worker
+// recomputes suggestions on every scan and skips pairs listed here; confirming
+// the person removes the row.
+export const faceSuggestionDismissals = sqliteTable(
+	'face_suggestion_dismissals',
+	{
+		itemId: text('item_id').notNull(),
+		personId: text('person_id').notNull()
+	},
+	(t) => [primaryKey({ columns: [t.itemId, t.personId] })]
 );
 
 export const jobs = sqliteTable(

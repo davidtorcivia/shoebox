@@ -13,6 +13,7 @@ const item: ItemDTO = {
 	shortDate: 'Jun 14',
 	duration: 42,
 	posterTime: null,
+	captureTime: null,
 	width: 192,
 	height: 108,
 	status: 'ready',

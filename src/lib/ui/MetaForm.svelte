@@ -7,6 +7,8 @@
 		dateStart: string | null;
 		dateEnd: string | null;
 		datePrecision: ItemDate['precision'];
+		/** Omitted = unchanged; null = clear; "HH:MM" = set time-of-day. */
+		captureTime?: string | null;
 		tapeLabel: string | null;
 		location: string | null;
 		people: string[];
@@ -19,6 +21,7 @@
 		date: ItemDate;
 		tapeLabel: string;
 		location: string;
+		captureTime?: string | null;
 		peopleText?: string;
 		peopleIds?: string[];
 		tagsText: string;
@@ -29,6 +32,7 @@
 			dateStart: input.date.dateStart,
 			dateEnd: input.date.dateEnd,
 			datePrecision: input.date.precision,
+			...(input.captureTime === undefined ? {} : { captureTime: input.captureTime }),
 			tapeLabel: input.tapeLabel.trim() || null,
 			location: input.location.trim() || null,
 			people: input.peopleIds ? [...new Set(input.peopleIds)] : csv(input.peopleText ?? ''),
@@ -76,6 +80,12 @@
 	let newPersonName = $state('');
 	let personError = $state('');
 	let tagsText = $state('');
+	// Time-of-day for same-day ordering. Prefilled only when the stored capture
+	// timestamp is a real time on the item's day (not a transfer timestamp from
+	// digitization); sent only when the user changes it, so an untouched form
+	// never clobbers a probe-derived value.
+	let timeOfDay = $state('');
+	let timeOfDayInitial = $state('');
 	let peopleOptions = $derived<PersonOption[]>(people);
 
 	$effect(() => {
@@ -88,6 +98,12 @@
 		date = item.date;
 		selectedPeople = item.people.map((person) => person.id);
 		tagsText = item.tags.map((tag) => tag.name).join(', ');
+		const onDay =
+			item.date.precision === 'day' &&
+			item.date.dateStart != null &&
+			item.captureTime?.startsWith(`${item.date.dateStart}T`);
+		timeOfDay = onDay ? (item.captureTime?.slice(11, 16) ?? '') : '';
+		timeOfDayInitial = timeOfDay;
 	});
 
 	const selectedPeopleDetail = $derived(
@@ -112,6 +128,8 @@
 			date,
 			tapeLabel,
 			location,
+			captureTime:
+				timeOfDay === timeOfDayInitial || date.precision !== 'day' ? undefined : timeOfDay || null,
 			peopleIds: selectedPeople,
 			tagsText
 		})
@@ -187,6 +205,13 @@
 	<input type="hidden" name="dateStart" value={date.dateStart ?? ''} />
 	<input type="hidden" name="dateEnd" value={date.dateEnd ?? ''} />
 	<input type="hidden" name="datePrecision" value={date.precision} />
+
+	{#if date.precision === 'day'}
+		<label class="time-field">
+			<span>Time of day (orders same-day items)</span>
+			<input type="time" name="captureTime" bind:value={timeOfDay} />
+		</label>
+	{/if}
 
 	<div class="people-field">
 		<div class="label-row">

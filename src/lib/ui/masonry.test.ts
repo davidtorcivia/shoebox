@@ -23,6 +23,7 @@ function item(
 		shortDate: 'Jun 14',
 		duration: null,
 		posterTime: null,
+		captureTime: null,
 		width: 200,
 		height: 100,
 		status: 'ready',

@@ -92,6 +92,20 @@
       "when": 1784950000000,
       "tag": "0012_face-suggested-person",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1784960000000,
+      "tag": "0013_capture-time",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1784960001000,
+      "tag": "0014_face-suggestion-dismissals",
+      "breakpoints": true
     }
   ]
 }

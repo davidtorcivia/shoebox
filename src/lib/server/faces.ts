@@ -1,8 +1,15 @@
 import { error } from '@sveltejs/kit';
-import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, notInArray } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import type { Db } from '$lib/server/db';
-import { faces, itemFiles, itemPeople, items, people } from '$lib/server/db/schema';
+import {
+	faces,
+	faceSuggestionDismissals,
+	itemFiles,
+	itemPeople,
+	items,
+	people
+} from '$lib/server/db/schema';
 import type { StorageAdapter } from '$lib/server/platform/types';
 import { reindexItem } from '$lib/server/search';
 
@@ -311,6 +318,115 @@ export async function updateFaceBox(
 		.set({ box: boxJson(box) })
 		.where(eq(faces.id, faceId));
 	await (opts.reindex ?? reindexItem)(db, face.itemId);
+}
+
+export type SuggestedPerson = {
+	person: { id: string; slug: string; name: string; accentColor: string };
+	faceIds: string[];
+	count: number;
+};
+
+/**
+ * People the face worker thinks appear in this item but who are not yet tagged
+ * on it — the item page renders these as one-click "add person" chips.
+ */
+export async function suggestedPeopleForItem(db: Db, itemId: string): Promise<SuggestedPerson[]> {
+	const tagged = (
+		await db
+			.select({ personId: itemPeople.personId })
+			.from(itemPeople)
+			.where(eq(itemPeople.itemId, itemId))
+	).map((row) => row.personId);
+
+	const rows = await db
+		.select({
+			faceId: faces.id,
+			personId: people.id,
+			slug: people.slug,
+			name: people.name,
+			accentColor: people.accentColor
+		})
+		.from(faces)
+		.innerJoin(people, eq(people.id, faces.suggestedPersonId))
+		.where(
+			and(
+				eq(faces.itemId, itemId),
+				eq(faces.status, 'pending'),
+				tagged.length > 0 ? notInArray(faces.suggestedPersonId, tagged) : undefined
+			)
+		);
+
+	const byPerson = new Map<string, SuggestedPerson>();
+	for (const row of rows) {
+		const entry = byPerson.get(row.personId) ?? {
+			person: { id: row.personId, slug: row.slug, name: row.name, accentColor: row.accentColor },
+			faceIds: [],
+			count: 0
+		};
+		entry.faceIds.push(row.faceId);
+		entry.count = entry.faceIds.length;
+		byPerson.set(row.personId, entry);
+	}
+	return [...byPerson.values()].sort(
+		(a, b) => b.count - a.count || a.person.name.localeCompare(b.person.name)
+	);
+}
+
+/** Confirm a suggested person on an item: their suggested faces become confirmed
+ * and the person is tagged on the item (via assignFaces). */
+export async function confirmSuggestedPerson(
+	db: Db,
+	itemId: string,
+	personId: string,
+	opts: WriteOptions = {}
+): Promise<void> {
+	const rows = await db
+		.select({ id: faces.id })
+		.from(faces)
+		.where(
+			and(
+				eq(faces.itemId, itemId),
+				eq(faces.status, 'pending'),
+				eq(faces.suggestedPersonId, personId)
+			)
+		);
+	if (rows.length === 0) error(404, 'no suggested faces for this person');
+	await assignFaces(
+		db,
+		rows.map((row) => row.id),
+		personId,
+		opts
+	);
+	// A confirm supersedes any earlier "not them".
+	await db
+		.delete(faceSuggestionDismissals)
+		.where(
+			and(
+				eq(faceSuggestionDismissals.itemId, itemId),
+				eq(faceSuggestionDismissals.personId, personId)
+			)
+		);
+}
+
+/** "Not them": clear the suggestion on this item's faces and record the pair so
+ * the worker's next recluster doesn't resurface it. The faces stay pending for
+ * normal cluster review — they may well be somebody else. */
+export async function dismissSuggestedPerson(
+	db: Db,
+	itemId: string,
+	personId: string
+): Promise<void> {
+	await db.insert(faceSuggestionDismissals).values({ itemId, personId }).onConflictDoNothing();
+	await db
+		.update(faces)
+		.set({ suggestedPersonId: null })
+		.where(
+			and(
+				eq(faces.itemId, itemId),
+				eq(faces.status, 'pending'),
+				eq(faces.suggestedPersonId, personId)
+			)
+		);
 }
 
 export async function confirmedFacesForItem(db: Db, itemId: string): Promise<ConfirmedFace[]> {

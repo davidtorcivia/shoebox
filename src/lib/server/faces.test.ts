@@ -5,12 +5,15 @@ import { makeItem, makePerson, makeTestDb, makeUser, stubStorage } from '$lib/se
 import {
 	assignCluster,
 	assignFaces,
+	confirmSuggestedPerson,
 	confirmedFacesForItem,
+	dismissSuggestedPerson,
 	listSuggestions,
 	rejectCluster,
 	rejectFace,
 	rejectFaces,
 	splitCluster,
+	suggestedPeopleForItem,
 	updateFaceBox
 } from './faces';
 
@@ -114,6 +117,62 @@ describe('faces service', () => {
 		const suggestions = await listSuggestions(db, stubStorage);
 
 		expect(suggestions[0].suggestedPerson).toBeNull();
+	});
+
+	it('lists per-item suggested people, excluding already-tagged ones', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		const mom = await makePerson(db, { name: 'Mom' });
+		const dad = await makePerson(db, { name: 'Dad' });
+		await addReadyItem(db, 'it1', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', suggestedPersonId: mom.id });
+		await addFace(db, { id: 'f2', itemId: 'it1', suggestedPersonId: mom.id });
+		await addFace(db, { id: 'f3', itemId: 'it1', suggestedPersonId: dad.id });
+		await db
+			.insert(schema.itemPeople)
+			.values({ itemId: 'it1', personId: dad.id, source: 'manual' });
+
+		const suggested = await suggestedPeopleForItem(db, 'it1');
+
+		expect(suggested).toHaveLength(1);
+		expect(suggested[0].person.id).toBe(mom.id);
+		expect(suggested[0].faceIds.sort()).toEqual(['f1', 'f2']);
+	});
+
+	it('confirming a suggested person tags the item and clears any dismissal', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		const mom = await makePerson(db, { name: 'Mom' });
+		await addReadyItem(db, 'it1', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', suggestedPersonId: mom.id });
+		await db.insert(schema.faceSuggestionDismissals).values({ itemId: 'it1', personId: mom.id });
+
+		await confirmSuggestedPerson(db, 'it1', mom.id, { reindex: async () => undefined });
+
+		const face = (await db.select().from(schema.faces).where(eq(schema.faces.id, 'f1')))[0];
+		expect(face.status).toBe('confirmed');
+		expect(face.personId).toBe(mom.id);
+		expect((await db.select().from(schema.itemPeople)).map((row) => row.personId)).toEqual([
+			mom.id
+		]);
+		expect(await db.select().from(schema.faceSuggestionDismissals)).toEqual([]);
+	});
+
+	it('dismissing records "not them" and clears the suggestion, keeping faces pending', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		const mom = await makePerson(db, { name: 'Mom' });
+		await addReadyItem(db, 'it1', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', suggestedPersonId: mom.id });
+
+		await dismissSuggestedPerson(db, 'it1', mom.id);
+
+		const face = (await db.select().from(schema.faces).where(eq(schema.faces.id, 'f1')))[0];
+		expect(face.status).toBe('pending');
+		expect(face.suggestedPersonId).toBeNull();
+		expect(await db.select().from(schema.faceSuggestionDismissals)).toEqual([
+			{ itemId: 'it1', personId: mom.id }
+		]);
 	});
 
 	it('assigns a cluster to a person and upserts ml item_people rows', async () => {

@@ -41,7 +41,7 @@ export async function onThisDay(
 				sql`cast(substr(${items.sortDate}, 1, 4) as integer) < ${thisYear}`
 			)
 		)
-		.orderBy(sql`${items.sortDate} desc`);
+		.orderBy(sql`${items.sortDate} desc`, sql`coalesce(${items.captureTime}, '') desc`);
 
 	if (rows.length === 0) return [];
 
