@@ -86,10 +86,15 @@ FROM base AS runtime
 # so this uid-1000 user can open the device.
 # The Ubuntu base ships a default 'ubuntu' user at uid/gid 1000; drop it so we
 # can claim 1000 for 'faces' (a no-op on the Debian base, which has no such user).
+#
+# Deliberately NO `chown -R` of /app, /models, or /opt/venv: pip and the model
+# bake run as root with umask 022, so everything is already world-readable, and
+# the worker only writes to the mounted volumes and its own home. On overlayfs a
+# recursive chown copies every file (~3GB of venv + model pack) into a fresh
+# layer, which turned each code-change rebuild into a multi-minute commit.
 RUN (userdel -r ubuntu 2>/dev/null || true) \
     && groupadd -g 1000 faces \
-    && useradd -u 1000 -g 1000 -m -s /usr/sbin/nologin faces \
-    && chown -R faces:faces /app /models /opt/venv
+    && useradd -u 1000 -g 1000 -m -s /usr/sbin/nologin faces
 
 USER faces
 
