@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { DAY_PERIODS, periodForTime } from '$lib/domain/day-period';
 	import DatePicker from '$lib/ui/DatePicker.svelte';
 	import Gradient from '$lib/ui/Gradient.svelte';
 	import { reducedMotion } from '$lib/ui/theme';
@@ -40,6 +41,8 @@
 	let approvedIds = $state<string[]>([]);
 	let addedCount = $state(0);
 	let date = $state<ItemDate>({ dateStart: null, dateEnd: null, precision: 'unknown' });
+	let timeChoice = $state(''); // '' | day-period id | 'exact'
+	let timeOfDay = $state(''); // "HH:MM" when timeChoice is 'exact'
 	let peopleIds = $state<string[]>([]);
 	let personQuery = $state('');
 	// svelte-ignore state_referenced_locally
@@ -78,6 +81,14 @@
 		if (!item || item.id === lastLoadedId) return;
 		lastLoadedId = item.id;
 		date = { ...item.date };
+		const onDay =
+			item.date.precision === 'day' &&
+			item.date.dateStart != null &&
+			item.captureTime?.startsWith(`${item.date.dateStart}T`);
+		const timePart = onDay ? (item.captureTime?.slice(11) ?? '') : '';
+		const period = timePart ? periodForTime(timePart) : null;
+		timeChoice = period ?? (timePart ? 'exact' : '');
+		timeOfDay = period || !timePart ? '' : timePart.slice(0, 5);
 		peopleIds = item.people.map((person) => person.id);
 		personQuery = '';
 		creatingPerson = false;
@@ -93,8 +104,11 @@
 	}
 
 	function buildApply(): Record<string, unknown> {
+		const captureTime =
+			date.precision === 'day' ? (timeChoice === 'exact' ? timeOfDay : timeChoice) : '';
 		return {
 			date: date.precision === 'unknown' ? undefined : date,
+			captureTime: captureTime || undefined,
 			people: peopleIds,
 			tags: parseTagsInput(tagsText),
 			albumId: albumId || undefined
@@ -361,6 +375,24 @@
 
 						<DatePicker bind:value={date} />
 
+						{#if date.precision === 'day'}
+							<label>
+								<span>Time of day</span>
+								<div class="time-controls">
+									<select bind:value={timeChoice} data-testid="arrivals-time-choice">
+										<option value="">Unknown</option>
+										{#each DAY_PERIODS as period (period.id)}
+											<option value={period.id}>{period.label}</option>
+										{/each}
+										<option value="exact">Exact time…</option>
+									</select>
+									{#if timeChoice === 'exact'}
+										<input type="time" bind:value={timeOfDay} />
+									{/if}
+								</div>
+							</label>
+						{/if}
+
 						<div class="people-field" role="group" aria-labelledby="arrivals-people-label">
 							<div class="people-label-row">
 								<span id="arrivals-people-label">People</span>
@@ -520,6 +552,7 @@
 
 	.counts {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: baseline;
 		gap: 14px;
 	}
@@ -530,7 +563,7 @@
 	}
 
 	.bulk-btn {
-		min-height: 36px;
+		min-height: 44px;
 		padding: 0 14px;
 		border: 1px solid color-mix(in srgb, var(--cream) 30%, transparent);
 		background: color-mix(in srgb, var(--cream) 8%, transparent);
@@ -739,6 +772,11 @@
 	/* Leave room for the global chevron on the album select. */
 	.meta select {
 		padding-right: 2.2em;
+	}
+
+	.time-controls {
+		display: flex;
+		gap: 8px;
 	}
 
 	.meta :global(legend),

@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { periodTime } from '$lib/domain/day-period';
+import { resolveTimeOfDay } from '$lib/domain/day-period';
 import {
 	albumItems,
 	albums,
@@ -564,13 +564,7 @@ export async function updateItem(
 	let captureTime = row.captureTime;
 	if (patch.captureTime === null) captureTime = null;
 	else if (patch.captureTime !== undefined) {
-		const time =
-			periodTime(patch.captureTime) ??
-			(/^\d{2}:\d{2}(:\d{2})?$/.test(patch.captureTime)
-				? patch.captureTime.length === 5
-					? `${patch.captureTime}:00`
-					: patch.captureTime
-				: null);
+		const time = resolveTimeOfDay(patch.captureTime);
 		if (!time) throw error(400, 'invalid capture time');
 		if (nextDate.precision !== 'day' || !nextDate.dateStart) {
 			throw error(400, 'capture time requires a day-precision date');

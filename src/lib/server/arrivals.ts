@@ -1,5 +1,6 @@
 import { and, eq, isNull, max } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
+import { resolveTimeOfDay } from '$lib/domain/day-period';
 import { sortDate, type ItemDate } from '$lib/domain/dates';
 import { recomputeYearCounts } from './aggregates';
 import type { Db } from './db';
@@ -9,6 +10,9 @@ import { reindexItem } from './search';
 
 export interface ArrivalsApply {
 	date?: ItemDate;
+	/** Time-of-day for same-day ordering: a day-period token ("morning") or an
+	 * exact "HH:MM[:SS]". Only applied alongside a day-precision date. */
+	captureTime?: string;
 	people?: string[];
 	tags?: string[];
 	albumId?: string;
@@ -39,13 +43,20 @@ export async function applyArrivalsBatch(
 		if (!item) continue;
 
 		if (apply.date && apply.date.precision !== 'unknown') {
+			// Time-of-day rides along only with a day-precision date; anything else
+			// (or an unparseable value) leaves capture_time untouched.
+			const time =
+				apply.date.precision === 'day' && apply.date.dateStart && apply.captureTime
+					? resolveTimeOfDay(apply.captureTime)
+					: null;
 			await db
 				.update(schema.items)
 				.set({
 					dateStart: apply.date.dateStart,
 					dateEnd: apply.date.dateEnd,
 					datePrecision: apply.date.precision,
-					sortDate: sortDate(apply.date)
+					sortDate: sortDate(apply.date),
+					...(time ? { captureTime: `${apply.date.dateStart}T${time}` } : {})
 				})
 				.where(eq(schema.items.id, itemId));
 			if (apply.date.precision === 'day') await applyHolidayTags(db, itemId);

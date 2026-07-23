@@ -50,6 +50,32 @@ describe('applyArrivalsBatch', () => {
 		expect(yearRows.length).toBeGreaterThan(0);
 	});
 
+	it('applies a day-period capture time alongside a day date', async () => {
+		const { db, itemId } = setup();
+		await applyArrivalsBatch(db as never, {
+			itemIds: [itemId],
+			apply: {
+				date: { dateStart: '1994-12-25', dateEnd: '1994-12-25', precision: 'day' },
+				captureTime: 'afternoon'
+			},
+			approve: false
+		});
+		const item = db.select().from(schema.items).where(eq(schema.items.id, itemId)).get()!;
+		expect(item.captureTime).toBe('1994-12-25T15:00:00');
+
+		// A non-day date ignores the time rather than storing something bogus.
+		await applyArrivalsBatch(db as never, {
+			itemIds: [itemId],
+			apply: {
+				date: { dateStart: '1995-01-01', dateEnd: '1995-12-31', precision: 'year' },
+				captureTime: 'morning'
+			},
+			approve: false
+		});
+		const after = db.select().from(schema.items).where(eq(schema.items.id, itemId)).get()!;
+		expect(after.captureTime).toBe('1994-12-25T15:00:00');
+	});
+
 	it('attaches people and albums without approving', async () => {
 		const { db, owner, itemId } = setup();
 		db.insert(schema.people)

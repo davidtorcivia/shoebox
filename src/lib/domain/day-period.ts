@@ -22,3 +22,12 @@ export function periodTime(id: string): string | null {
 export function periodForTime(time: string): DayPeriodId | null {
 	return DAY_PERIODS.find((period) => period.time === time)?.id ?? null;
 }
+
+/** Normalize a user-supplied time-of-day — a period token ("afternoon") or an
+ * exact "HH:MM[:SS]" — to "HH:MM:SS". Null when it is neither. */
+export function resolveTimeOfDay(value: string): string | null {
+	const period = periodTime(value);
+	if (period) return period;
+	if (!/^\d{2}:\d{2}(:\d{2})?$/.test(value)) return null;
+	return value.length === 5 ? `${value}:00` : value;
+}
