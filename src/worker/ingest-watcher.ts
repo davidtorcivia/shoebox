@@ -305,6 +305,7 @@ export async function processIngestFile(deps: IngestDeps, absPath: string): Prom
 				sizeBytes,
 				sha256,
 				source: 'ingest',
+				ingestName: hints.filename,
 				status: 'needs_review',
 				uploadedBy: deps.ownerId,
 				createdAt: new Date()

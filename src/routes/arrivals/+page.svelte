@@ -132,6 +132,28 @@
 		});
 	}
 
+	let replaceBusy = $state(false);
+	let replaceError = $state('');
+
+	// Swap the matched library item's media for this arrival's file (all its
+	// curation is kept) and drop the arrival from the queue.
+	async function replaceMedia(arrivalId: string, targetId: string): Promise<void> {
+		replaceBusy = true;
+		replaceError = '';
+		const res = await fetch('/api/arrivals/replace', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ itemId: arrivalId, targetId })
+		});
+		replaceBusy = false;
+		if (!res.ok) {
+			replaceError = 'Could not replace the media.';
+			return;
+		}
+		removedIds = [...removedIds, arrivalId];
+		selectedIds = selectedIds.filter((id) => id !== arrivalId);
+	}
+
 	function removeFromQueue(ids: string[]): void {
 		const finish = (): void => {
 			const remainingCount = queue.filter((item) => !ids.includes(item.id)).length;
@@ -354,6 +376,36 @@
 					<section class="preview" data-testid="arrivals-preview" aria-label="Preview">
 						<img src={previewUrl(focused)} alt={focused.title ?? focused.displayDate} />
 					</section>
+
+					{#if data.replaceCandidates[focused.id]}
+						{@const candidate = data.replaceCandidates[focused.id]}
+						<aside class="replace-note" data-testid="replace-note">
+							{#if candidate.thumbUrl}
+								<img class="replace-thumb" src={candidate.thumbUrl} alt="" />
+							{/if}
+							<div class="replace-copy">
+								<p class="replace-kicker">Same filename in the library</p>
+								<p class="replace-name">
+									{candidate.title ?? 'Untitled'}{candidate.sortDate
+										? ` · ${candidate.sortDate.slice(0, 4)}`
+										: ''}
+								</p>
+								<p class="replace-hint">
+									Replace its media with this file — title, date, people and tags all stay.
+								</p>
+								{#if replaceError}<p class="replace-hint">{replaceError}</p>{/if}
+							</div>
+							<button
+								class="replace-btn"
+								type="button"
+								data-testid="replace-media"
+								disabled={replaceBusy}
+								onclick={() => replaceMedia(focused.id, candidate.id)}
+							>
+								Replace media
+							</button>
+						</aside>
+					{/if}
 
 					<form
 						class="meta"
@@ -777,6 +829,70 @@
 	.time-controls {
 		display: flex;
 		gap: 8px;
+	}
+
+	/* "Replace media" prompt for a re-ingested filename already in the library. */
+	.replace-note {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 14px;
+		margin-top: 14px;
+		padding: 12px 14px;
+		border-left: 2px solid var(--dawn, #e0d0a8);
+		background: color-mix(in srgb, var(--cream) 8%, transparent);
+	}
+
+	.replace-thumb {
+		width: 56px;
+		height: 42px;
+		flex: none;
+		object-fit: cover;
+	}
+
+	.replace-copy {
+		flex: 1 1 200px;
+		min-width: 0;
+	}
+
+	.replace-kicker {
+		margin: 0 0 3px;
+		font-family: var(--font-sans);
+		font-size: 10px;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		opacity: 0.7;
+	}
+
+	.replace-name {
+		margin: 0;
+		font-family: var(--font-serif);
+		font-size: 16px;
+	}
+
+	.replace-hint {
+		margin: 4px 0 0;
+		font-family: var(--font-sans);
+		font-size: 12px;
+		opacity: 0.75;
+	}
+
+	.replace-btn {
+		min-height: 44px;
+		padding: 0 16px;
+		border: 1px solid color-mix(in srgb, var(--cream) 35%, transparent);
+		background: color-mix(in srgb, var(--cream) 14%, transparent);
+		color: var(--cream);
+		font-family: var(--font-sans);
+		font-size: 12px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		cursor: pointer;
+	}
+
+	.replace-btn:disabled {
+		cursor: wait;
+		opacity: 0.55;
 	}
 
 	.meta :global(legend),

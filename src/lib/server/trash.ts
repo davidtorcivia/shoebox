@@ -69,7 +69,11 @@ export async function restoreTrash(
 	}
 }
 
-async function hardDeleteItems(db: Db, storage: StorageAdapter, ids: string[]): Promise<number> {
+export async function hardDeleteItems(
+	db: Db,
+	storage: StorageAdapter,
+	ids: string[]
+): Promise<number> {
 	if (ids.length === 0) return 0;
 	const files = await db.select().from(itemFiles).where(inArray(itemFiles.itemId, ids));
 	for (const file of files) await storage.delete(file.storageKey);

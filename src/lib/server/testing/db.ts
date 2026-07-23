@@ -83,6 +83,8 @@ export async function makeItem(
 		sha256: over.sha256 ?? `sha-${id}`,
 		blurhash: over.blurhash ?? null,
 		source: over.source ?? 'upload',
+		ingestName: over.ingestName ?? null,
+		captureTime: over.captureTime ?? null,
 		tapeLabel: over.tapeLabel ?? null,
 		status: over.status ?? 'ready',
 		uploadedBy: over.uploadedBy,
