@@ -11,6 +11,7 @@ export type FaceBox = { x: number; y: number; w: number; h: number };
 export type FaceSuggestion = {
 	clusterId: string;
 	count: number;
+	suggestedPerson: { id: string; name: string } | null;
 	faces: Array<{
 		id: string;
 		itemId: string;
@@ -18,6 +19,7 @@ export type FaceSuggestion = {
 		frameTime: number | null;
 		box: FaceBox;
 		thumbUrl: string;
+		cropUrl: string;
 	}>;
 };
 
@@ -79,11 +81,14 @@ export async function listSuggestions(db: Db, storage: StorageAdapter): Promise<
 			itemType: items.type,
 			frameTime: faces.frameTime,
 			box: faces.box,
-			storageKey: itemFiles.storageKey
+			storageKey: itemFiles.storageKey,
+			suggestedPersonId: people.id,
+			suggestedPersonName: people.name
 		})
 		.from(faces)
 		.innerJoin(items, eq(items.id, faces.itemId))
 		.leftJoin(itemFiles, and(eq(itemFiles.itemId, faces.itemId), eq(itemFiles.kind, 'thumb_400')))
+		.leftJoin(people, eq(people.id, faces.suggestedPersonId))
 		.where(and(eq(faces.status, 'pending'), isNotNull(faces.clusterId), isNull(items.deletedAt)));
 
 	const clusters = new Map<string, FaceSuggestion>();
@@ -92,22 +97,33 @@ export async function listSuggestions(db: Db, storage: StorageAdapter): Promise<
 		const cluster = clusters.get(row.clusterId) ?? {
 			clusterId: row.clusterId,
 			count: 0,
+			suggestedPerson: null,
 			faces: []
 		};
+		if (row.suggestedPersonId && row.suggestedPersonName) {
+			cluster.suggestedPerson = { id: row.suggestedPersonId, name: row.suggestedPersonName };
+		}
 		cluster.faces.push({
 			id: row.id,
 			itemId: row.itemId,
 			itemType: row.itemType,
 			frameTime: row.frameTime,
 			box: parseBox(row.box),
-			thumbUrl: row.storageKey ? await storage.mediaUrl(row.storageKey) : ''
+			thumbUrl: row.storageKey ? await storage.mediaUrl(row.storageKey) : '',
+			// Written by the faces worker at scan time; the UI falls back to the
+			// boxed item thumbnail when a face predates crop generation.
+			cropUrl: await storage.mediaUrl(`media/${row.itemId}/faces/${row.id}.jpg`)
 		});
 		cluster.count = cluster.faces.length;
 		clusters.set(row.clusterId, cluster);
 	}
 
+	// Clusters with a person suggestion come first — those are one-click reviews.
 	return [...clusters.values()].sort(
-		(a, b) => b.count - a.count || a.clusterId.localeCompare(b.clusterId)
+		(a, b) =>
+			Number(!!b.suggestedPerson) - Number(!!a.suggestedPerson) ||
+			b.count - a.count ||
+			a.clusterId.localeCompare(b.clusterId)
 	);
 }
 
@@ -159,7 +175,7 @@ export async function assignFaces(
 
 	await db
 		.update(faces)
-		.set({ status: 'confirmed', personId })
+		.set({ status: 'confirmed', personId, suggestedPersonId: null })
 		.where(
 			inArray(
 				faces.id,
@@ -192,7 +208,7 @@ export async function rejectFaces(
 	if (rows.length === 0) error(404, 'no faces to reject');
 	await db
 		.update(faces)
-		.set({ status: 'rejected', clusterId: null, personId: null })
+		.set({ status: 'rejected', clusterId: null, personId: null, suggestedPersonId: null })
 		.where(
 			inArray(
 				faces.id,
@@ -244,7 +260,7 @@ export async function rejectFace(db: Db, faceId: string, opts: WriteOptions = {}
 	if (!face) error(404, 'face not found');
 	await db
 		.update(faces)
-		.set({ status: 'rejected', clusterId: null, personId: null })
+		.set({ status: 'rejected', clusterId: null, personId: null, suggestedPersonId: null })
 		.where(eq(faces.id, faceId));
 	await reindex(db, face.itemId);
 }
@@ -270,7 +286,7 @@ export async function splitCluster(
 	const nextClusterId = makeId();
 	await db
 		.update(faces)
-		.set({ clusterId: nextClusterId, status: 'pending', personId: null })
+		.set({ clusterId: nextClusterId, status: 'pending', personId: null, suggestedPersonId: null })
 		.where(inArray(faces.id, ids));
 	await reindexAffected(
 		db,

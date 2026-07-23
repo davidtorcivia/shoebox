@@ -7,6 +7,7 @@ tests runnable on Python versions where hdbscan wheels are unavailable.
 """
 
 from collections import defaultdict
+from typing import Mapping
 
 import numpy as np
 
@@ -26,12 +27,21 @@ def l2_normalize(embs: np.ndarray) -> np.ndarray:
 
 
 def _fallback_cluster_labels(embs_normalized: np.ndarray, min_cluster_size: int) -> np.ndarray:
-    n = len(embs_normalized)
-    labels = np.full(n, -1, dtype=int)
-    visited: set[int] = set()
+    labels = np.full(len(embs_normalized), -1, dtype=int)
     next_label = 0
-    sims = np.asarray(embs_normalized, dtype=np.float64) @ np.asarray(embs_normalized, dtype=np.float64).T
+    for component in connected_components(embs_normalized, 0.8):
+        if len(component) >= min_cluster_size:
+            labels[component] = next_label
+            next_label += 1
+    return labels
 
+
+def connected_components(embs_normalized: np.ndarray, sim: float) -> list[list[int]]:
+    """Single-linkage groups at cosine >= ``sim`` over unit vectors."""
+    n = len(embs_normalized)
+    sims = np.asarray(embs_normalized, dtype=np.float64) @ np.asarray(embs_normalized, dtype=np.float64).T
+    visited: set[int] = set()
+    components: list[list[int]] = []
     for start in range(n):
         if start in visited:
             continue
@@ -41,16 +51,41 @@ def _fallback_cluster_labels(embs_normalized: np.ndarray, min_cluster_size: int)
         while stack:
             idx = stack.pop()
             component.append(idx)
-            for neighbor in np.where(sims[idx] >= 0.8)[0]:
+            for neighbor in np.where(sims[idx] >= sim)[0]:
                 j = int(neighbor)
                 if j not in visited:
                     visited.add(j)
                     stack.append(j)
-        if len(component) >= min_cluster_size:
-            labels[component] = next_label
-            next_label += 1
+        components.append(sorted(component))
+    return components
 
-    return labels
+
+def build_units(
+    rows: list[dict],
+    embs_normalized: np.ndarray,
+    track_sim: float = 0.6,
+) -> list[list[int]]:
+    """Pre-group faces into identity units before global clustering.
+
+    Faces sampled from the same video (rows carrying a ``frame_time``) are
+    linked into tracklets by embedding similarity: within one video the same
+    person shares lighting and camera, so same-person pairs score far above
+    ``track_sim`` while distinct people stay below it. Clustering then operates
+    on tracklet means instead of every sampled frame, which stops one video from
+    shattering into dozens of per-frame clusters. Photo faces and rows without
+    item context stay singleton units.
+    """
+    by_item: dict[str, list[int]] = defaultdict(list)
+    units: list[list[int]] = []
+    for i, row in enumerate(rows):
+        if row.get("item_id") is not None and row.get("frame_time") is not None:
+            by_item[row["item_id"]].append(i)
+        else:
+            units.append([i])
+    for indexes in by_item.values():
+        for component in connected_components(embs_normalized[indexes], track_sim):
+            units.append([indexes[i] for i in component])
+    return units
 
 
 def cluster_labels(embs_normalized: np.ndarray, min_cluster_size: int = 3) -> np.ndarray:
@@ -153,10 +188,12 @@ def assign_stable_ids(
 
 def recluster(
     rows: list[dict],
-    min_cluster_size: int = 3,
+    min_cluster_size: int = 2,
     threshold: float = 0.65,
     make_id=nanoid,
     prior_centroids: dict[str, np.ndarray] | None = None,
+    track_sim: float = 0.6,
+    min_track_faces: int = 3,
 ) -> dict[str, str | None]:
     if not rows:
         return {}
@@ -174,7 +211,24 @@ def recluster(
     member_centroids = {cluster_id: centroid(embs[indexes]) for cluster_id, indexes in groups.items()}
     previous_centroids = {**(prior_centroids or {}), **member_centroids}
 
-    labels = cluster_labels(embs, min_cluster_size=min_cluster_size)
+    # Cluster over tracklet means, not raw per-frame faces.
+    units = build_units(rows, embs, track_sim)
+    unit_embs = np.stack([centroid(embs[unit]) for unit in units])
+    unit_labels = np.asarray(cluster_labels(unit_embs, min_cluster_size=min_cluster_size))
+
+    # A substantial tracklet that matched nothing else is still a person worth
+    # reviewing — someone who appears in only one video must not vanish as noise.
+    next_label = int(unit_labels.max()) + 1 if len(unit_labels) else 0
+    for i, label in enumerate(unit_labels):
+        if label < 0 and len(units[i]) >= min_track_faces:
+            unit_labels[i] = next_label
+            next_label += 1
+
+    labels = np.full(len(rows), -1, dtype=int)
+    for unit, label in zip(units, unit_labels):
+        if label >= 0:
+            labels[unit] = int(label)
+
     id_by_label = assign_stable_ids(
         labels, embs, previous_centroids, threshold, make_id, previous_ids=previous_ids
     )
@@ -182,6 +236,49 @@ def recluster(
         row["id"]: (id_by_label[int(label)] if label >= 0 else None)
         for row, label in zip(rows, labels)
     }
+
+
+def suggest_people(
+    rows: list[dict],
+    assignments: Mapping[str, str | None],
+    min_sim: float = 0.5,
+) -> dict[str, str]:
+    """Best confirmed-person match per cluster, by centroid cosine similarity.
+
+    Confirmed faces define a centroid per person; every assigned cluster whose
+    own centroid lands within ``min_sim`` of a person is suggested as that
+    person. This is what makes labeling compound: each confirmation sharpens the
+    person centroid, which pre-fills the next round of review.
+    """
+    if not rows:
+        return {}
+    embs = l2_normalize(np.stack([np.asarray(row["embedding"], dtype=np.float64) for row in rows]))
+
+    person_members: dict[str, list[int]] = defaultdict(list)
+    for i, row in enumerate(rows):
+        if row.get("status") == "confirmed" and row.get("person_id"):
+            person_members[row["person_id"]].append(i)
+    if not person_members:
+        return {}
+    person_centroids = {pid: centroid(embs[indexes]) for pid, indexes in person_members.items()}
+
+    cluster_members: dict[str, list[int]] = defaultdict(list)
+    for i, row in enumerate(rows):
+        cluster_id = assignments.get(row["id"])
+        if cluster_id:
+            cluster_members[cluster_id].append(i)
+
+    suggestions: dict[str, str] = {}
+    for cluster_id, indexes in cluster_members.items():
+        c = centroid(embs[indexes])
+        scored = sorted(
+            ((float(np.dot(c, pc)), pid) for pid, pc in person_centroids.items()),
+            reverse=True,
+        )
+        top_sim, top_pid = scored[0]
+        if top_sim >= min_sim:
+            suggestions[cluster_id] = top_pid
+    return suggestions
 
 
 def centroids_by_cluster(

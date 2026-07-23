@@ -30,7 +30,7 @@ CREATE TABLE item_files (
 CREATE TABLE faces (
   id TEXT PRIMARY KEY, item_id TEXT NOT NULL, frame_time REAL, box TEXT NOT NULL,
   embedding BLOB NOT NULL, cluster_id TEXT, person_id TEXT,
-  status TEXT NOT NULL DEFAULT 'pending'
+  suggested_person_id TEXT, status TEXT NOT NULL DEFAULT 'pending'
 );
 CREATE TABLE jobs (
   id TEXT PRIMARY KEY, kind TEXT NOT NULL, payload TEXT NOT NULL,

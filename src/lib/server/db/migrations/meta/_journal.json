@@ -85,6 +85,13 @@
       "when": 1783698205708,
       "tag": "0011_tour-onboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1784950000000,
+      "tag": "0012_face-suggested-person",
+      "breakpoints": true
     }
   ]
 }

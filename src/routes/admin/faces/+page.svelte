@@ -6,6 +6,9 @@
 	let selectedFaces = $state<Record<string, string[]>>({});
 	let personSelections = $state<Record<string, string>>({});
 	let boxDrafts = $state<Record<string, string>>({});
+	// Faces whose crop image 404'd (scanned before crop generation existed);
+	// these fall back to the boxed item thumbnail.
+	let brokenCrops = $state<Record<string, boolean>>({});
 	// svelte-ignore state_referenced_locally
 	let suggestions = $state(data.suggestions);
 	let busy = $state<string | null>(null);
@@ -16,7 +19,7 @@
 		const nextPeople: Record<string, string> = {};
 		const nextBoxes: Record<string, string> = {};
 		for (const cluster of data.suggestions) {
-			nextPeople[cluster.clusterId] = '';
+			nextPeople[cluster.clusterId] = cluster.suggestedPerson?.id ?? '';
 			for (const face of cluster.faces) nextBoxes[face.id] ??= JSON.stringify(face.box);
 		}
 		personSelections = nextPeople;
@@ -168,7 +171,7 @@
 				<section class="cluster" data-testid="face-cluster">
 					<div class="cluster-head">
 						<div>
-							<p>Cluster</p>
+							<p>{cluster.suggestedPerson ? `Looks like ${cluster.suggestedPerson.name}` : 'Cluster'}</p>
 							<h3>{cluster.count} {cluster.count === 1 ? 'face' : 'faces'}</h3>
 						</div>
 						<div class="cluster-actions">
@@ -225,15 +228,22 @@
 									aria-pressed={selected(cluster.clusterId).includes(face.id)}
 									onclick={() => toggle(cluster.clusterId, face.id)}
 								>
-									{#if face.thumbUrl}
+									{#if face.cropUrl && !brokenCrops[face.id]}
+										<img
+											src={face.cropUrl}
+											alt=""
+											loading="lazy"
+											onerror={() => (brokenCrops = { ...brokenCrops, [face.id]: true })}
+										/>
+									{:else if face.thumbUrl}
 										<img src={face.thumbUrl} alt="" loading="lazy" />
+										<span
+											class="face-box"
+											style={`--x:${face.box.x * 100}%;--y:${face.box.y * 100}%;--w:${face.box.w * 100}%;--h:${face.box.h * 100}%;`}
+										></span>
 									{:else}
 										<span>No thumbnail</span>
 									{/if}
-									<span
-										class="face-box"
-										style={`--x:${face.box.x * 100}%;--y:${face.box.y * 100}%;--w:${face.box.w * 100}%;--h:${face.box.h * 100}%;`}
-									></span>
 								</button>
 								<div class="face-meta">
 									<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- item id is dynamic -->

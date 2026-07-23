@@ -2,11 +2,13 @@ import numpy as np
 
 from cluster import (
     assign_stable_ids,
+    build_units,
     centroid,
     centroids_by_cluster,
     cluster_labels,
     l2_normalize,
     recluster,
+    suggest_people,
 )
 
 RNG = np.random.default_rng(42)
@@ -180,6 +182,89 @@ def test_recluster_reclaims_id_from_persisted_centroid_after_rescan():
         prior_centroids=persisted,
     )
     assert set(second.values()) == {"personA"}
+
+
+def video_row(face_id, item_id, frame_time, emb):
+    return {
+        "id": face_id,
+        "item_id": item_id,
+        "frame_time": frame_time,
+        "cluster_id": None,
+        "embedding": emb.astype(np.float32),
+    }
+
+
+def test_build_units_groups_same_video_faces_by_similarity():
+    dim = 64
+    a = make_cluster(unit(dim, 0), 3, jitter=0.005)
+    b = make_cluster(unit(dim, 1), 2, jitter=0.005)
+    rows = [video_row(f"a{i}", "vid1", float(i), e) for i, e in enumerate(a)]
+    rows += [video_row(f"b{i}", "vid1", float(i), e) for i, e in enumerate(b)]
+    rows.append({"id": "photo", "cluster_id": None, "embedding": unit(dim, 2).astype(np.float32)})
+
+    units = build_units(rows, l2_normalize(np.stack([np.asarray(r["embedding"], dtype=np.float64) for r in rows])))
+
+    sizes = sorted(len(u) for u in units)
+    assert sizes == [1, 2, 3]  # photo singleton, person B tracklet, person A tracklet
+
+
+def test_recluster_links_tracklets_across_videos():
+    dim = 512
+    person = unit(dim, 0)
+    rows = [video_row(f"v1f{i}", "vid1", float(i), e) for i, e in enumerate(make_cluster(person, 5, 0.005))]
+    rows += [video_row(f"v2f{i}", "vid2", float(i), e) for i, e in enumerate(make_cluster(person, 4, 0.005))]
+
+    assignments = recluster(rows)
+
+    ids = set(assignments.values())
+    assert len(ids) == 1 and None not in ids
+
+
+def test_recluster_promotes_a_substantial_single_video_tracklet():
+    # A person who appears in only one video has nothing to pair with, but a
+    # 4-face tracklet must still surface for review rather than die as noise.
+    dim = 512
+    rows = [
+        video_row(f"f{i}", "vid1", float(i), e)
+        for i, e in enumerate(make_cluster(unit(dim, 0), 4, 0.005))
+    ]
+
+    assignments = recluster(rows)
+
+    ids = set(assignments.values())
+    assert len(ids) == 1 and None not in ids
+
+
+def test_recluster_leaves_tiny_lonely_tracklets_as_noise():
+    dim = 512
+    rows = [
+        video_row(f"f{i}", "vid1", float(i), e)
+        for i, e in enumerate(make_cluster(unit(dim, 0), 2, 0.005))
+    ]
+
+    assert set(recluster(rows).values()) == {None}
+
+
+def test_suggest_people_matches_cluster_to_confirmed_person():
+    dim = 512
+    anchor = unit(dim, 0)
+    rows = [
+        dict(video_row(f"c{i}", "vid1", float(i), e), status="confirmed", person_id="p1")
+        for i, e in enumerate(make_cluster(anchor, 3, 0.005))
+    ]
+    rows += [
+        dict(video_row(f"n{i}", "vid2", float(i), e), status="pending")
+        for i, e in enumerate(make_cluster(anchor, 4, 0.005))
+    ]
+    rows += [
+        dict(video_row(f"x{i}", "vid3", float(i), e), status="pending")
+        for i, e in enumerate(make_cluster(unit(dim, 1), 4, 0.005))
+    ]
+    assignments = {r["id"]: ("near" if r["id"][0] in "cn" else "far") for r in rows}
+
+    suggestions = suggest_people(rows, assignments)
+
+    assert suggestions == {"near": "p1"}
 
 
 def test_recluster_returns_none_for_noise():

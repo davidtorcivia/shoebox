@@ -273,6 +273,9 @@ export const faces = sqliteTable(
 		embedding: blob('embedding', { mode: 'buffer' }).notNull(),
 		clusterId: text('cluster_id'),
 		personId: text('person_id'),
+		// Advisory best-match from the faces worker; deliberately no FK so people
+		// merges/deletes never trip over it. Dangling ids read as "no suggestion".
+		suggestedPersonId: text('suggested_person_id'),
 		status: text('status', { enum: ['pending', 'confirmed', 'rejected'] })
 			.notNull()
 			.default('pending')

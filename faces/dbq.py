@@ -127,16 +127,75 @@ def replace_pending_faces(conn: sqlite3.Connection, item_id: str, detections: li
 
 def load_embeddings_for_clustering(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
-        "SELECT id, cluster_id, embedding FROM faces WHERE status IN ('pending','confirmed')"
+        "SELECT id, item_id, frame_time, cluster_id, person_id, status, embedding "
+        "FROM faces WHERE status IN ('pending','confirmed')"
     ).fetchall()
     return [
         {
             "id": row["id"],
+            "item_id": row["item_id"],
+            "frame_time": row["frame_time"],
             "cluster_id": row["cluster_id"],
+            "person_id": row["person_id"],
+            "status": row["status"],
             "embedding": np.frombuffer(row["embedding"], dtype=np.float32),
         }
         for row in rows
     ]
+
+
+def pending_face_ids(conn: sqlite3.Connection, item_id: str) -> list[str]:
+    rows = conn.execute(
+        "SELECT id FROM faces WHERE item_id = ? AND status = 'pending'", (item_id,)
+    ).fetchall()
+    return [row["id"] for row in rows]
+
+
+def rejected_embeddings(conn: sqlite3.Connection, item_id: str) -> np.ndarray:
+    """Embeddings of this item's rejected faces, as an (n, 512) float array.
+
+    A rescan re-mints face ids, so without these fingerprints every face the
+    admin already rejected would resurface as a fresh pending suggestion.
+    """
+    rows = conn.execute(
+        "SELECT embedding FROM faces WHERE item_id = ? AND status = 'rejected'", (item_id,)
+    ).fetchall()
+    if not rows:
+        return np.zeros((0, 0))
+    return np.stack(
+        [np.frombuffer(row["embedding"], dtype=np.float32).astype(np.float64) for row in rows]
+    )
+
+
+def apply_person_suggestions(conn: sqlite3.Connection, by_cluster: dict[str, str]) -> None:
+    """Stamp each pending face with its cluster's best confirmed-person match.
+
+    Suggestions are recomputed wholesale every run: stale ones are cleared first
+    so a cluster that drifted away from a person stops advertising them. Tolerant
+    of the column not existing yet (app migration not applied), since the Python
+    worker can restart ahead of the app after a joint deploy.
+    """
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "UPDATE faces SET suggested_person_id = NULL "
+            "WHERE status = 'pending' AND suggested_person_id IS NOT NULL"
+        )
+        for cluster_id, person_id in by_cluster.items():
+            conn.execute(
+                "UPDATE faces SET suggested_person_id = ? WHERE cluster_id = ? AND status = 'pending'",
+                (person_id, cluster_id),
+            )
+        conn.execute("COMMIT")
+    except sqlite3.OperationalError as exc:
+        conn.execute("ROLLBACK")
+        if "suggested_person_id" in str(exc):
+            print(f"[faces] skipping person suggestions: {exc}", flush=True)
+            return
+        raise
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
 
 
 def apply_cluster_assignments(conn: sqlite3.Connection, assignments: dict[str, str | None]) -> None:

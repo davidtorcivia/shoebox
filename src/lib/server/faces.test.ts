@@ -60,6 +60,7 @@ describe('faces service', () => {
 			{
 				clusterId: 'c1',
 				count: 2,
+				suggestedPerson: null,
 				faces: [
 					{
 						id: 'f1',
@@ -67,7 +68,8 @@ describe('faces service', () => {
 						itemType: 'photo',
 						frameTime: null,
 						box: { x: 0.1, y: 0.1, w: 0.2, h: 0.2 },
-						thumbUrl: '/media/media/it1/thumb_400.webp'
+						thumbUrl: '/media/media/it1/thumb_400.webp',
+						cropUrl: '/media/media/it1/faces/f1.jpg'
 					},
 					{
 						id: 'f2',
@@ -75,11 +77,43 @@ describe('faces service', () => {
 						itemType: 'photo',
 						frameTime: 3,
 						box: { x: 0.1, y: 0.1, w: 0.2, h: 0.2 },
-						thumbUrl: '/media/media/it2/thumb_400.webp'
+						thumbUrl: '/media/media/it2/thumb_400.webp',
+						cropUrl: '/media/media/it2/faces/f2.jpg'
 					}
 				]
 			}
 		]);
+	});
+
+	it('surfaces the worker person suggestion and sorts suggested clusters first', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		const person = await makePerson(db);
+		await addReadyItem(db, 'it1', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', clusterId: 'plain' });
+		await addFace(db, { id: 'f2', itemId: 'it1', clusterId: 'plain' });
+		await addFace(db, {
+			id: 'f3',
+			itemId: 'it1',
+			clusterId: 'hinted',
+			suggestedPersonId: person.id
+		});
+
+		const suggestions = await listSuggestions(db, stubStorage);
+
+		expect(suggestions.map((s) => s.clusterId)).toEqual(['hinted', 'plain']);
+		expect(suggestions[0].suggestedPerson).toEqual({ id: person.id, name: person.name });
+	});
+
+	it('treats a dangling suggested person as no suggestion', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		await addReadyItem(db, 'it1', owner.id);
+		await addFace(db, { id: 'f1', itemId: 'it1', clusterId: 'c1', suggestedPersonId: 'gone' });
+
+		const suggestions = await listSuggestions(db, stubStorage);
+
+		expect(suggestions[0].suggestedPerson).toBeNull();
 	});
 
 	it('assigns a cluster to a person and upserts ml item_people rows', async () => {

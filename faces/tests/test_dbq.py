@@ -141,6 +141,40 @@ def test_load_embeddings_excludes_rejected(db):
     assert by_id["c1f"]["embedding"][0] == np.float32(0.5)
 
 
+def test_pending_face_ids_scoped_to_item_and_status(db):
+    add_face(db, "p1", item_id="it1", status="pending")
+    add_face(db, "p2", item_id="it2", status="pending")
+    add_face(db, "c1", item_id="it1", status="confirmed")
+    assert dbq.pending_face_ids(db, "it1") == ["p1"]
+
+
+def test_rejected_embeddings_returns_matrix(db):
+    add_face(db, "r1", status="rejected", embedding=np.full(512, 0.5, dtype=np.float32).tobytes())
+    add_face(db, "p1", status="pending")
+    out = dbq.rejected_embeddings(db, "it1")
+    assert out.shape == (1, 512)
+    assert out[0][0] == 0.5
+    assert dbq.rejected_embeddings(db, "other").size == 0
+
+
+def test_apply_person_suggestions_stamps_and_clears(db):
+    add_face(db, "a", cluster_id="c1")
+    add_face(db, "b", cluster_id="c2")
+    add_face(db, "kept", cluster_id="c1", status="confirmed")
+
+    dbq.apply_person_suggestions(db, {"c1": "p9"})
+    rows = {
+        r["id"]: r["suggested_person_id"]
+        for r in db.execute("SELECT id, suggested_person_id FROM faces").fetchall()
+    }
+    assert rows == {"a": "p9", "b": None, "kept": None}
+
+    # A later run with no matches clears the stale suggestion.
+    dbq.apply_person_suggestions(db, {})
+    row = db.execute("SELECT suggested_person_id FROM faces WHERE id='a'").fetchone()
+    assert row["suggested_person_id"] is None
+
+
 def test_apply_cluster_assignments(db):
     add_face(db, "a")
     add_face(db, "b", cluster_id="stale")
