@@ -384,7 +384,11 @@
 								<img class="replace-thumb" src={candidate.thumbUrl} alt="" />
 							{/if}
 							<div class="replace-copy">
-								<p class="replace-kicker">Same filename in the library</p>
+								<p class="replace-kicker">
+									{candidate.matchedBy === 'frame'
+										? 'Looks like the same footage'
+										: 'Same filename in the library'}
+								</p>
 								<p class="replace-name">
 									{candidate.title ?? 'Untitled'}{candidate.sortDate
 										? ` · ${candidate.sortDate.slice(0, 4)}`

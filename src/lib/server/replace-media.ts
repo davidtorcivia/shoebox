@@ -6,70 +6,97 @@
  * poster choice) — and discard the fresh arrival instead of cataloging it twice.
  */
 import { error } from '@sveltejs/kit';
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { Db } from '$lib/server/db';
 import { itemFiles, items } from '$lib/server/db/schema';
 import type { JobQueueAdapter, StorageAdapter } from '$lib/server/platform/types';
 import { reindexItem } from '$lib/server/search';
 import { hardDeleteItems } from '$lib/server/trash';
 import { titleFromFilename } from '../../worker/conventions';
+import { durationsCompatible, hammingHex64, PHASH_MATCH_DISTANCE } from '../../worker/phash';
 
 export type ReplaceCandidate = {
 	id: string;
 	title: string | null;
 	sortDate: string | null;
 	thumbUrl: string;
+	/** What linked the pair: the ingest filename (or filename-derived title for
+	 * legacy items), or the perceptual hash of the footage itself. */
+	matchedBy: 'name' | 'frame';
+};
+
+export type ArrivalKey = {
+	id: string;
+	type: 'video' | 'photo';
+	ingestName: string | null;
+	framePhash: string | null;
+	duration: number | null;
 };
 
 /**
- * For each queued arrival, the ready library item it most plausibly re-renders:
- * same ingest filename, or — for items ingested before filenames were recorded —
- * a title equal to the filename-derived title. Oldest match wins (the earliest
+ * For each queued arrival, the ready library item it most plausibly re-renders.
+ * Two tiers: (1) same ingest filename — or, for items ingested before filenames
+ * were recorded, a title equal to the filename-derived title; (2) perceptual
+ * match — closest mid-frame dHash within tolerance, with compatible duration —
+ * which survives wholesale renaming. Oldest match wins a tie (the earliest
  * cataloged item is the curated one).
  */
 export async function replaceCandidatesFor(
 	db: Db,
 	storage: StorageAdapter,
-	arrivals: Array<{ id: string; type: 'video' | 'photo'; ingestName: string | null }>
+	arrivals: ArrivalKey[]
 ): Promise<Record<string, ReplaceCandidate>> {
+	if (arrivals.length === 0) return {};
+	const ready = await db
+		.select({
+			id: items.id,
+			type: items.type,
+			title: items.title,
+			ingestName: items.ingestName,
+			framePhash: items.framePhash,
+			duration: items.duration,
+			sortDate: items.sortDate,
+			createdAt: items.createdAt,
+			thumbKey: itemFiles.storageKey
+		})
+		.from(items)
+		.leftJoin(itemFiles, and(eq(itemFiles.itemId, items.id), eq(itemFiles.kind, 'thumb_400')))
+		.where(and(isNull(items.deletedAt), eq(items.status, 'ready')));
+	ready.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
 	const out: Record<string, ReplaceCandidate> = {};
 	for (const arrival of arrivals) {
-		if (!arrival.ingestName) continue;
-		const derivedTitle = titleFromFilename(arrival.ingestName);
-		const match = (
-			await db
-				.select({
-					id: items.id,
-					title: items.title,
-					sortDate: items.sortDate,
-					thumbKey: itemFiles.storageKey
-				})
-				.from(items)
-				.leftJoin(itemFiles, and(eq(itemFiles.itemId, items.id), eq(itemFiles.kind, 'thumb_400')))
-				.where(
-					and(
-						isNull(items.deletedAt),
-						eq(items.status, 'ready'),
-						eq(items.type, arrival.type),
-						or(
-							eq(items.ingestName, arrival.ingestName),
-							// Legacy fallback only when a non-empty title can be derived —
-							// otherwise this branch would match every pre-column item.
-							derivedTitle
-								? and(isNull(items.ingestName), eq(items.title, derivedTitle))
-								: undefined
-						)
-					)
-				)
-				.orderBy(items.createdAt)
-				.limit(1)
-		)[0];
-		if (match && match.id !== arrival.id) {
+		const pool = ready.filter((row) => row.type === arrival.type && row.id !== arrival.id);
+
+		let match: ((typeof ready)[number] & { matchedBy: 'name' | 'frame' }) | undefined;
+		if (arrival.ingestName) {
+			const derivedTitle = titleFromFilename(arrival.ingestName);
+			const byName = pool.find(
+				(row) =>
+					row.ingestName === arrival.ingestName ||
+					(row.ingestName == null && derivedTitle !== '' && row.title === derivedTitle)
+			);
+			if (byName) match = { ...byName, matchedBy: 'name' };
+		}
+		if (!match && arrival.framePhash) {
+			let best: { row: (typeof ready)[number]; distance: number } | undefined;
+			for (const row of pool) {
+				if (!row.framePhash || !durationsCompatible(row.duration, arrival.duration)) continue;
+				const distance = hammingHex64(row.framePhash, arrival.framePhash);
+				if (distance <= PHASH_MATCH_DISTANCE && (!best || distance < best.distance)) {
+					best = { row, distance };
+				}
+			}
+			if (best) match = { ...best.row, matchedBy: 'frame' };
+		}
+
+		if (match) {
 			out[arrival.id] = {
 				id: match.id,
 				title: match.title,
 				sortDate: match.sortDate,
-				thumbUrl: match.thumbKey ? await storage.mediaUrl(match.thumbKey) : ''
+				thumbUrl: match.thumbKey ? await storage.mediaUrl(match.thumbKey) : '',
+				matchedBy: match.matchedBy
 			};
 		}
 	}
@@ -123,7 +150,8 @@ export async function replaceItemMedia(
 			width: arrival.width,
 			height: arrival.height,
 			duration: arrival.duration,
-			ingestName: arrival.ingestName ?? target.ingestName
+			ingestName: arrival.ingestName ?? target.ingestName,
+			framePhash: arrival.framePhash ?? target.framePhash
 		})
 		.where(eq(items.id, targetId));
 	await db

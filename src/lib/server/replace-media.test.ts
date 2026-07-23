@@ -99,16 +99,77 @@ describe('replaceCandidatesFor', () => {
 		});
 
 		const out = await replaceCandidatesFor(db, stubStorage, [
-			{ id: 'q1', type: 'video', ingestName: 'tape-04.mp4' },
-			{ id: 'q2', type: 'video', ingestName: 'sprinkler_day.mp4' },
-			{ id: 'q3', type: 'video', ingestName: 'brand-new.mp4' },
-			{ id: 'q4', type: 'video', ingestName: null }
+			{ id: 'q1', type: 'video', ingestName: 'tape-04.mp4', framePhash: null, duration: null },
+			{
+				id: 'q2',
+				type: 'video',
+				ingestName: 'sprinkler_day.mp4',
+				framePhash: null,
+				duration: null
+			},
+			{ id: 'q3', type: 'video', ingestName: 'brand-new.mp4', framePhash: null, duration: null },
+			{ id: 'q4', type: 'video', ingestName: null, framePhash: null, duration: null }
 		]);
 
 		expect(out.q1?.id).toBe('named');
+		expect(out.q1?.matchedBy).toBe('name');
 		expect(out.q2?.id).toBe('legacy');
 		expect(out.q3).toBeUndefined();
 		expect(out.q4).toBeUndefined();
+	});
+
+	it('falls back to a perceptual frame match when names and titles differ', async () => {
+		const db = makeTestDb();
+		const owner = await makeUser(db);
+		await makeItem(db, {
+			id: 'renamed',
+			uploadedBy: owner.id,
+			status: 'ready',
+			type: 'video',
+			title: 'Christmas Morning 1995', // curated title, unrelated filename
+			ingestName: 'old-scan-batch-7.mp4',
+			framePhash: 'aaaaaaaaaaaaaaaa',
+			duration: 240
+		});
+		await makeItem(db, {
+			id: 'other',
+			uploadedBy: owner.id,
+			status: 'ready',
+			type: 'video',
+			ingestName: 'unrelated.mp4',
+			framePhash: 'ffffffffffffffff',
+			duration: 240
+		});
+		await makeItem(db, {
+			id: 'q1',
+			uploadedBy: owner.id,
+			status: 'needs_review',
+			type: 'video',
+			ingestName: 'fixed-audio-render.mp4'
+		});
+
+		const out = await replaceCandidatesFor(db, stubStorage, [
+			// One bit off from 'renamed' (re-encode wiggle), 4 minutes long.
+			{
+				id: 'q1',
+				type: 'video',
+				ingestName: 'fixed-audio-render.mp4',
+				framePhash: 'aaaaaaaaaaaaaaab',
+				duration: 240.5
+			},
+			// Same hash but wildly different duration: not the same clip.
+			{
+				id: 'q2',
+				type: 'video',
+				ingestName: 'something.mp4',
+				framePhash: 'aaaaaaaaaaaaaaab',
+				duration: 30
+			}
+		]);
+
+		expect(out.q1?.id).toBe('renamed');
+		expect(out.q1?.matchedBy).toBe('frame');
+		expect(out.q2).toBeUndefined();
 	});
 });
 

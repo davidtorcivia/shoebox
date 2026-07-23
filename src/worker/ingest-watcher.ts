@@ -14,6 +14,7 @@ import { applyHolidayTags } from '../lib/server/items';
 import type { StorageAdapter } from '../lib/server/platform/types';
 import { parseConventions, resolveItemDate, titleFromFilename } from './conventions';
 import { probeVideo, type VideoProbe } from './derivatives';
+import { imagePhash, videoFramePhash } from './phash';
 import { logIngestFailure, type WorkerDb } from './jobs';
 
 export const SUPPORTED_EXTENSIONS: Record<string, 'video' | 'photo'> = {
@@ -277,6 +278,19 @@ export async function processIngestFile(deps: IngestDeps, absPath: string): Prom
 
 	if (width <= 0 || height <= 0) return fail('could not determine dimensions');
 
+	// Perceptual fingerprint for the "replace media?" prompt — the mid-point
+	// frame for videos, the image itself for photos. Non-fatal: an item without
+	// a hash simply never matches by content.
+	let framePhash: string | null = null;
+	try {
+		framePhash =
+			type === 'video'
+				? await videoFramePhash(absPath, (duration ?? 0) / 2)
+				: await imagePhash(absPath);
+	} catch (err) {
+		console.warn(`[ingest] phash failed for ${relPath}: ${err}`);
+	}
+
 	const date = resolveItemDate(mediaDate, hints.year);
 	const id = nanoid(12);
 	const sizeBytes = (await stat(absPath)).size;
@@ -306,6 +320,7 @@ export async function processIngestFile(deps: IngestDeps, absPath: string): Prom
 				sha256,
 				source: 'ingest',
 				ingestName: hints.filename,
+				framePhash,
 				status: 'needs_review',
 				uploadedBy: deps.ownerId,
 				createdAt: new Date()

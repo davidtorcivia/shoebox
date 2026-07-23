@@ -84,6 +84,7 @@ export async function makeItem(
 		blurhash: over.blurhash ?? null,
 		source: over.source ?? 'upload',
 		ingestName: over.ingestName ?? null,
+		framePhash: over.framePhash ?? null,
 		captureTime: over.captureTime ?? null,
 		tapeLabel: over.tapeLabel ?? null,
 		status: over.status ?? 'ready',

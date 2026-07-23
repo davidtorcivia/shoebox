@@ -84,6 +84,9 @@ export const items = sqliteTable(
 		// Basename the file arrived under via ingest; keys the "replace media?"
 		// prompt when the same name is re-ingested. Null for uploads/legacy items.
 		ingestName: text('ingest_name'),
+		// dHash (64-bit hex) of the mid-point frame (videos) or the image itself
+		// (photos); content-based fallback for the "replace media?" prompt.
+		framePhash: text('frame_phash'),
 		tapeLabel: text('tape_label'),
 		status: text('status', { enum: ['processing', 'needs_review', 'ready'] }).notNull(),
 		uploadedBy: text('uploaded_by')

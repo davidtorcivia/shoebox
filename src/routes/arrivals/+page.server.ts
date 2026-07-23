@@ -21,7 +21,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 					.select({
 						id: schema.items.id,
 						type: schema.items.type,
-						ingestName: schema.items.ingestName
+						ingestName: schema.items.ingestName,
+						framePhash: schema.items.framePhash,
+						duration: schema.items.duration
 					})
 					.from(schema.items)
 					.where(
