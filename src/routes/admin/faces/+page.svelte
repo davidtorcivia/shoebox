@@ -11,6 +11,9 @@
 	let brokenCrops = $state<Record<string, boolean>>({});
 	// svelte-ignore state_referenced_locally
 	let suggestions = $state(data.suggestions);
+	// svelte-ignore state_referenced_locally
+	let unmatched = $state(data.unmatched.faces);
+	let unmatchedPeople = $state<Record<string, string>>({});
 	let busy = $state<string | null>(null);
 	let notice = $state('');
 
@@ -132,6 +135,34 @@
 		}
 	}
 
+	// Unmatched (noise) faces: assign straight to a person, or reject.
+	async function assignUnmatched(faceId: string): Promise<void> {
+		const personId = unmatchedPeople[faceId];
+		if (!personId) {
+			notice = 'Choose a person first.';
+			return;
+		}
+		if (
+			await mutate(`um-assign-${faceId}`, `/api/admin/faces/faces/${faceId}/assign`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ personId })
+			})
+		) {
+			unmatched = unmatched.filter((face) => face.id !== faceId);
+		}
+	}
+
+	async function rejectUnmatched(faceId: string): Promise<void> {
+		if (
+			await mutate(`um-reject-${faceId}`, `/api/admin/faces/faces/${faceId}/reject`, {
+				method: 'POST'
+			})
+		) {
+			unmatched = unmatched.filter((face) => face.id !== faceId);
+		}
+	}
+
 	async function saveBox(faceId: string): Promise<void> {
 		let box: unknown;
 		try {
@@ -163,9 +194,11 @@
 		<p class="notice">{notice}</p>
 	{/if}
 
-	{#if suggestions.length === 0}
+	{#if suggestions.length === 0 && unmatched.length === 0}
 		<p class="empty">No face suggestions are waiting for review.</p>
-	{:else}
+	{/if}
+
+	{#if suggestions.length > 0}
 		<div class="clusters">
 			{#each suggestions as cluster (cluster.clusterId)}
 				<section class="cluster" data-testid="face-cluster">
@@ -279,6 +312,84 @@
 				</section>
 			{/each}
 		</div>
+	{/if}
+
+	{#if unmatched.length > 0}
+		<section class="cluster unmatched" data-testid="unmatched-faces">
+			<div class="cluster-head">
+				<div>
+					<p>Unmatched faces</p>
+					<h3>
+						{data.unmatched.total} not in any cluster{data.unmatched.total > unmatched.length
+							? ` · showing ${unmatched.length}`
+							: ''}
+					</h3>
+				</div>
+			</div>
+			<p class="unmatched-hint">
+				Faces seen too briefly to group — assign them directly so the person still gets credited
+				(and future scans learn from it).
+			</p>
+			<div class="faces">
+				{#each unmatched as face (face.id)}
+					<article>
+						<div class="thumb">
+							{#if face.cropUrl && !brokenCrops[face.id]}
+								<img
+									src={face.cropUrl}
+									alt=""
+									loading="lazy"
+									onerror={() => (brokenCrops = { ...brokenCrops, [face.id]: true })}
+								/>
+							{:else if face.thumbUrl}
+								<img src={face.thumbUrl} alt="" loading="lazy" />
+								<span
+									class="face-box"
+									style={`--x:${face.box.x * 100}%;--y:${face.box.y * 100}%;--w:${face.box.w * 100}%;--h:${face.box.h * 100}%;`}
+								></span>
+							{:else}
+								<span>No thumbnail</span>
+							{/if}
+						</div>
+						<div class="face-meta">
+							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- item id is dynamic -->
+							<a href={`/item/${face.itemId}`}>{face.itemTitle ?? face.itemType}</a>
+							<span>{face.frameTime == null ? 'still' : `${face.frameTime.toFixed(1)}s`}</span>
+						</div>
+						<select
+							aria-label="Person for this face"
+							value={unmatchedPeople[face.id] ?? ''}
+							onchange={(event) =>
+								(unmatchedPeople = { ...unmatchedPeople, [face.id]: event.currentTarget.value })}
+						>
+							<option value="">Choose person</option>
+							{#each data.people as person (person.id)}
+								<option value={person.id}>{person.name}</option>
+							{/each}
+						</select>
+						<div class="face-tools">
+							<button
+								type="button"
+								data-testid="unmatched-assign"
+								disabled={busy === `um-assign-${face.id}`}
+								onclick={() => assignUnmatched(face.id)}
+							>
+								Assign
+							</button>
+							<button
+								class="danger"
+								type="button"
+								data-testid="unmatched-reject"
+								disabled={busy === `um-reject-${face.id}`}
+								onclick={() => rejectUnmatched(face.id)}
+							>
+								Reject
+							</button>
+						</div>
+					</article>
+				{/each}
+			</div>
+		</section>
 	{/if}
 </div>
 
@@ -414,6 +525,13 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
 		gap: 12px;
+	}
+
+	.unmatched-hint {
+		margin: -6px 0 16px;
+		font-family: var(--sans);
+		font-size: 13px;
+		opacity: 0.75;
 	}
 
 	article {

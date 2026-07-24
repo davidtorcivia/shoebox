@@ -134,6 +134,59 @@ export async function listSuggestions(db: Db, storage: StorageAdapter): Promise<
 	);
 }
 
+export type UnmatchedFace = {
+	id: string;
+	itemId: string;
+	itemTitle: string | null;
+	itemType: 'photo' | 'video';
+	frameTime: number | null;
+	box: FaceBox;
+	thumbUrl: string;
+	cropUrl: string;
+};
+
+/**
+ * Pending faces the clusterer left as noise (no cluster id) — real detections
+ * that would otherwise be invisible: a person glimpsed too briefly to form a
+ * tracklet still deserves a face in review.
+ */
+export async function listUnmatched(
+	db: Db,
+	storage: StorageAdapter,
+	limit = 120
+): Promise<{ faces: UnmatchedFace[]; total: number }> {
+	const rows = await db
+		.select({
+			id: faces.id,
+			itemId: faces.itemId,
+			itemTitle: items.title,
+			itemType: items.type,
+			frameTime: faces.frameTime,
+			box: faces.box,
+			storageKey: itemFiles.storageKey
+		})
+		.from(faces)
+		.innerJoin(items, eq(items.id, faces.itemId))
+		.leftJoin(itemFiles, and(eq(itemFiles.itemId, faces.itemId), eq(itemFiles.kind, 'thumb_400')))
+		.where(and(eq(faces.status, 'pending'), isNull(faces.clusterId), isNull(items.deletedAt)))
+		.orderBy(faces.itemId, faces.frameTime);
+
+	const out: UnmatchedFace[] = [];
+	for (const row of rows.slice(0, limit)) {
+		out.push({
+			id: row.id,
+			itemId: row.itemId,
+			itemTitle: row.itemTitle,
+			itemType: row.itemType,
+			frameTime: row.frameTime,
+			box: parseBox(row.box),
+			thumbUrl: row.storageKey ? await storage.mediaUrl(row.storageKey) : '',
+			cropUrl: await storage.mediaUrl(`media/${row.itemId}/faces/${row.id}.jpg`)
+		});
+	}
+	return { faces: out, total: rows.length };
+}
+
 // Cluster members whose item is still live. Suggestions only surface clusters
 // by their live-item faces, so assign/reject must act on exactly that set — a
 // stray face on a soft-deleted item must not block the whole cluster.

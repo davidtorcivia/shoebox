@@ -64,6 +64,9 @@ services:
       FACE_OPENVINO_DEVICE: ${FACE_OPENVINO_DEVICE:-GPU}
       # buffalo_l on the GPU can afford a larger detector for better small-face recall.
       FACE_DET_SIZE: ${FACE_DET_SIZE:-1024}
+      # Promote even 2-frame tracklets to reviewable clusters: home-video subjects
+      # often face the camera only briefly, and unpromoted tracklets were invisible.
+      FACE_MIN_TRACK_FACES: ${FACE_MIN_TRACK_FACES:-2}
     # Pass the Intel GPU render node through to the container. On a CPU-only host,
     # comment this block out (and set FACE_GPU= / FACE_PROVIDERS=CPUExecutionProvider).
     devices:
