@@ -175,6 +175,20 @@
 		setTimeout(finish, MOTION.slow);
 	}
 
+	// Permanently delete the selection — the file itself, not a trash move.
+	async function discard(): Promise<void> {
+		const ids = targetIds();
+		if (ids.length === 0) return;
+		const what = ids.length === 1 ? 'this arrival' : `these ${ids.length} arrivals`;
+		if (!confirm(`Permanently delete ${what}? The files are removed for good.`)) return;
+		const res = await fetch('/api/arrivals/discard', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ itemIds: ids })
+		});
+		if (res.ok) removeFromQueue(ids);
+	}
+
 	async function approve(): Promise<void> {
 		const ids = targetIds();
 		if (ids.length === 0) return;
@@ -542,6 +556,14 @@
 							</button>
 							<button type="submit" class="primary" data-testid="approve-button">Approve</button>
 						</div>
+						<button
+							type="button"
+							class="danger"
+							data-testid="delete-button"
+							onclick={() => void discard()}
+						>
+							Delete permanently
+						</button>
 
 						{#if data.ingestionEnabled}
 							<p class="ingest" data-testid="ingest-hint">Ingest folder is active.</p>
@@ -1073,6 +1095,19 @@
 	.primary {
 		background: var(--cream);
 		color: var(--ink);
+	}
+
+	.danger {
+		min-height: 44px;
+		border: 1px solid color-mix(in srgb, var(--dawn, #fa7b62) 45%, transparent);
+		background: transparent;
+		color: var(--dawn, #fa7b62);
+		cursor: pointer;
+		font-family: var(--font-sans);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
 	}
 
 	.empty {

@@ -1,4 +1,4 @@
-import { and, eq, isNull, max } from 'drizzle-orm';
+import { and, eq, inArray, isNull, max } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { resolveTimeOfDay } from '$lib/domain/day-period';
 import { sortDate, type ItemDate } from '$lib/domain/dates';
@@ -6,7 +6,9 @@ import { recomputeYearCounts } from './aggregates';
 import type { Db } from './db';
 import * as schema from './db/schema';
 import { applyHolidayTags } from './items';
+import type { StorageAdapter } from './platform/types';
 import { reindexItem } from './search';
+import { hardDeleteItems } from './trash';
 
 export interface ArrivalsApply {
 	date?: ItemDate;
@@ -117,4 +119,34 @@ export async function applyArrivalsBatch(
 
 	if (updated > 0 && (req.approve || datesApplied)) await recomputeYearCounts(db);
 	return { updated };
+}
+
+/**
+ * Permanently delete queued arrivals — media files and all derived rows, no
+ * trash stop. Only needs_review items qualify; anything already in the library
+ * (or soft-deleted) is silently skipped so a stale queue can't nuke curation.
+ * Year counts only track ready items, so no recompute is needed.
+ */
+export async function discardArrivals(
+	db: Db,
+	storage: StorageAdapter,
+	itemIds: string[]
+): Promise<{ deleted: number }> {
+	if (itemIds.length === 0) return { deleted: 0 };
+	const rows = await db
+		.select({ id: schema.items.id })
+		.from(schema.items)
+		.where(
+			and(
+				inArray(schema.items.id, itemIds),
+				eq(schema.items.status, 'needs_review'),
+				isNull(schema.items.deletedAt)
+			)
+		);
+	const deleted = await hardDeleteItems(
+		db,
+		storage,
+		rows.map((row) => row.id)
+	);
+	return { deleted };
 }

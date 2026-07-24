@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { createTestDb, seedItem, seedOwner } from '../../worker/test-helpers';
-import { applyArrivalsBatch } from './arrivals';
+import { applyArrivalsBatch, discardArrivals } from './arrivals';
 import * as schema from './db/schema';
+import { MemoryStorage } from './testing/memory-platform';
 
 function setup() {
 	const db = createTestDb();
@@ -139,5 +140,42 @@ describe('applyArrivalsBatch', () => {
 		expect(result.updated).toBe(1);
 		expect(db.select().from(schema.itemPeople).all()).toHaveLength(1);
 		expect(db.select().from(schema.itemTags).all()).toHaveLength(1);
+	});
+});
+
+describe('discardArrivals', () => {
+	it('hard-deletes queued arrivals and their storage files', async () => {
+		const { db, itemId } = setup();
+		const storage = new MemoryStorage();
+		db.insert(schema.itemFiles)
+			.values({
+				id: 'f1',
+				itemId,
+				kind: 'original',
+				storageKey: `media/${itemId}/original.mp4`,
+				mime: 'video/mp4'
+			})
+			.run();
+		await storage.put(`media/${itemId}/original.mp4`, new TextEncoder().encode('bytes'), {
+			contentType: 'video/mp4'
+		});
+
+		const result = await discardArrivals(db as never, storage, [itemId, 'ghost']);
+
+		expect(result.deleted).toBe(1);
+		expect(db.select().from(schema.items).where(eq(schema.items.id, itemId)).get()).toBeUndefined();
+		expect(db.select().from(schema.itemFiles).all()).toHaveLength(0);
+		expect(await storage.head(`media/${itemId}/original.mp4`)).toBeNull();
+	});
+
+	it('refuses items that are not in the review queue', async () => {
+		const { db, owner } = setup();
+		const readyId = seedItem(db, owner, { status: 'ready' });
+		const storage = new MemoryStorage();
+
+		const result = await discardArrivals(db as never, storage, [readyId]);
+
+		expect(result.deleted).toBe(0);
+		expect(db.select().from(schema.items).where(eq(schema.items.id, readyId)).get()).toBeDefined();
 	});
 });
