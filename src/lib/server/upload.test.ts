@@ -218,7 +218,7 @@ describe('completeUpload', () => {
 
 		// Uploads land in arrivals for review before reaching the timeline.
 		expect(dto.status).toBe('needs_review');
-		expect(dto.urls.original).toBe(`/media/media/${dto.id}/original.mp4`);
+		expect(dto.urls.original).toBe(`/media/media/${dto.id}/original.mp4?v=aaaaaaaa`);
 		const stored = await storage.get(`media/${dto.id}/original.mp4`);
 		expect(new Uint8Array(await new Response(stored!.stream).arrayBuffer())).toEqual(bytes);
 		for (const key of ['poster', 'thumb_400', 'thumb_800', 'thumb_1600']) {
@@ -439,7 +439,7 @@ describe('completeUpload', () => {
 			},
 			async () => ({ mime: 'video/quicktime' })
 		);
-		expect(dto.urls.original).toBe(`/media/media/${dto.id}/original.mov`);
+		expect(dto.urls.original).toBe(`/media/media/${dto.id}/original.mov?v=aaaaaaaa`);
 		const original = (await db.select().from(itemFiles).where(eq(itemFiles.itemId, dto.id))).find(
 			(f) => f.kind === 'original'
 		);

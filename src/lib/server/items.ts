@@ -288,17 +288,21 @@ export async function buildItemDTOs(
 		};
 		const urls: ItemDTO['urls'] = { poster: '', thumb400: '', thumb800: '', thumb1600: '' };
 
-		// When the user has picked a poster frame we overwrite poster.webp and the
-		// thumbnails in place (same keys), so bust their cache with the chosen time
-		// — otherwise the browser keeps showing the previously cached image.
-		const bust = row.type === 'video' && row.posterTime != null ? `?v=${row.posterTime}` : '';
+		// Every media URL is versioned by content: the sha prefix changes when the
+		// master is replaced (arrivals "replace media"), and the poster time when
+		// the user picks a new thumbnail frame. Same storage keys, fresh URLs — the
+		// browser can never replay stale bytes for swapped media.
+		const version =
+			row.sha256.slice(0, 8) +
+			(row.type === 'video' && row.posterTime != null ? `-${row.posterTime}` : '');
+		const withV = (url: string): string => `${url}${url.includes('?') ? '&' : '?'}v=${version}`;
 		let originalWebSafe = true;
 		for (const file of files.filter((file) => file.itemId === row.id)) {
-			const url = await storage.mediaUrl(file.storageKey);
-			if (file.kind === 'poster') urls.poster = url + bust;
-			else if (file.kind === 'thumb_400') urls.thumb400 = url + bust;
-			else if (file.kind === 'thumb_800') urls.thumb800 = url + bust;
-			else if (file.kind === 'thumb_1600') urls.thumb1600 = url + bust;
+			const url = withV(await storage.mediaUrl(file.storageKey));
+			if (file.kind === 'poster') urls.poster = url;
+			else if (file.kind === 'thumb_400') urls.thumb400 = url;
+			else if (file.kind === 'thumb_800') urls.thumb800 = url;
+			else if (file.kind === 'thumb_1600') urls.thumb1600 = url;
 			else if (file.kind === 'original') {
 				urls.original = url;
 				// HEIC/RAW originals aren't browser-renderable; the detail view must

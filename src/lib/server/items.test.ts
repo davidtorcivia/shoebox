@@ -130,12 +130,14 @@ describe('createItem', () => {
 			uploadedBy: userId,
 			tapeLabel: 'Tape 04'
 		});
+		// Every URL is versioned by the master's sha prefix so an in-place media
+		// replacement can never serve stale browser-cached bytes.
 		expect(dto.urls).toEqual({
-			original: '/media/media/itm000000001/original.mp4',
-			poster: '/media/media/itm000000001/poster.webp',
-			thumb400: '/media/media/itm000000001/thumb_400.webp',
-			thumb800: '/media/media/itm000000001/thumb_800.webp',
-			thumb1600: '/media/media/itm000000001/thumb_1600.webp'
+			original: '/media/media/itm000000001/original.mp4?v=cccccccc',
+			poster: '/media/media/itm000000001/poster.webp?v=cccccccc',
+			thumb400: '/media/media/itm000000001/thumb_400.webp?v=cccccccc',
+			thumb800: '/media/media/itm000000001/thumb_800.webp?v=cccccccc',
+			thumb1600: '/media/media/itm000000001/thumb_1600.webp?v=cccccccc'
 		});
 	});
 
@@ -495,8 +497,8 @@ describe('setItemPoster', () => {
 
 		expect(dto.posterTime).toBe(4.2);
 		// Cache-busted so the browser fetches the freshly written frame.
-		expect(dto.urls.poster).toContain('?v=4.2');
-		expect(dto.urls.thumb400).toContain('?v=4.2');
+		expect(dto.urls.poster).toContain('-4.2');
+		expect(dto.urls.thumb400).toContain('-4.2');
 		const [row] = await db.select().from(itemsTable).where(eq(itemsTable.id, 'itm000000001'));
 		expect(row.posterTime).toBe(4.2);
 		// No real original on disk in the test, so it falls back to a background

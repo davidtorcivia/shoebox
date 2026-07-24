@@ -17,7 +17,7 @@ function safeContentType(contentType: string): string {
 	return 'application/octet-stream';
 }
 
-export const GET: RequestHandler = async ({ locals, params, request }) => {
+export const GET: RequestHandler = async ({ locals, params, request, url: requestUrl }) => {
 	const key = params.key;
 	if (!(await canAccessMedia(locals, key))) throw error(403, 'Media not allowed');
 
@@ -31,8 +31,17 @@ export const GET: RequestHandler = async ({ locals, params, request }) => {
 	const got = await locals.platform.storage.get(key, range ?? undefined);
 	if (!got) throw error(404, 'media not found');
 
+	// Versioned URLs (?v=<content hash>) may cache forever — the URL changes when
+	// the bytes do (media replacement, new poster frame). Unversioned requests
+	// must revalidate: media CAN change under a stable key, and heuristic caching
+	// was replaying old audio after an in-place replacement.
+	const cacheControl = requestUrl.searchParams.has('v')
+		? 'private, max-age=31536000, immutable'
+		: 'private, no-cache';
+
 	const headers = new Headers({
 		'accept-ranges': 'bytes',
+		'cache-control': cacheControl,
 		'content-type': safeContentType(got.contentType),
 		'content-length': String(range ? range.end - range.start + 1 : head.size),
 		'x-content-type-options': 'nosniff'
