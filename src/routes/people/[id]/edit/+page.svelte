@@ -80,8 +80,8 @@
 
 	async function save() {
 		saveError = '';
-		// A linked (non-editor) user manages their own profile but not their display
-		// name, so only editors send `name`.
+		// Editors rename anyone; a linked user renames themselves (marriage,
+		// preference) — this page is only reachable by one of the two.
 		const body: Record<string, unknown> = {
 			birthdate: birthdate || null,
 			deathDate: deathDate || null,
@@ -90,7 +90,7 @@
 			avatarItemId,
 			avatarCrop
 		};
-		if (data.isEditor) body.name = name;
+		if (data.isEditor || data.isLinked) body.name = name;
 		const res = await fetch(`/api/people/${person.id}`, {
 			method: 'PATCH',
 			headers: { 'content-type': 'application/json' },
@@ -137,8 +137,12 @@
 			<section>
 				<div class="label">Details</div>
 				<label class="field">
-					<span>Name{data.isEditor ? '' : ' · set by an admin'}</span>
-					<input data-testid="edit-name" bind:value={name} readonly={!data.isEditor} />
+					<span>Name{data.isEditor || data.isLinked ? '' : ' · set by an admin'}</span>
+					<input
+						data-testid="edit-name"
+						bind:value={name}
+						readonly={!data.isEditor && !data.isLinked}
+					/>
 				</label>
 				<div class="row">
 					<label class="field">

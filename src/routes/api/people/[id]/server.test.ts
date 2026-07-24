@@ -53,14 +53,14 @@ describe('PATCH /api/people/[id]', () => {
 		expect((await res.json()).person.birthPlace).toBe('Brooklyn, New York');
 	});
 
-	it('lets the linked user patch bio and birthPlace only', async () => {
+	it('lets the linked user patch their profile, including their own name', async () => {
 		const meg = await makePerson(db, {});
 		const linked = sessionUser(await makeUser(db, { role: 'user', personId: meg.id }));
 		const res = await PATCH(evt(linked, meg.id, { bio: 'My story.' }));
 		expect((await res.json()).person.bio).toBe('My story.');
-		await expect(PATCH(evt(linked, meg.id, { name: 'Nope' }))).rejects.toMatchObject({
-			status: 403
-		});
+		// Married name, preference — renaming yourself needs no editor.
+		const renamed = await PATCH(evt(linked, meg.id, { name: 'Gina Bennett' }));
+		expect((await renamed.json()).person.name).toBe('Gina Bennett');
 	});
 
 	it('403s for an unlinked non-editor', async () => {

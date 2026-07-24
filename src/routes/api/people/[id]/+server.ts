@@ -12,6 +12,9 @@ import type { RequestHandler } from './$types';
 // A user linked to this person manages their own profile fully — everything an
 // editor can set except their display name (identity stays admin-controlled).
 const LINKED_USER_KEYS = [
+	// Their own name included: people rename themselves (marriage, preference)
+	// without needing an editor. Slug regenerates; links resolve by id.
+	'name',
 	'birthdate',
 	'deathDate',
 	'birthPlace',
